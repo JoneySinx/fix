@@ -1,22 +1,26 @@
 import logging
 import re
 import base64
+import asyncio
 from struct import pack
 import motor.motor_asyncio
 from hydrogram.file_id import FileId
-from pymongo.errors import DuplicateKeyError
-from info import DATABASE_URL, DATABASE_NAME, MAX_BTN
+from info import DATABASE_URL, DATABASE_NAME, MAX_BTN, USE_CAPTION_FILTER
 
 logger = logging.getLogger(__name__)
 
-# ─────────────────────────────────────────
-# ⚙️ MOTOR ASYNC CONNECTION (NON-BLOCKING)
-# ─────────────────────────────────────────
+# ─────────────────────────────────────────────────────────
+# ⚙️ MOTOR CONNECTION — Koyeb Free Tier Optimized
+# ─────────────────────────────────────────────────────────
 client = motor.motor_asyncio.AsyncIOMotorClient(
     DATABASE_URL,
-    maxPoolSize=50,
-    minPoolSize=10,
-    serverSelectionTimeoutMS=5000
+    maxPoolSize=5,
+    minPoolSize=1,
+    serverSelectionTimeoutMS=5000,
+    connectTimeoutMS=10000,
+    socketTimeoutMS=20000,
+    retryWrites=True,
+    retryReads=True,
 )
 db = client[DATABASE_NAME]
 
@@ -26,273 +30,277 @@ archive = db["Archive"]
 
 COLLECTIONS = {
     "primary": primary,
-    "cloud": cloud,
-    "archive": archive
+    "cloud":   cloud,
+    "archive": archive,
 }
 
-# ─────────────────────────────────────────
-# ⚡ INDEXES (BACKGROUND)
-# ─────────────────────────────────────────
+# ─────────────────────────────────────────────────────────
+# ⚡ INDEXES — Text index (sorting के लिए)
+# ─────────────────────────────────────────────────────────
 async def ensure_indexes():
-    """Create text indexes for fast search"""
     for name, col in COLLECTIONS.items():
         try:
             await col.create_index(
                 [("file_name", "text"), ("caption", "text")],
-                name=f"{name}_text",
-                background=True
+                name=f"{name}_text"
             )
+            logger.info(f"✅ Index OK: {name}")
         except Exception as e:
-            logger.error(f"Index creation failed for {name}: {e}")
+            if "already exists" in str(e) or "IndexKeySpecsConflict" in str(e) or "86" in str(e):
+                pass
+            else:
+                logger.warning(f"Index warning [{name}]: {e}")
 
-# ─────────────────────────────────────────
-# 🧠 FAST NORMALIZER
-# ─────────────────────────────────────────
-REPLACEMENTS = str.maketrans({
-    "0": "o", "1": "i", "3": "e",
-    "4": "a", "5": "s", "7": "t"
-})
-
-def normalize_query(q: str) -> str:
-    """Normalize search query"""
-    q = q.lower().translate(REPLACEMENTS)
-    q = re.sub(r"[^a-z0-9\s]", " ", q)
-    return re.sub(r"\s+", " ", q).strip()
-
-def prefix_query(q: str) -> str:
-    """Create prefix query for fallback"""
-    return " ".join(w[:4] for w in q.split() if len(w) >= 3)
-
-# ─────────────────────────────────────────
-# 📊 DB STATS (ASYNC)
-# ─────────────────────────────────────────
+# ─────────────────────────────────────────────────────────
+# 📊 DB STATS
+# ─────────────────────────────────────────────────────────
 async def db_count_documents():
-    """Get document counts"""
     try:
-        p = await primary.estimated_document_count()
-        c = await cloud.estimated_document_count()
-        a = await archive.estimated_document_count()
-        return {
-            "primary": p,
-            "cloud": c,
-            "archive": a,
-            "total": p + c + a
-        }
+        p, c, a = await asyncio.gather(
+            primary.estimated_document_count(),
+            cloud.estimated_document_count(),
+            archive.estimated_document_count(),
+        )
+        return {"primary": p, "cloud": c, "archive": a, "total": p + c + a}
     except Exception as e:
-        logger.error(f"Error counting documents: {e}")
+        logger.error(f"Count error: {e}")
         return {"primary": 0, "cloud": 0, "archive": 0, "total": 0}
 
-# ─────────────────────────────────────────
-# 💾 SAVE FILE (CORRECT STATS FIX)
-# ─────────────────────────────────────────
+# ─────────────────────────────────────────────────────────
+# 💾 SAVE FILE
+#
+# ✅ _id = unpack_new_file_id() से बना encoded ID
+#    यह ID खुद एक valid Telegram file_id है।
+#    access_hash pack होने की वजह से channel छोड़ने के बाद भी काम करती है।
+#    इसीलिए plugin doc["_id"] को ही file_id की तरह use करता है — सही है।
+#
+# ✅ file_type अलग से store करो ताकि plugin जाने:
+#    send_document / send_video / send_audio में से क्या call करना है
+# ─────────────────────────────────────────────────────────
 async def save_file(media, collection_type="primary"):
     try:
-        # ✅ Old Logic ID Generation (Reliable)
         file_id = unpack_new_file_id(media.file_id)
-        
-        # क्लीन नाम और कैप्शन
-        f_name = re.sub(r"@\w+|(_|\-|\.|\+)", " ", media.file_name or "").strip()
-        caption = re.sub(r"@\w+|(_|\-|\.|\+)", " ", media.caption or "").strip()
+        if not file_id:
+            logger.warning(f"Could not unpack file_id: {media.file_name}")
+            return "err"
+
+        f_name  = re.sub(r"@\w+|(_|\-|\.|\+)", " ", str(media.file_name or "")).strip()
+        caption = re.sub(r"@\w+|(_|\-|\.|\+)", " ", str(media.caption  or "")).strip()
 
         doc = {
-            "_id": file_id,             # यह ID सर्च और भेजने दोनों के काम आएगा
+            "_id":       file_id,           # ✅ Valid Telegram file_id (encoded with access_hash)
             "file_name": f_name,
-            "caption": caption,
-            "file_size": media.file_size
+            "file_size": media.file_size,
+            "caption":   caption,
+            "file_type": media.file_type,   # ✅ document / video / audio
         }
 
-        col = COLLECTIONS.get(collection_type, primary)
-        
-        # ✅ FIX: Update or Insert logic with correct return status
+        col    = COLLECTIONS.get(collection_type, primary)
         result = await col.replace_one({"_id": file_id}, doc, upsert=True)
 
-        # अगर matched_count > 0 है, इसका मतलब फाइल पहले से थी (Update हुई)
         if result.matched_count > 0:
+            logger.warning(f"Already Saved - {f_name}")
             return "dup"
-        # अगर नई फाइल बनी है (Insert हुई)
         else:
+            logger.info(f"Saved - {f_name}")
             return "suc"
 
     except Exception as e:
-        logger.error(f"Error saving file: {e}")
+        logger.error(f"save_file error: {e}")
         return "err"
 
-# ─────────────────────────────────────────
-# 🔍 ULTRA FAST SEARCH CORE (ASYNC)
-# ─────────────────────────────────────────
-def _text_filter(q):
-    return {"$text": {"$search": q}}
+# ─────────────────────────────────────────────────────────
+# 🔍 REGEX BUILDER
+#
+# ✅ पुराने working bot से लिया गया — Regex search, Text search से
+#    ज्यादा accurate है file names के लिए।
+#
+#    "Pushpa 2"    → r'pushpa.*[\s\.\+\-_]2'
+#    "pushpa"      → r'(\b|[\.\+\-_])pushpa(\b|[\.\+\-_])'
+#    ""            → r'.'  (सब कुछ)
+# ─────────────────────────────────────────────────────────
+def _build_regex(query: str):
+    query = query.strip()
+    if not query:
+        raw = r'.'
+    elif ' ' not in query:
+        raw = r'(\b|[\.\+\-_])' + re.escape(query) + r'(\b|[\.\+\-_])'
+    else:
+        raw = re.escape(query).replace(r'\ ', r'.*[\s\.\+\-_]')
 
-async def _search(col, q, offset, limit):
     try:
-        cursor = col.find(
-            _text_filter(q),
-            {
-                "file_name": 1,
-                "file_size": 1,
-                "caption": 1,
-                "score": {"$meta": "textScore"}
-            }
-        )
-        cursor.sort([("score", {"$meta": "textScore"})])
-        cursor.skip(offset).limit(limit)
-        
-        docs = await cursor.to_list(length=limit)
-        
-        # ✅ CRITICAL FIX:
-        # बोट प्लगइन को 'file_id' चाहिए होता है, लेकिन मोंगो '_id' देता है।
-        for doc in docs:
-            doc['file_id'] = doc['_id']
+        return re.compile(raw, flags=re.IGNORECASE)
+    except Exception:
+        return re.compile(re.escape(query), flags=re.IGNORECASE)
 
-        count = await col.count_documents(_text_filter(q))
+# ─────────────────────────────────────────────────────────
+# 🔍 SINGLE COLLECTION SEARCH (INTERNAL)
+#
+# ✅ Regex filter use करो (पुराने bot की तरह — accurate)
+# ✅ find + count parallel (नए bot की तरह — fast)
+# ✅ doc["file_id"] = doc["_id"]  ← _id IS a valid Telegram file_id
+# ─────────────────────────────────────────────────────────
+async def _search(col, regex, offset: int, limit: int):
+    if USE_CAPTION_FILTER:
+        flt = {"$or": [{"file_name": regex}, {"caption": regex}]}
+    else:
+        flt = {"file_name": regex}
+
+    try:
+        async def _fetch():
+            cursor = col.find(flt)
+            cursor.skip(offset).limit(limit)
+            docs = await cursor.to_list(length=limit)
+            for doc in docs:
+                doc["file_id"] = doc["_id"]  # ✅ _id is valid Telegram file_id
+            return docs
+
+        async def _count():
+            return await col.count_documents(flt)
+
+        docs, count = await asyncio.gather(_fetch(), _count())
         return docs, count
+
     except Exception as e:
-        logger.error(f"Search error: {e}")
+        logger.error(f"_search error: {e}")
         return [], 0
 
-# ─────────────────────────────────────────
-# 🚀 PUBLIC SEARCH API (ASYNC CASCADE)
-# ─────────────────────────────────────────
-async def get_search_results(query, max_results=MAX_BTN, offset=0, lang=None, collection_type="primary"):
-    if not query or not query.strip():
-        return [], "", 0, collection_type
-    
-    query = normalize_query(query)
+# ─────────────────────────────────────────────────────────
+# 🚀 PUBLIC SEARCH API — TRUE CASCADE
+#
+#  Primary → (मिला? return) → Cloud → (मिला? return) → Archive
+#  कहीं न मिले → Empty return
+# ─────────────────────────────────────────────────────────
+async def get_search_results(
+    query,
+    max_results=MAX_BTN,
+    offset=0,
+    lang=None,
+    collection_type="primary"
+):
     if not query:
         return [], "", 0, collection_type
-    
-    prefix = prefix_query(query)
-    results = []
-    total = 0
-    actual_source = collection_type
 
-    # ⚡ ASYNC CASCADE SEARCH: Primary → Cloud → Archive
+    regex      = _build_regex(str(query))
+    results    = []
+    total      = 0
+    actual_src = collection_type
+
+    # ── CASCADE: Primary → Cloud → Archive ──
     if collection_type == "all":
-        # 1. Primary
-        docs, cnt = await _search(primary, query, offset, max_results)
-        if docs:
-            results.extend(docs)
-            total += cnt
-            actual_source = "primary"
-        
-        # 2. Cloud (If primary failed)
-        if not results:
-            docs, cnt = await _search(cloud, query, offset, max_results)
+        cascade = [("primary", primary), ("cloud", cloud), ("archive", archive)]
+        for src, col in cascade:
+            docs, cnt = await _search(col, regex, offset, max_results)
             if docs:
-                results.extend(docs)
-                total += cnt
-                actual_source = "cloud"
-            
-            # 3. Archive (If cloud failed)
-            if not results:
-                docs, cnt = await _search(archive, query, offset, max_results)
-                if docs:
-                    results.extend(docs)
-                    total += cnt
-                    actual_source = "archive"
-                
-                # 4. Fallback (Prefix Search)
-                if not results and prefix:
-                    for col_name, col in [("primary", primary), ("cloud", cloud), ("archive", archive)]:
-                        docs, cnt = await _search(col, prefix, 0, max_results)
-                        if docs:
-                            results.extend(docs)
-                            total += cnt
-                            actual_source = col_name
-                            break
+                results    = docs
+                total      = cnt
+                actual_src = src
+                break  # ✅ मिल गया → रुको, बाकी collections छोड़ो
 
-    # Single Collection Search
+    # ── Single collection ──
     elif collection_type in COLLECTIONS:
-        col = COLLECTIONS[collection_type]
-        docs, cnt = await _search(col, query, offset, max_results)
-        results.extend(docs)
-        total += cnt
-        
-        if not results and prefix:
-            docs, cnt = await _search(col, prefix, 0, max_results)
-            results.extend(docs)
-            total += cnt
-            
-    else:
-        # Default fallback
-        docs, cnt = await _search(primary, query, offset, max_results)
-        results.extend(docs)
-        total += cnt
+        col       = COLLECTIONS[collection_type]
+        docs, cnt = await _search(col, regex, offset, max_results)
+        results   = docs
+        total     = cnt
 
-    # 5. Language Filter
+    # ── Unknown → Primary default ──
+    else:
+        docs, cnt = await _search(primary, regex, offset, max_results)
+        results   = docs
+        total     = cnt
+
+    # ── Language filter ──
     if lang and results:
-        lang = lang.lower()
-        results = [f for f in results if lang in f["file_name"].lower()]
-        total = len(results)
+        lang    = lang.lower()
+        results = [f for f in results if lang in f.get("file_name", "").lower()]
+        total   = len(results)
 
     next_offset = offset + max_results
-    if next_offset >= total:
-        next_offset = ""
+    next_offset = "" if next_offset >= total else next_offset
 
-    return results, next_offset, total, actual_source
+    return results, next_offset, total, actual_src
 
-# ─────────────────────────────────────────
-# 🗑 DELETE FILES (ASYNC)
-# ─────────────────────────────────────────
+# ─────────────────────────────────────────────────────────
+# 🗑 DELETE FILES
+# ─────────────────────────────────────────────────────────
 async def delete_files(query, collection_type="all"):
     deleted = 0
     try:
         if query == "*":
-            for name, col in COLLECTIONS.items():
-                if collection_type != "all" and name != collection_type: continue
-                res = await col.delete_many({})
-                deleted += res.deleted_count
-            return deleted
-        
-        query = normalize_query(query)
-        if not query: return 0
-        
-        flt = _text_filter(query)
-        for name, col in COLLECTIONS.items():
-            if collection_type != "all" and name != collection_type: continue
-            res = await col.delete_many(flt)
+            cols    = [col for name, col in COLLECTIONS.items()
+                       if collection_type == "all" or name == collection_type]
+            results = await asyncio.gather(*[col.delete_many({}) for col in cols])
+            return sum(r.deleted_count for r in results)
+
+        regex = _build_regex(str(query))
+        flt   = {"file_name": regex}
+        cols  = [(name, col) for name, col in COLLECTIONS.items()
+                 if collection_type == "all" or name == collection_type]
+
+        results = await asyncio.gather(*[col.delete_many(flt) for _, col in cols])
+        for (name, _), res in zip(cols, results):
             deleted += res.deleted_count
-            if res.deleted_count > 0:
-                logger.info(f"🗑️ Deleted {res.deleted_count} from {name}")
+            if res.deleted_count:
+                logger.info(f"🗑 Deleted {res.deleted_count} from {name}")
 
         return deleted
+
     except Exception as e:
-        logger.error(f"Error deleting: {e}")
+        logger.error(f"delete_files error: {e}")
         return deleted
 
-# ─────────────────────────────────────────
-# 📂 FILE DETAILS & UTILS (ASYNC)
-# ─────────────────────────────────────────
+# ─────────────────────────────────────────────────────────
+# 📂 GET FILE DETAILS
+#
+# ✅ _id से file ढूंढो — यही _id plugin को मिलता है
+#    doc["file_id"] = doc["_id"] set करो ताकि plugin सीधे use कर सके
+# ─────────────────────────────────────────────────────────
 async def get_file_details(file_id):
     try:
-        for col in COLLECTIONS.values():
+        # Cascade: Primary → Cloud → Archive (sequential — पहले मिले वो return)
+        for col in [primary, cloud, archive]:
             doc = await col.find_one({"_id": file_id})
             if doc:
-                doc['file_id'] = doc['_id'] # Compatibility fix
+                doc["file_id"] = doc["_id"]  # ✅ Plugin compatibility
                 return doc
         return None
-    except Exception:
+    except Exception as e:
+        logger.error(f"get_file_details error: {e}")
         return None
 
-# --- File ID Encoding Utils (EXACTLY AS PER OLD BOT) ---
+# ─────────────────────────────────────────────────────────
+# 🔑 FILE ID ENCODING UTILS
+#
+# unpack_new_file_id() से जो ID बनती है वो:
+#   1. Unique key है (duplicate detection के लिए)
+#   2. Valid Telegram file_id है (file भेजने के लिए)
+#   3. access_hash include है (channel छोड़ने के बाद भी काम करे)
+# ─────────────────────────────────────────────────────────
 def encode_file_id(s: bytes) -> str:
     r, n = b"", 0
-    # Old Bot Padding Logic (Exactly replicated)
     for i in s + bytes([22]) + bytes([4]):
-        if i == 0: n += 1
+        if i == 0:
+            n += 1
         else:
-            if n: r += b"\x00" + bytes([n]); n = 0
+            if n:
+                r += b"\x00" + bytes([n])
+                n  = 0
             r += bytes([i])
     return base64.urlsafe_b64encode(r).decode().rstrip("=")
 
-def unpack_new_file_id(new_file_id):
-    """
-    Decodes the File ID and repacks it WITH access_hash.
-    This ensures the file works even if you leave the channel.
-    """
+def unpack_new_file_id(new_file_id: str):
     try:
-        d = FileId.decode(new_file_id)
-        # We pack <iiqq to include the access_hash (Critical for reliability)
-        return encode_file_id(pack("<iiqq", int(d.file_type), d.dc_id, d.media_id, d.access_hash))
-    except:
+        decoded = FileId.decode(new_file_id)
+        return encode_file_id(
+            pack(
+                "<iiqq",
+                int(decoded.file_type),
+                decoded.dc_id,
+                decoded.media_id,
+                decoded.access_hash,
+            )
+        )
+    except Exception as e:
+        logger.error(f"unpack_new_file_id error: {e}")
         return None
