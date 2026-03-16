@@ -2,7 +2,8 @@ import logging
 import asyncio
 import os
 import time
-from typing import Union, Optional, AsyncGenerator
+import signal
+from typing import Union, AsyncGenerator
 from datetime import datetime
 import pytz
 
@@ -24,7 +25,7 @@ logging.basicConfig(
     handlers=[logging.StreamHandler()]
 )
 logging.getLogger('hydrogram').setLevel(logging.ERROR)
-# ✅ Suppress noisy logs from aiohttp & uptime probes
+# ✅ Suppress noisy logs from aiohttp & uptime probes (Perfect for Koyeb)
 logging.getLogger('aiohttp.access').setLevel(logging.WARNING)
 logging.getLogger('aiohttp.server').setLevel(logging.WARNING)
 
@@ -35,6 +36,7 @@ logger = logging.getLogger(__name__)
 # ==========================================================
 from aiohttp import web
 from hydrogram import Client, types
+from hydrogram.errors import FloodWait
 from web import web_app
 from info import (
     API_ID, API_HASH, BOT_TOKEN, PORT, ADMINS, 
@@ -61,18 +63,20 @@ class Bot(Client):
             bot_token=BOT_TOKEN,
             plugins={"root": "plugins"}
         )
+        # ✅ Instance variables for safe cleanup
+        self._runner = None 
+        self._premium_task = None 
 
     async def start(self):
         # 1. Start Client
         await super().start()
         temp.START_TIME = time.time()
 
-        # 2. Initialize Database Indexes (Background Task)
-        # यह सर्च को सुपर फास्ट बनाने के लिए जरूरी है
+        # 2. Initialize Database Indexes
         await ensure_indexes()
         logger.info("✅ Database Indexes Checked/Created")
 
-        # 3. Load banned users & chats (Async)
+        # 3. Load banned users & chats (Safe Loading)
         try:
             b_users, b_chats = await db.get_banned()
             temp.BANNED_USERS = b_users
@@ -80,16 +84,18 @@ class Bot(Client):
         except Exception as e:
             logger.error(f"Error loading banned list: {e}")
 
-        # 4. Restart Handler (If restart was triggered)
+        # 4. Restart Handler (Safe Context Manager)
         if os.path.exists("restart.txt"):
             try:
-                with open("restart.txt") as f:
-                    chat_id, msg_id = map(int, f.read().split())
-                await self.edit_message_text(
-                    chat_id=chat_id,
-                    message_id=msg_id,
-                    text="✅ Restarted Successfully!"
-                )
+                with open("restart.txt", "r") as f:
+                    content = f.read().strip().split()
+                    if len(content) == 2:
+                        chat_id, msg_id = map(int, content)
+                        await self.edit_message_text(
+                            chat_id=chat_id,
+                            message_id=msg_id,
+                            text="✅ Restarted Successfully!"
+                        )
             except Exception as e:
                 logger.error(f"Restart message error: {e}")
             finally:
@@ -102,36 +108,39 @@ class Bot(Client):
         temp.U_NAME = me.username
         temp.B_NAME = me.first_name
 
-        # 6. Start Web Server
-        runner = web.AppRunner(web_app, access_log=None)
-        await runner.setup()
-        await web.TCPSite(runner, "0.0.0.0", PORT).start()
+        # 6. Start Web Server (Essential for Koyeb Health Checks)
+        self._runner = web.AppRunner(web_app, access_log=None)
+        await self._runner.setup()
+        await web.TCPSite(self._runner, "0.0.0.0", PORT).start()
         logger.info(f"✅ Web Server Started on Port {PORT}")
 
-        # 7. Start Premium Checker Task
-        asyncio.create_task(check_premium_expired(self))
+        # 7. Start Premium Checker Task (Saved reference avoids GC)
+        self._premium_task = asyncio.create_task(check_premium_expired(self))
 
         # 8. Send Startup Logs
         ist = pytz.timezone("Asia/Kolkata")
         now = datetime.now(ist)
-        date_str = now.strftime("%d %B %Y")
-        time_str = now.strftime("%I:%M:%S %p")
-
+        
         startup_msg = (
             f"🤖 <b>Bot Started Successfully!</b>\n\n"
-            f"📅 <b>Date:</b> {date_str}\n"
-            f"🕐 <b>Time:</b> {time_str}\n"
+            f"📅 <b>Date:</b> {now.strftime('%d %B %Y')}\n"
+            f"🕐 <b>Time:</b> {now.strftime('%I:%M:%S %p')}\n"
             f"🌏 <b>Timezone:</b> IST (Asia/Kolkata)\n"
-            f"🚀 <b>Speed:</b> Optimized (Async/Motor)\n"
+            f"🚀 <b>Speed:</b> Koyeb Optimized (Async/Motor)\n"
             f"✅ <b>Status:</b> Online"
         )
 
-        # Admin Notify
-        for admin_id in ADMINS:
+        # ✅ Parallel Admin Notify with FloodWait protection
+        async def _safe_send(admin_id):
             try:
                 await self.send_message(admin_id, startup_msg)
+            except FloodWait as e:
+                await asyncio.sleep(e.value) # Handle rate limits
+                await self.send_message(admin_id, startup_msg)
             except Exception:
-                pass # Ignore if admin blocked bot
+                pass
+
+        await asyncio.gather(*[_safe_send(aid) for aid in ADMINS])
 
         # Log Channel Notify
         if LOG_CHANNEL:
@@ -146,16 +155,25 @@ class Bot(Client):
         logger.info(f"@{me.username} is Online & Ready!")
 
     async def stop(self, *args):
-        await super().stop()
-        logger.info("Bot stopped. Bye 👋")
+        # ✅ Clean up Web Server & Background Tasks
+        if getattr(self, '_runner', None):
+            await self._runner.cleanup()
+            logger.info("✅ Web Server Cleanup Complete")
+        
+        if getattr(self, '_premium_task', None):
+            self._premium_task.cancel()
+            logger.info("✅ Premium Task Cancelled")
 
-    # Custom iterator (Keeping your logic)
+        await super().stop()
+        logger.info("Bot stopped Gracefully. Bye 👋")
+
+    # ✅ Correct Return Type Annotation & NoneType handling
     async def iter_messages(
         self: Client,
         chat_id: Union[int, str],
         limit: int,
         offset: int = 0
-    ) -> Optional[AsyncGenerator["types.Message", None]]:
+    ) -> AsyncGenerator["types.Message", None]:
         current = offset
         while current < limit:
             diff = min(200, limit - current)
@@ -165,21 +183,36 @@ class Bot(Client):
                     list(range(current, current + diff))
                 )
                 for message in messages:
-                    yield message
+                    # Skip deleted/empty messages to prevent indexer crash
+                    if message and not message.empty: 
+                        yield message
                 current += diff
             except Exception as e:
                 logger.error(f"Error fetching messages: {e}")
                 return
 
 # ==========================================================
-# MAIN EXECUTION
+# MAIN EXECUTION (Graceful Shutdown Added)
 # ==========================================================
 async def main():
     bot = Bot()
     await bot.start()
-    # Idle wait
-    await asyncio.Event().wait()
+    
+    # ✅ Catch Koyeb's Stop Signals for safe shutdown
+    loop = asyncio.get_running_loop()
+    stop_event = asyncio.Event()
+
+    for sig in (signal.SIGINT, signal.SIGTERM):
+        try:
+            loop.add_signal_handler(sig, stop_event.set)
+        except NotImplementedError:
+            pass # Fallback if running on Windows locally
+
+    await stop_event.wait()
+    await bot.stop()
 
 if __name__ == "__main__":
-    asyncio.run(main())
-
+    try:
+        asyncio.run(main())
+    except KeyboardInterrupt:
+        pass # Prevents ugly traceback on Ctrl+C
