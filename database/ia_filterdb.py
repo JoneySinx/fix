@@ -87,12 +87,17 @@ async def save_file(media, collection_type="primary"):
         f_name  = re.sub(r"@\w+|(_|\-|\.|\+)", " ", str(media.file_name or "")).strip()
         caption = re.sub(r"@\w+|(_|\-|\.|\+)", " ", str(media.caption  or "")).strip()
 
+        # ✅ FIX: media.file_type Hydrogram में exist नहीं करता
+        #    type(media).__name__ से class का नाम मिलता है → "Video", "Document", "Audio"
+        #    .lower() करके store करो → "video", "document", "audio"
+        file_type = type(media).__name__.lower()
+
         doc = {
-            "_id":       file_id,           # ✅ Valid Telegram file_id (encoded with access_hash)
+            "_id":       file_id,     # ✅ Valid Telegram file_id (encoded with access_hash)
             "file_name": f_name,
             "file_size": media.file_size,
             "caption":   caption,
-            "file_type": media.file_type,   # ✅ document / video / audio
+            "file_type": file_type,   # ✅ "video" / "document" / "audio"
         }
 
         col    = COLLECTIONS.get(collection_type, primary)
