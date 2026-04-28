@@ -101,7 +101,7 @@ async def start(client, message):
                 settings = await get_settings(grp_id)
                 cap_template = settings.get('caption', '{file_name}\n\n💾 Size: {file_size}')
                 
-                # ✅ CRITICAL FIX: Safe Formatting (बॉट क्रैश होने से बचाएगा)
+                # ✅ CRITICAL FIX: Safe Formatting
                 caption = cap_template.replace('{file_name}', str(file.get('file_name', 'File')))\
                                       .replace('{file_size}', get_size(file.get('file_size', 0)))\
                                       .replace('{file_caption}', str(file.get('caption', '')))
@@ -219,12 +219,11 @@ async def delete_all_cmd(client, message):
     )
 
 # ─────────────────────────
-# /link COMMAND (PREMIUM & ADMIN ONLY)
+# /link COMMAND
 # ─────────────────────────
 @Client.on_message(filters.command("link"))
 async def link_generator(client, message):
     
-    # 1. PREMIUM & ADMIN CHECK 
     if IS_PREMIUM and not await is_premium(message.from_user.id, client):
         btn = [[InlineKeyboardButton("💎 Buy Premium", callback_data="activate_plan")]]
         return await message.reply(
@@ -233,27 +232,21 @@ async def link_generator(client, message):
             quote=True
         )
 
-    # 2. Check if user replied to a message
     if not message.reply_to_message:
         return await message.reply("❌ **Please reply to a video or file to generate a link.**", quote=True)
 
-    # 3. Check if replied message has media
     media = message.reply_to_message.document or message.reply_to_message.video or message.reply_to_message.audio
     if not media:
         return await message.reply("❌ **No media found in the replied message.**", quote=True)
 
-    # 4. Send processing message
     msg = await message.reply("⏳ **Generating Link...**", quote=True)
 
     try:
-        # Copy file to BIN_CHANNEL
         copied_msg = await message.reply_to_message.copy(BIN_CHANNEL)
         
-        # Generate links
         watch_url = f"{URL}watch/{copied_msg.id}"
         download_url = f"{URL}download/{copied_msg.id}"
         
-        # Create buttons
         btn = [
             [
                 InlineKeyboardButton("↗️ WATCH ONLINE", url=watch_url),
@@ -264,7 +257,6 @@ async def link_generator(client, message):
             ]
         ]
         
-        # Edit original message to show links
         await msg.edit_text(
             text="<i><b>Here is your link</b></i>",
             reply_markup=InlineKeyboardMarkup(btn)
@@ -278,26 +270,18 @@ async def link_generator(client, message):
 # ─────────────────────────
 @Client.on_message(filters.command("web") & filters.user(ADMINS))
 async def web_admin_link(client, message):
-    # यूज़र से टाइम लें, अगर न दे तो डिफ़ॉल्ट 15 मिनट सेट करें
     try:
         minutes = int(message.command[1]) if len(message.command) > 1 else 15
     except ValueError:
         minutes = 15
 
-    # 1. एक यूनीक रैंडम टोकन बनाएँ
     token = str(uuid.uuid4())
-    
-    # 2. एक्सपायरी टाइम कैलकुलेट करें
     expiry_time = time_now() + (minutes * 60)
 
-    # 3. टोकन को temp मेमोरी में सेव करें
     if not hasattr(temp, 'ADMIN_TOKENS'):
         temp.ADMIN_TOKENS = {}
         
     temp.ADMIN_TOKENS[token] = expiry_time
-
-    # 4. लिंक तैयार करें
-    # (ध्यान दें: URL के अंत में स्लैश (/) होना चाहिए, जो आमतौर पर info.py में सेट होता है)
     magic_link = f"{URL}admin?token={token}"
 
     await message.reply(
@@ -311,7 +295,6 @@ async def web_admin_link(client, message):
 # ─────────────────────────
 # CALLBACKS
 # ─────────────────────────
-# ✅ CRITICAL FIX: Admin Verification in Callback
 @Client.on_callback_query(filters.regex(r"^confirm_del#"))
 async def confirm_del(client, query):
     if query.from_user.id not in ADMINS:
@@ -368,11 +351,23 @@ async def stream_cb(client, query):
     except Exception as e:
         await query.answer(f"Error: {e}", show_alert=True)
 
-# ✅ FIX: Secure Close Generic Handler
+# ✅ DISCONNECT WEB SESSION CALLBACK
+@Client.on_callback_query(filters.regex(r"^logout_"))
+async def web_logout_callback(client, query):
+    session_id = query.data.split("_")[1]
+    
+    if hasattr(temp, 'ADMIN_SESSIONS') and session_id in temp.ADMIN_SESSIONS:
+        del temp.ADMIN_SESSIONS[session_id]
+        await query.answer("✅ Web Session Terminated!", show_alert=True)
+        await query.message.edit("🛑 **Web Access Disconnected.**\n\nThe dashboard session has been killed. To access again, you must login via the website.")
+    else:
+        await query.answer("⚠️ Session already expired or invalid.", show_alert=True)
+        await query.message.delete()
+
+# ✅ CLOSE HANDLER
 @Client.on_callback_query(filters.regex(r"^close_"))
 async def close_cb(c, q):
     try:
-        # Check if the close button belongs to the user
         parts = q.data.split("_")
         if len(parts) > 1 and parts[1].isdigit():
             req_id = int(parts[1])
