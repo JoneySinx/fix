@@ -1,16 +1,15 @@
 from aiohttp import web
 import time
 import uuid
-import asyncio
-from info import ADMIN_USERNAME, ADMIN_PASSWORD, BIN_CHANNEL
+from info import ADMIN_USERNAME, ADMIN_PASSWORD
 from utils import temp, get_size
 from database.users_chats_db import db as user_db
-from database.ia_filterdb import db_count_documents, get_search_results
+from database.ia_filterdb import db_count_documents, get_search_results, Media # Media को इम्पोर्ट करें
 
 admin_routes = web.RouteTableDef()
 
 # ─────────────────────────────────────────────
-# 🔒 AUTHENTICATION HELPERS
+# 🔒 AUTH HELPERS
 # ─────────────────────────────────────────────
 def is_logged_in(request):
     session_id = request.cookies.get('admin_session')
@@ -18,22 +17,24 @@ def is_logged_in(request):
     return session_id in temp.ADMIN_SESSIONS and time.time() < temp.ADMIN_SESSIONS[session_id]
 
 # ─────────────────────────────────────────────
-# 🔑 LOGIN ROUTES
+# 🔑 LOGIN & AUTH
 # ─────────────────────────────────────────────
 @admin_routes.get('/admin')
 async def login_page(request):
     token = request.query.get('token')
     if not hasattr(temp, 'ADMIN_TOKENS'): temp.ADMIN_TOKENS = {}
-    if not token or token not in temp.ADMIN_TOKENS or time.time() > temp.ADMIN_TOKENS[token]:
-        return web.Response(text="❌ Invalid/Expired Token. Get new link from Telegram.", status=403)
+    if not token or token not in temp.ADMIN_TOKENS:
+        return web.Response(text="❌ Invalid Token", status=403)
     
     html = f"""
-    <html><head><meta name="viewport" content="width=device-width, initial-scale=1"><style>
-    body {{ font-family: sans-serif; display: flex; justify-content: center; align-items: center; height: 100vh; background: #f0f2f5; margin: 0; }}
-    .box {{ background: white; padding: 30px; border-radius: 12px; box-shadow: 0 5px 15px rgba(0,0,0,0.1); width: 300px; text-align: center; }}
-    input {{ width: 100%; padding: 10px; margin: 10px 0; border: 1px solid #ddd; border-radius: 6px; box-sizing: border-box; }}
-    button {{ width: 100%; padding: 10px; background: #0088cc; color: white; border: none; border-radius: 6px; cursor: pointer; font-weight: bold; }}
-    </style></head><body><div class="box"><h2>🔒 Admin Login</h2>
+    <html><head><meta name="viewport" content="width=device-width, initial-scale=1">
+    <style>
+        body {{ font-family: sans-serif; display: flex; justify-content: center; align-items: center; height: 100vh; background: #f0f2f5; margin: 0; }}
+        .box {{ background: white; padding: 30px; border-radius: 12px; box-shadow: 0 5px 15px rgba(0,0,0,0.1); width: 300px; text-align: center; }}
+        input {{ width: 100%; padding: 12px; margin: 10px 0; border: 1px solid #ddd; border-radius: 6px; box-sizing: border-box; }}
+        button {{ width: 100%; padding: 12px; background: #0088cc; color: white; border: none; border-radius: 6px; cursor: pointer; font-weight: bold; }}
+    </style></head><body>
+    <div class="box"><h2>🔒 Admin Login</h2>
     <form action="/login" method="post"><input type="hidden" name="token" value="{token}">
     <input type="text" name="user" placeholder="Username" required><input type="password" name="pass" placeholder="Password" required>
     <button type="submit">Login</button></form></div></body></html>
@@ -46,114 +47,173 @@ async def login_post(request):
     if data.get('user') == ADMIN_USERNAME and data.get('pass') == ADMIN_PASSWORD:
         session_id = str(uuid.uuid4())
         if not hasattr(temp, 'ADMIN_SESSIONS'): temp.ADMIN_SESSIONS = {}
-        temp.ADMIN_SESSIONS[session_id] = time.time() + 3600 
+        temp.ADMIN_SESSIONS[session_id] = time.time() + 3600
         res = web.HTTPFound('/dashboard')
         res.set_cookie('admin_session', session_id)
         return res
     return web.Response(text="❌ Invalid Credentials")
 
 # ─────────────────────────────────────────────
-# 📊 MAIN DASHBOARD
+# 📝 EDIT & DELETE API LOGIC (NEW)
+# ─────────────────────────────────────────────
+@admin_routes.post('/api/edit_file')
+async def edit_file_api(request):
+    if not is_logged_in(request): return web.json_response({{"error": "Unauthorized"}}, status=403)
+    data = await request.json()
+    file_id = data.get('id')
+    new_name = data.get('name')
+    
+    if file_id and new_name:
+        # डेटाबेस में फाइल का नाम अपडेट करें
+        await Media.collection.update_one({{"file_id": file_id}}, {{"$set": {{"file_name": new_name}}}})
+        return web.json_response({{"status": "success"}})
+    return web.json_response({{"error": "Invalid Data"}}, status=400)
+
+@admin_routes.post('/api/delete_file')
+async def delete_file_api(request):
+    if not is_logged_in(request): return web.json_response({{"error": "Unauthorized"}}, status=403)
+    data = await request.json()
+    file_id = data.get('id')
+    
+    if file_id:
+        await Media.collection.delete_one({{"file_id": file_id}})
+        return web.json_response({{"status": "success"}})
+    return web.json_response({{"error": "Invalid ID"}}, status=400)
+
+# ─────────────────────────────────────────────
+# 📊 DASHBOARD UI
 # ─────────────────────────────────────────────
 @admin_routes.get('/dashboard')
 async def admin_dashboard(request):
     if not is_logged_in(request): return web.HTTPFound('/admin')
 
-    # Fetch Data
     stats = await db_count_documents()
     total_u = await user_db.total_users_count()
-    total_c = await user_db.total_chat_count()
     db_size = get_size(await user_db.get_data_db_size())
-
-    # Premium Users List
-    p_users = []
-    async for u in await user_db.get_premium_users():
-        if u.get('status', {}).get('premium'):
-            p_users.append(f"<li>👤 <code>{u['id']}</code> | Plan: {u['status'].get('plan')}</li>")
-    p_list = "".join(p_users) if p_users else "<li>No premium users</li>"
 
     html = f"""
     <!DOCTYPE html><html><head>
     <title>Admin Panel</title>
     <meta name="viewport" content="width=device-width, initial-scale=1">
     <style>
-        body {{ font-family: 'Segoe UI', sans-serif; background: #eef2f3; margin: 0; padding: 20px; }}
+        body {{ font-family: 'Segoe UI', sans-serif; background: #eef2f3; margin: 0; padding: 15px; }}
         .container {{ max-width: 1000px; margin: auto; }}
-        .header {{ background: #0088cc; color: white; padding: 20px; border-radius: 12px; text-align: center; margin-bottom: 20px; }}
-        .grid {{ display: grid; grid-template-columns: repeat(auto-fit, minmax(280px, 1fr)); gap: 20px; }}
-        .card {{ background: white; padding: 20px; border-radius: 12px; box-shadow: 0 4px 10px rgba(0,0,0,0.05); }}
-        h3 {{ margin-top: 0; color: #0088cc; border-bottom: 20px; }}
-        .stat-val {{ font-size: 24px; font-weight: bold; color: #333; }}
-        .search-box {{ display: flex; gap: 10px; margin: 15px 0; }}
+        .header {{ background: #0088cc; color: white; padding: 15px; border-radius: 12px; text-align: center; margin-bottom: 20px; }}
+        .card {{ background: white; padding: 20px; border-radius: 12px; box-shadow: 0 4px 10px rgba(0,0,0,0.05); margin-bottom: 20px; }}
+        .stat-grid {{ display: flex; gap: 15px; flex-wrap: wrap; }}
+        .stat-box {{ background: #f8f9fa; padding: 10px 20px; border-radius: 8px; border-left: 5px solid #0088cc; }}
+        .search-box {{ display: flex; gap: 10px; margin-bottom: 20px; }}
         .search-box input {{ flex: 1; padding: 12px; border-radius: 25px; border: 1px solid #ddd; outline: none; }}
         .search-box button {{ padding: 10px 20px; border-radius: 25px; border: none; background: #0088cc; color: white; cursor: pointer; }}
-        #results {{ margin-top: 15px; }}
-        .res-item {{ padding: 10px; border-bottom: 1px solid #eee; }}
-        .btn-s {{ padding: 5px 10px; text-decoration: none; border-radius: 4px; font-size: 12px; color: white; }}
-        .p-list {{ list-style: none; padding: 0; max-height: 200px; overflow-y: auto; }}
-        .p-list li {{ padding: 8px; border-bottom: 1px dotted #ccc; font-size: 14px; }}
+        
+        /* Results Table */
+        .res-item {{ display: flex; justify-content: space-between; align-items: center; padding: 12px; border-bottom: 1px solid #eee; gap: 10px; }}
+        .res-name {{ flex: 1; font-weight: 500; font-size: 14px; word-break: break-all; }}
+        .action-btns {{ display: flex; gap: 5px; }}
+        .btn {{ padding: 6px 12px; border-radius: 4px; border: none; cursor: pointer; font-size: 12px; color: white; font-weight: bold; text-decoration: none; }}
+        .btn-edit {{ background: #ffc107; color: black; }}
+        .btn-del {{ background: #dc3545; }}
+        .btn-play {{ background: #28a745; }}
+
+        /* Modal Popup */
+        #editModal {{ display: none; position: fixed; top:0; left:0; width:100%; height:100%; background:rgba(0,0,0,0.6); justify-content: center; align-items: center; z-index: 1000; }}
+        .modal-content {{ background: white; padding: 25px; border-radius: 12px; width: 90%; max-width: 400px; }}
+        .modal-content input {{ width: 100%; padding: 10px; margin: 15px 0; border: 1px solid #ddd; border-radius: 6px; }}
     </style>
     </head><body>
+    
     <div class="container">
-        <div class="header"><h1>🚀 Bot Admin Dashboard</h1></div>
-        
-        <div class="grid">
-            <div class="card">
-                <h3>📊 Database Stats</h3>
-                <div class="stat-val">{stats['total']} <small>Files</small></div>
-                <div class="stat-val">{total_u} <small>Users</small></div>
-                <div class="stat-val">{total_c} <small>Groups</small></div>
-                <p>🗄️ Size: {db_size}</p>
-            </div>
+        <div class="header"><h1>🚀 Bot Control Center</h1></div>
 
-            <div class="card">
-                <h3>💎 Premium Users</h3>
-                <ul class="p-list">{p_list}</ul>
+        <div class="card">
+            <h3>📊 Live Stats</h3>
+            <div class="stat-grid">
+                <div class="stat-box">Files: <b>{stats['total']}</b></div>
+                <div class="stat-box">Users: <b>{total_u}</b></div>
+                <div class="stat-box">DB: <b>{db_size}</b></div>
             </div>
+        </div>
 
-            <div class="card" style="grid-column: 1 / -1;">
-                <h3>🔍 Live Search & Manage</h3>
-                <div class="search-box">
-                    <input type="text" id="q" placeholder="Search file name...">
-                    <button onclick="search(0)">Search</button>
-                </div>
-                <div id="loader" style="display:none">Searching...</div>
-                <div id="results"></div>
-                <div id="page" style="margin-top:15px; display:none; gap:10px;">
-                    <button id="pBtn" onclick="prev()">⬅️ Prev</button>
-                    <button id="nBtn" onclick="next()">Next ➡️</button>
-                </div>
+        <div class="card">
+            <h3>🔍 Manage Database</h3>
+            <div class="search-box">
+                <input type="text" id="q" placeholder="Search movie/file name...">
+                <button onclick="search(0)">Search</button>
+            </div>
+            <div id="results"></div>
+        </div>
+    </div>
+
+    <div id="editModal">
+        <div class="modal-content">
+            <h3>📝 Edit File Name</h3>
+            <input type="text" id="newNameInput">
+            <input type="hidden" id="editFileId">
+            <div style="display:flex; gap:10px;">
+                <button onclick="saveEdit()" style="flex:1; background:#28a745; color:white; border:none; padding:10px; border-radius:6px;">Save Changes</button>
+                <button onclick="closeModal()" style="flex:1; background:#6c757d; color:white; border:none; padding:10px; border-radius:6px;">Cancel</button>
             </div>
         </div>
     </div>
 
     <script>
-    let curQ = "", curOff = 0, nextOff = "";
-    async def search(off) {{
+    async function search(off) {{
         let q = document.getElementById('q').value;
         if(!q) return;
-        curQ = q; curOff = off;
-        document.getElementById('loader').style.display = 'block';
         let res = await fetch(`/api/search?q=${{encodeURIComponent(q)}}&offset=${{off}}`);
         let data = await res.json();
-        document.getElementById('loader').style.display = 'none';
         
         let out = "";
         data.results.forEach(f => {{
-            out += `<div class="res-item">
-                <b>${{f.name}}</b> (${{f.size}})<br>
-                <a href="${{f.watch}}" target="_blank" style="color:green">[PLAY]</a> 
-                <a href="${{f.download}}" style="color:blue">[DL]</a>
+            // Note: f.watch contains setup_stream?file_id=XXX
+            let fid = f.watch.split('file_id=')[1].split('&')[0];
+            out += `
+            <div class="res-item" id="row-${{fid}}">
+                <div class="res-name" id="name-${{fid}}">${{f.name}}</div>
+                <div class="action-btns">
+                    <a href="${{f.watch}}" target="_blank" class="btn btn-play">Play</a>
+                    <button class="btn btn-edit" onclick="openEdit('${{fid}}', '${{f.name.replace(/'/g, "\\'")}}')">Edit</button>
+                    <button class="btn btn-del" onclick="deleteFile('${{fid}}')">Del</button>
+                </div>
             </div>`;
         }});
-        document.getElementById('results').innerHTML = out || "No results";
-        nextOff = data.next_offset;
-        document.getElementById('page').style.display = data.total > 20 ? 'flex' : 'none';
-        document.getElementById('pBtn').style.display = off > 0 ? 'block' : 'none';
-        document.getElementById('nBtn').style.display = nextOff ? 'block' : 'none';
+        document.getElementById('results').innerHTML = out || "No files found.";
     }}
-    function next() {{ if(nextOff) search(nextOff); }}
-    function prev() {{ search(Math.max(0, curOff-20)); }}
+
+    function openEdit(id, name) {{
+        document.getElementById('editFileId').value = id;
+        document.getElementById('newNameInput').value = name;
+        document.getElementById('editModal').style.display = 'flex';
+    }}
+
+    function closeModal() {{ document.getElementById('editModal').style.display = 'none'; }}
+
+    async function saveEdit() {{
+        let id = document.getElementById('editFileId').value;
+        let newName = document.getElementById('newNameInput').value;
+        let res = await fetch('/api/edit_file', {{
+            method: 'POST',
+            body: JSON.stringify({{id: id, name: newName}})
+        }});
+        let data = await res.json();
+        if(data.status === 'success') {{
+            document.getElementById('name-'+id).innerText = newName;
+            closeModal();
+            alert("✅ File Name Updated!");
+        }}
+    }}
+
+    async function deleteFile(id) {{
+        if(!confirm("Are you sure you want to delete this file from Database?")) return;
+        let res = await fetch('/api/delete_file', {{
+            method: 'POST',
+            body: JSON.stringify({{id: id}})
+        }});
+        let data = await res.json();
+        if(data.status === 'success') {{
+            document.getElementById('row-'+id).remove();
+        }}
+    }}
     </script>
     </body></html>
     """
