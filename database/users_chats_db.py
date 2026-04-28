@@ -1,4 +1,5 @@
 import logging
+import asyncio
 import motor.motor_asyncio
 from info import (
     BOT_ID,
@@ -24,9 +25,9 @@ class Database:
         self.client = motor.motor_asyncio.AsyncIOMotorClient(
             DATABASE_URL,
             minPoolSize=10,
-            maxPoolSize=50,       # Koyeb/VPS के लिए बेस्ट
+            maxPoolSize=50,       
             maxIdleTimeMS=45000,
-            serverSelectionTimeoutMS=5000 # Timeout अगर DB कनेक्ट न हो
+            serverSelectionTimeoutMS=5000 
         )
         self.db = self.client[DATABASE_NAME]
         
@@ -35,7 +36,21 @@ class Database:
         self.premium = self.db.Premiums
         self.connections = self.db.Connections
         self.settings = self.db.Settings
-        self.warns = self.db.Warns  # ✅ Added definition here
+        self.warns = self.db.Warns  
+
+        # 🚀 बॉट स्टार्ट होने पर इंडेक्स बनाना सुनिश्चित करें (Fast Searching)
+        asyncio.create_task(self._ensure_indexes())
+
+    async def _ensure_indexes(self):
+        """Creates indexes on 'id' for ultra-fast database querying."""
+        try:
+            await self.users.create_index("id", unique=True)
+            await self.groups.create_index("id", unique=True)
+            await self.premium.create_index("id", unique=True)
+            await self.settings.create_index("id", unique=True)
+            logger.info("✅ Database Indexes created successfully!")
+        except Exception as e:
+            logger.warning(f"Index warning: {e}")
 
     # Default settings
     default_setgs = {
@@ -59,18 +74,15 @@ class Database:
     # ───────────────── USERS ─────────────────
     
     async def add_user(self, user_id, name):
-        # ✅ सुधार: insert_one की जगह update_one (Upsert)
-        # इससे डुप्लीकेट डाटा नहीं बनेगा और नाम अपडेट होता रहेगा
+        # ✅ FIX: Double query को Single query में बदला ($setOnInsert)
         try:
             await self.users.update_one(
                 {"id": int(user_id)},
-                {"$set": {"name": name}},
+                {
+                    "$set": {"name": name},
+                    "$setOnInsert": {"ban_status": {"is_banned": False, "ban_reason": ""}}
+                },
                 upsert=True
-            )
-            # सुनिश्चित करें कि ban_status सेट है (सिर्फ नए यूजर के लिए)
-            await self.users.update_one(
-                {"id": int(user_id), "ban_status": {"$exists": False}},
-                {"$set": {"ban_status": {"is_banned": False, "ban_reason": ""}}}
             )
         except Exception as e:
             logger.error(f"Error adding user: {e}")
@@ -92,7 +104,7 @@ class Database:
         await self.users.update_one(
             {"id": int(user_id)},
             {"$set": {"ban_status": {"is_banned": True, "ban_reason": reason}}},
-            upsert=True # अगर यूजर DB में नहीं है तो भी बैन हो जाए
+            upsert=True 
         )
 
     async def unban_user(self, user_id):
@@ -108,24 +120,28 @@ class Database:
     # ───────────────── GROUPS ─────────────────
 
     async def add_chat(self, group_id, title):
-        # ✅ सुधार: Upsert का उपयोग (डुप्लीकेट रोकने के लिए)
+        # ✅ FIX: Double query को Single query में बदला ($setOnInsert)
         try:
             await self.groups.update_one(
                 {"id": int(group_id)},
-                {"$set": {"title": title}},
+                {
+                    "$set": {"title": title},
+                    "$setOnInsert": {
+                        "settings": self.default_setgs, 
+                        "chat_status": {"is_disabled": False, "reason": ""}
+                    }
+                },
                 upsert=True
-            )
-            # डिफ़ॉल्ट सेटिंग्स तभी सेट करें जब वे मौजूद न हों
-            await self.groups.update_one(
-                {"id": int(group_id), "settings": {"$exists": False}},
-                {"$set": {"settings": self.default_setgs, "chat_status": {"is_disabled": False, "reason": ""}}}
             )
         except Exception as e:
             logger.error(f"Error adding chat: {e}")
 
     async def get_chat(self, group_id):
+        # ✅ FIX: NoneType error से बचने के लिए डिफ़ॉल्ट डिक्शनरी रिटर्न की
         grp = await self.groups.find_one({"id": int(group_id)})
-        return grp.get("chat_status") if grp else False
+        if grp:
+            return grp.get("chat_status", {"is_disabled": False, "reason": ""})
+        return {"is_disabled": False, "reason": ""}
 
     async def total_chat_count(self):
         return await self.groups.count_documents({})
@@ -146,14 +162,13 @@ class Database:
         grp = await self.groups.find_one({"id": int(group_id)})
         if grp:
             settings = grp.get("settings", self.default_setgs)
-            # Missing keys को Default values से भरें
             settings.setdefault("search_enabled", True)
             settings.setdefault("blacklist", [])
             settings.setdefault("dlink", {})
             return settings
         return self.default_setgs
 
-    # ⚠️ WARN SYSTEM (Fixed Connection)
+    # ⚠️ WARN SYSTEM 
     async def get_warn(self, user_id, chat_id):
         doc = await self.warns.find_one({"user_id": user_id, "chat_id": chat_id})
         return doc if doc else {"count": 0}
@@ -256,7 +271,6 @@ class Database:
         return stats["dataSize"]
         
     async def get_banned(self):
-        """Returns list of banned users and disabled chats"""
         banned_users = []
         banned_chats = []
         
