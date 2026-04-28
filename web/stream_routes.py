@@ -17,7 +17,7 @@ logger = logging.getLogger(__name__)
 # ─────────────────────────────────────────────
 @routes.get("/", allow_head=True)
 async def root_route_handler(request):
-    bot_username = temp.U_NAME
+    bot_username = getattr(temp, 'U_NAME', 'AutoFilterBot')
     
     html_content = f"""
     <!DOCTYPE html>
@@ -25,10 +25,10 @@ async def root_route_handler(request):
     <head>
         <meta charset="UTF-8">
         <meta name="viewport" content="width=device-width, initial-scale=1.0">
-        <title>Fast Finder</title>
+        <title>Fast Finder | Streaming & Downloads</title>
         <style>
             body {{
-                background-color: #121212;
+                background-color: #0f0f1a;
                 color: #e0e0e0;
                 font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
                 display: flex;
@@ -40,21 +40,21 @@ async def root_route_handler(request):
             }}
             .container {{
                 text-align: center;
-                background: #1e1e1e;
+                background: #1a1a2e;
                 padding: 40px;
                 border-radius: 20px;
-                box-shadow: 0 10px 30px rgba(0,0,0,0.5);
+                box-shadow: 0 10px 40px rgba(0,0,0,0.6);
                 width: 90%;
                 max-width: 450px;
             }}
             h1 {{
                 margin: 0 0 10px 0;
                 font-size: 2.5rem;
-                background: -webkit-linear-gradient(45deg, #0088cc, #00ffcc);
+                background: -webkit-linear-gradient(45deg, #00d2ff, #3a7bd5);
                 -webkit-background-clip: text;
                 -webkit-text-fill-color: transparent;
             }}
-            p {{ color: #aaa; margin-bottom: 30px; }}
+            p {{ color: #a0a0b0; margin-bottom: 30px; }}
             
             .search-box {{
                 position: relative;
@@ -63,18 +63,18 @@ async def root_route_handler(request):
             input[type="text"] {{
                 width: 100%;
                 padding: 15px 20px;
-                padding-right: 50px;
                 box-sizing: border-box;
                 border-radius: 30px;
                 border: 2px solid #333;
-                background-color: #252525;
+                background-color: #16213e;
                 color: white;
                 font-size: 16px;
                 outline: none;
-                transition: border-color 0.3s;
+                transition: border-color 0.3s, box-shadow 0.3s;
             }}
             input[type="text"]:focus {{
-                border-color: #0088cc;
+                border-color: #3a7bd5;
+                box-shadow: 0 0 10px rgba(58, 123, 213, 0.4);
             }}
             
             button {{
@@ -83,7 +83,7 @@ async def root_route_handler(request):
                 padding: 15px;
                 border-radius: 30px;
                 border: none;
-                background: linear-gradient(90deg, #0088cc, #005580);
+                background: linear-gradient(90deg, #3a7bd5, #00d2ff);
                 color: white;
                 font-size: 18px;
                 font-weight: bold;
@@ -92,11 +92,16 @@ async def root_route_handler(request):
             }}
             button:hover {{
                 transform: translateY(-2px);
-                box-shadow: 0 5px 15px rgba(0, 136, 204, 0.4);
+                box-shadow: 0 5px 20px rgba(0, 210, 255, 0.4);
             }}
             
-            .footer {{ margin-top: 20px; font-size: 12px; color: #555; }}
-            a {{ text-decoration: none; }}
+            .footer {{ margin-top: 25px; font-size: 13px; color: #555; }}
+            a {{ text-decoration: none; color: #3a7bd5; transition: color 0.2s; }}
+            a:hover {{ color: #00d2ff; }}
+            
+            /* Hidden Admin Link */
+            .secret-admin {{ color: #1a1a2e; cursor: default; }}
+            .secret-admin:hover {{ color: #333; cursor: pointer; }}
         </style>
     </head>
     <body>
@@ -105,24 +110,28 @@ async def root_route_handler(request):
             <p>Search Movies, Series & Anime Instantly</p>
             
             <div class="search-box">
-                <input type="text" id="searchInput" placeholder="Type name here (e.g. Iron Man)...">
+                <input type="text" id="searchInput" placeholder="Type name here (e.g. Pushpa 2)...">
             </div>
             
-            <button onclick="startSearch()">🔍 Search Now</button>
+            <button onclick="startSearch()">🔍 Search on Telegram</button>
             
             <div class="footer">
-                Powered by <a href="https://t.me/{bot_username}" style="color: #0088cc;">Auto Filter Bot</a>
+                Powered by <a href="https://t.me/{bot_username}">Auto Filter Bot</a> 
+                | <a href="/admin" class="secret-admin">Admin</a>
             </div>
         </div>
 
         <script>
             function startSearch() {{
                 var query = document.getElementById("searchInput").value;
-                // Redirect to Telegram Bot
-                window.location.href = "https://t.me/{bot_username}";
+                if(query) {{
+                    // Telegram पर रीडायरेक्ट करेगा जहाँ यूज़र सीधे सर्च कर सकता है
+                    window.location.href = "https://t.me/{bot_username}?start=" + encodeURIComponent(query);
+                }} else {{
+                    window.location.href = "https://t.me/{bot_username}";
+                }}
             }}
 
-            // Allow Enter key to trigger search
             document.getElementById("searchInput").addEventListener("keypress", function(event) {{
                 if (event.key === "Enter") {{
                     startSearch();
@@ -170,7 +179,7 @@ async def media_download(request, message_id: int):
         # 1. Fetch Message safely
         media_msg = await temp.BOT.get_messages(BIN_CHANNEL, message_id)
         if not media_msg or not media_msg.media:
-            return web.Response(status=404, text="File Not Found")
+            return web.Response(status=404, text="File Not Found or Removed")
             
         media = getattr(media_msg, media_msg.media.value, None)
         if not media:
@@ -178,22 +187,33 @@ async def media_download(request, message_id: int):
 
         file_size = media.file_size
         
-        # 2. Fix Filename & MimeType
-        file_name = media.file_name if hasattr(media, 'file_name') and media.file_name else f"{secrets.token_hex(4)}.jpg"
+        # 2. ✅ FIX: Smart Filename Generator (बचाएगा .jpg वाले बग से)
+        file_name = getattr(media, 'file_name', None)
+        if not file_name:
+            if getattr(media_msg, 'video', None):
+                file_name = f"video_{secrets.token_hex(3)}.mp4"
+            elif getattr(media_msg, 'audio', None):
+                file_name = f"audio_{secrets.token_hex(3)}.mp3"
+            else:
+                file_name = f"file_{secrets.token_hex(3)}.bin"
         
         mime_type = getattr(media, 'mime_type', None)
         if not mime_type:
             mime_guess = mimetypes.guess_type(file_name)[0]
             mime_type = mime_guess if mime_guess else "application/octet-stream"
 
-        # 3. Handle Range Headers
+        # 3. Handle Range Headers Safely
         range_header = request.headers.get('Range', 0)
         
-        if range_header:
-            from_bytes, until_bytes = range_header.replace('bytes=', '').split('-')
-            from_bytes = int(from_bytes)
-            until_bytes = int(until_bytes) if until_bytes else file_size - 1
-        else:
+        try:
+            if range_header:
+                from_bytes, until_bytes = range_header.replace('bytes=', '').split('-')
+                from_bytes = int(from_bytes)
+                until_bytes = int(until_bytes) if until_bytes else file_size - 1
+            else:
+                from_bytes = 0
+                until_bytes = file_size - 1
+        except Exception:
             from_bytes = 0
             until_bytes = file_size - 1
 
@@ -238,4 +258,3 @@ async def media_download(request, message_id: int):
     except Exception as e:
         logger.error(f"Stream Error: {e}")
         return web.Response(status=500, text="Server Error during streaming")
-
