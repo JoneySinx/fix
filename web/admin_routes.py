@@ -1,10 +1,11 @@
 from aiohttp import web
 import time
 import uuid
-from info import ADMIN_USERNAME, ADMIN_PASSWORD
+from info import ADMIN_USERNAME, ADMIN_PASSWORD, ADMINS
 from utils import temp, get_size
 from database.users_chats_db import db as user_db
 from database.ia_filterdb import db_count_documents, get_search_results, COLLECTIONS
+from hydrogram.types import InlineKeyboardMarkup, InlineKeyboardButton
 
 admin_routes = web.RouteTableDef()
 
@@ -21,19 +22,16 @@ def is_logged_in(request):
 # ─────────────────────────────────────────────
 @admin_routes.get('/admin')
 async def login_page(request):
-    token = request.query.get('token')
-    if not hasattr(temp, 'ADMIN_TOKENS'): temp.ADMIN_TOKENS = {}
-    if not token or token not in temp.ADMIN_TOKENS: return web.Response(text="Invalid Token")
-    
+    # टोकन सिस्टम हटा दिया गया है, सीधे लॉगिन फॉर्म खुलेगा
     html = f"""
     <html><head><meta name="viewport" content="width=device-width, initial-scale=1">
     <style>
         body {{ font-family: sans-serif; display: flex; justify-content: center; align-items: center; height: 100vh; background: #0f0f1a; margin: 0; color: white; }}
         .box {{ background: #1a1a2e; padding: 30px; border-radius: 15px; box-shadow: 0 10px 30px rgba(0,0,0,0.5); width: 300px; text-align: center; }}
-        input {{ width: 100%; padding: 12px; margin: 10px 0; border: 1px solid #333; border-radius: 8px; background: #16213e; color: white; }}
-        button {{ width: 100%; padding: 12px; background: #00d2ff; color: #0f0f1a; border: none; border-radius: 8px; cursor: pointer; font-weight: bold; }}
+        input {{ width: 100%; padding: 12px; margin: 10px 0; border: 1px solid #333; border-radius: 8px; background: #16213e; color: white; box-sizing: border-box; outline: none; }}
+        button {{ width: 100%; padding: 12px; background: #00d2ff; color: #0f0f1a; border: none; border-radius: 8px; cursor: pointer; font-weight: bold; font-size: 16px; margin-top: 10px; }}
     </style></head><body><div class="box"><h2>🔐 Admin Login</h2><form action="/login" method="post">
-    <input type="hidden" name="token" value="{token}"><input type="text" name="user" placeholder="User"><input type="password" name="pass" placeholder="Pass">
+    <input type="text" name="user" placeholder="Username" required><input type="password" name="pass" placeholder="Password" required>
     <button type="submit">Login</button></form></div></body></html>
     """
     return web.Response(text=html, content_type='text/html')
@@ -44,11 +42,26 @@ async def login_post(request):
     if data.get('user') == ADMIN_USERNAME and data.get('pass') == ADMIN_PASSWORD:
         session_id = str(uuid.uuid4())
         if not hasattr(temp, 'ADMIN_SESSIONS'): temp.ADMIN_SESSIONS = {}
+        
+        # ⏱️ 1 Hour Limit (3600 seconds)
         temp.ADMIN_SESSIONS[session_id] = time.time() + 3600
+        
         res = web.HTTPFound('/dashboard')
-        res.set_cookie('admin_session', session_id)
+        res.set_cookie('admin_session', session_id, max_age=3600)
+        
+        # 🛑 Telegram Alert & Disconnect Button
+        try:
+            btn = [[InlineKeyboardButton("🛑 Disconnect Web Session", callback_data=f"logout_{session_id}")]]
+            await temp.BOT.send_message(
+                chat_id=ADMINS[0], 
+                text="✅ **Web Login Detected!**\n\nYour session is active for 1 hour. If this wasn't you, disconnect immediately.",
+                reply_markup=InlineKeyboardMarkup(btn)
+            )
+        except Exception as e:
+            print(f"Login Alert Error: {e}")
+
         return res
-    return web.Response(text="Wrong Credentials")
+    return web.Response(text="<html><body style='background:#0f0f1a;color:red;text-align:center;padding:50px;'><h2>❌ Wrong Credentials!</h2><a href='/admin' style='color:white;'>Try Again</a></body></html>", content_type='text/html')
 
 @admin_routes.post('/api/edit_file')
 async def edit_file_api(request):
