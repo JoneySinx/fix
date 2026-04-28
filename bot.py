@@ -74,6 +74,7 @@ class Bot(Client):
 
         # 2. Initialize Database Indexes
         await ensure_indexes()
+        await db._ensure_indexes() # ✅ FIX: Added users_chats_db indexer here to prevent RuntimeError
         logger.info("✅ Database Indexes Checked/Created")
 
         # 3. Load banned users & chats (Safe Loading)
