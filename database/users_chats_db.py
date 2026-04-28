@@ -20,7 +20,7 @@ logger = logging.getLogger(__name__)
 # ─────────────────────────────────────────────
 class Database:
     
-        def __init__(self):
+    def __init__(self):
         # Motor Client (Non-Blocking)
         self.client = motor.motor_asyncio.AsyncIOMotorClient(
             DATABASE_URL,
@@ -37,8 +37,6 @@ class Database:
         self.connections = self.db.Connections
         self.settings = self.db.Settings
         self.warns = self.db.Warns  
-
-        # ❌ यहाँ से asyncio.create_task(self._ensure_indexes()) को हटा दिया गया है।
 
     async def _ensure_indexes(self):
         """Creates indexes on 'id' for ultra-fast database querying."""
@@ -73,7 +71,6 @@ class Database:
     # ───────────────── USERS ─────────────────
     
     async def add_user(self, user_id, name):
-        # ✅ FIX: Double query को Single query में बदला ($setOnInsert)
         try:
             await self.users.update_one(
                 {"id": int(user_id)},
@@ -119,7 +116,6 @@ class Database:
     # ───────────────── GROUPS ─────────────────
 
     async def add_chat(self, group_id, title):
-        # ✅ FIX: Double query को Single query में बदला ($setOnInsert)
         try:
             await self.groups.update_one(
                 {"id": int(group_id)},
@@ -136,7 +132,6 @@ class Database:
             logger.error(f"Error adding chat: {e}")
 
     async def get_chat(self, group_id):
-        # ✅ FIX: NoneType error से बचने के लिए डिफ़ॉल्ट डिक्शनरी रिटर्न की
         grp = await self.groups.find_one({"id": int(group_id)})
         if grp:
             return grp.get("chat_status", {"is_disabled": False, "reason": ""})
