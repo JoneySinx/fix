@@ -3,7 +3,8 @@ import asyncio
 import re
 import aiohttp
 import os
-from datetime import datetime, timedelta
+from datetime import datetime
+from zoneinfo import ZoneInfo # 🚀 Python 3.9+ Fast Timezone
 from hydrogram.errors import FloodWait
 from hydrogram import enums
 from hydrogram.types import InlineKeyboardButton
@@ -55,13 +56,11 @@ async def is_premium(user_id, bot):
     if user_id in ADMINS:
         return True
 
-    # ✅ ASYNC DB CALL FIXED
     mp = await db.get_plan(user_id)
     
     if mp.get("premium"):
         expire = mp.get("expire")
         
-        # ✅ Handle expire field (Fast Parsing)
         if expire:
             if isinstance(expire, str):
                 try:
@@ -81,15 +80,11 @@ async def is_premium(user_id, bot):
                 except Exception:
                     pass
 
-                # Reset Plan Async
                 await db.update_plan(user_id, {"expire": "", "plan": "", "premium": False})
                 return False
         
         return True
     return False
-
-# NOTE: check_premium loop removed because it is already running in plugins/premium.py
-# This saves RAM and CPU.
 
 def get_premium_button():
     """Get standard premium button"""
@@ -109,6 +104,7 @@ async def broadcast_messages(user_id, message, pin=False):
         await asyncio.sleep(e.value)
         return await broadcast_messages(user_id, message, pin)
     except Exception:
+        # ✅ User ने बॉट ब्लॉक कर दिया है या अकाउंट डिलीट हो गया है
         await db.delete_user(int(user_id))
         return "Error"
 
@@ -123,7 +119,15 @@ async def groups_broadcast_messages(chat_id, message, pin=False):
         await asyncio.sleep(e.value)
         return await groups_broadcast_messages(chat_id, message, pin)
     except Exception:
-        await db.delete_chat(chat_id)
+        # 🛠️ CRITICAL BUG FIX: `delete_chat` फंक्शन मौजूद नहीं था।
+        # अब हम डेटाबेस में चैट को "Disabled" मार्क कर देंगे।
+        try:
+            await db.groups.update_one(
+                {"id": int(chat_id)},
+                {"$set": {"chat_status": {"is_disabled": True, "reason": "Bot removed from group"}}}
+            )
+        except Exception as e:
+            logger.error(f"Failed to disable chat {chat_id}: {e}")
         return "Error"
 
 # ─────────────────────────────────────────────
@@ -132,7 +136,6 @@ async def groups_broadcast_messages(chat_id, message, pin=False):
 async def get_settings(group_id):
     settings = temp.SETTINGS.get(group_id)
     if not settings:
-        # ✅ ASYNC CALL
         settings = await db.get_settings(group_id)
         temp.SETTINGS[group_id] = settings
     return settings
@@ -141,7 +144,6 @@ async def save_group_settings(group_id, key, value):
     current = await get_settings(group_id)
     current[key] = value
     temp.SETTINGS[group_id] = current
-    # ✅ ASYNC CALL
     await db.update_settings(group_id, current)
 
 # ─────────────────────────────────────────────
@@ -156,11 +158,9 @@ async def is_subscribed(bot, query):
 async def upload_image(file_path: str):
     """
     Uploads image using aiohttp (Non-Blocking)
-    Replaced requests library to prevent bot freezing
     """
     try:
         async with aiohttp.ClientSession() as session:
-            # Uguu.se or Catbox.moe fallback
             with open(file_path, "rb") as f:
                 data = aiohttp.FormData()
                 data.add_field('files[]', f)
@@ -170,11 +170,11 @@ async def upload_image(file_path: str):
                         res = await resp.json()
                         return res["files"][0]["url"].replace("\\/", "/")
     except Exception as e:
-        print(f"Upload Error: {e}")
+        logger.error(f"Upload Error: {e}")
     return None
 
 # ─────────────────────────────────────────────
-# 📦 UTILS (Fast Math)
+# 📦 UTILS (Fast Math & Time)
 # ─────────────────────────────────────────────
 def get_size(size):
     units = ["Bytes", "KB", "MB", "GB", "TB"]
@@ -195,7 +195,10 @@ def get_readable_time(seconds):
     return result or "0s"
 
 def get_wish():
-    hour = datetime.now().hour
+    # 🛠️ FIX: Server Timezone Issue (अब यह हमेशा Indian Time के हिसाब से विश करेगा)
+    ist_time = datetime.now(ZoneInfo("Asia/Kolkata"))
+    hour = ist_time.hour
+    
     if hour < 12: return "ɢᴏᴏᴅ ᴍᴏʀɴɪɴɢ 🌞"
     elif hour < 18: return "ɢᴏᴏᴅ ᴀꜰᴛᴇʀɴᴏᴏɴ 🌗"
     return "ɢᴏᴏᴅ ᴇᴠᴇɴɪɴɢ 🌘"
@@ -210,4 +213,3 @@ async def get_seconds(time_string):
         "month": 2592000, "year": 31536000
     }
     return value * multipliers.get(unit, 0)
-
