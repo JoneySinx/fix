@@ -92,30 +92,24 @@ async def admin_dashboard(request):
             h1 { margin: 0; font-size: 26px; }
             .card { background: white; padding: 25px; margin-top: 20px; border-radius: 12px; box-shadow: 0 4px 15px rgba(0,0,0,0.05); }
             
-            /* Search Area */
             .search-box { display: flex; gap: 10px; margin-top: 15px; }
             .search-box input { flex: 1; padding: 15px 20px; border: 2px solid #ddd; border-radius: 30px; font-size: 16px; outline: none; transition: 0.3s; }
-            .search-box input:focus { border-color: #0088cc; }
             .search-box button { background: #0088cc; color: white; border: none; padding: 15px 30px; border-radius: 30px; font-size: 16px; font-weight: bold; cursor: pointer; transition: 0.3s; }
-            .search-box button:hover { background: #006699; }
             
-            /* Status Bar & Pagination */
-            .status-bar { display: none; justify-content: space-between; align-items: center; margin-top: 20px; background: #f8f9fa; padding: 10px 20px; border-radius: 8px; border: 1px solid #ddd; }
-            .badge { background: #28a745; color: white; padding: 5px 12px; border-radius: 20px; font-size: 14px; font-weight: bold; }
-            .pagination { display: flex; gap: 10px; }
-            .pagination button { background: #333; color: white; border: none; padding: 8px 15px; border-radius: 5px; cursor: pointer; font-size: 14px; }
-            .pagination button:hover { background: #555; }
+            #totalCountTop { margin-top: 15px; font-weight: bold; color: #28a745; display: none; }
             
-            /* Grid & Cards */
             #results { display: grid; grid-template-columns: repeat(auto-fill, minmax(280px, 1fr)); gap: 20px; margin-top: 20px; }
-            .res-card { background: #fff; padding: 20px; border-radius: 10px; border: 1px solid #eee; box-shadow: 0 2px 10px rgba(0,0,0,0.02); transition: 0.2s; }
-            .res-card:hover { transform: translateY(-3px); box-shadow: 0 5px 15px rgba(0,136,204,0.1); border-color: #0088cc; }
-            .res-title { font-size: 15px; font-weight: bold; margin-bottom: 10px; color: #222; word-wrap: break-word; }
+            .res-card { background: #fff; padding: 20px; border-radius: 10px; border: 1px solid #eee; box-shadow: 0 2px 10px rgba(0,0,0,0.02); }
+            .res-title { font-size: 15px; font-weight: bold; margin-bottom: 10px; }
             .res-info { color: #777; font-size: 13px; margin-bottom: 15px; }
             .btn-group { display: flex; gap: 10px; }
-            .btn-play, .btn-dl { flex: 1; text-align: center; padding: 10px; border-radius: 6px; text-decoration: none; font-size: 14px; font-weight: bold; color: white; }
-            .btn-play { background: #28a745; } .btn-play:hover { background: #218838; }
-            .btn-dl { background: #ffc107; color: black; } .btn-dl:hover { background: #e0a800; }
+            .btn-play { background: #28a745; flex: 1; text-align: center; padding: 10px; border-radius: 6px; color: white; text-decoration: none; font-weight: bold; }
+            .btn-dl { background: #ffc107; flex: 1; text-align: center; padding: 10px; border-radius: 6px; color: black; text-decoration: none; font-weight: bold; }
+            
+            /* Pagination moved to bottom */
+            .pagination-container { display: none; justify-content: center; align-items: center; gap: 15px; margin-top: 30px; padding-top: 20px; border-top: 1px solid #eee; }
+            .pagination-container button { background: #333; color: white; border: none; padding: 10px 25px; border-radius: 30px; cursor: pointer; font-weight: bold; }
+            .pagination-container button:hover { background: #0088cc; }
             
             .loader { text-align: center; color: #0088cc; display: none; margin-top: 20px; font-weight: bold; }
         </style>
@@ -124,32 +118,27 @@ async def admin_dashboard(request):
         <div class="container">
             <div class="header">
                 <h1>👋 Welcome to Admin Dashboard</h1>
-                <p style="margin: 5px 0 0 0; font-size: 14px; opacity: 0.9;">Secure Session Active</p>
             </div>
 
             <div class="card">
-                <h3 style="margin-top: 0; display: flex; align-items: center; gap: 8px;">
-                    🔍 Live Database Search
-                </h3>
+                <h3>🔍 Live Database Search</h3>
                 
                 <div class="search-box">
-                    <input type="text" id="searchInput" placeholder="Search movies, series (e.g. Iron Man)...">
+                    <input type="text" id="searchInput" placeholder="Enter movie name...">
                     <button onclick="performSearch(0)">Search 🔍</button>
                 </div>
 
-                <div id="loader" class="loader">Searching Database... ⏳</div>
+                <div id="totalCountTop"></div>
 
-                <div id="status-bar" class="status-bar">
-                    <div id="totalCount" class="badge"></div>
-                    <div class="pagination">
-                        <button id="prevBtn" onclick="goPrev()" style="display:none;">⬅️ Previous</button>
-                        <button id="nextBtn" onclick="goNext()" style="display:none;">Next ➡️</button>
-                    </div>
-                </div>
+                <div id="loader" class="loader">Searching... ⏳</div>
 
                 <div id="results"></div>
+
+                <div id="pagination-bottom" class="pagination-container">
+                    <button id="prevBtn" onclick="goPrev()" style="display:none;">⬅️ Previous</button>
+                    <button id="nextBtn" onclick="goNext()" style="display:none;">Next Page ➡️</button>
+                </div>
             </div>
-            
         </div>
 
         <script>
@@ -165,14 +154,15 @@ async def admin_dashboard(request):
                 currentOffset = offset;
 
                 const resultsDiv = document.getElementById('results');
-                const statusBar = document.getElementById('status-bar');
-                const totalCount = document.getElementById('totalCount');
+                const totalCountTop = document.getElementById('totalCountTop');
+                const paginationContainer = document.getElementById('pagination-bottom');
                 const prevBtn = document.getElementById('prevBtn');
                 const nextBtn = document.getElementById('nextBtn');
                 const loader = document.getElementById('loader');
                 
                 resultsDiv.innerHTML = "";
-                statusBar.style.display = "none";
+                totalCountTop.style.display = "none";
+                paginationContainer.style.display = "none";
                 loader.style.display = "block";
                 
                 try {
@@ -181,63 +171,53 @@ async def admin_dashboard(request):
                     
                     loader.style.display = "none";
                     
-                    if (data.error) {
-                        resultsDiv.innerHTML = `<h3 style="color:red; text-align:center; width:100%;">Error: ${data.error}</h3>`;
-                        return;
-                    }
-                    
                     if (data.total === 0) {
-                        resultsDiv.innerHTML = '<h3 style="text-align:center; width:100%; color: #555;">❌ No files found!</h3>';
+                        resultsDiv.innerHTML = '<h3 style="text-align:center; width:100%;">❌ No results!</h3>';
                         return;
                     }
 
-                    // Update Status Bar
-                    totalCount.innerHTML = `📊 Found ${data.total} Results`;
+                    totalCountTop.innerHTML = `📊 Found ${data.total} Results`;
+                    totalCountTop.style.display = "block";
                     nextOffsetValue = data.next_offset;
 
-                    // Button Logic
+                    // Show pagination at bottom
+                    paginationContainer.style.display = "flex";
                     prevBtn.style.display = (offset > 0) ? "block" : "none";
                     nextBtn.style.display = (nextOffsetValue !== "") ? "block" : "none";
-                    statusBar.style.display = "flex";
                     
-                    // Render Cards
                     data.results.forEach(file => {
-                        const card = `
+                        resultsDiv.innerHTML += `
                             <div class="res-card">
                                 <div class="res-title">${file.name}</div>
-                                <div class="res-info">💾 Size: ${file.size} &nbsp;|&nbsp; 📁 ${file.type}</div>
+                                <div class="res-info">💾 ${file.size} | 📁 ${file.type}</div>
                                 <div class="btn-group">
                                     <a href="${file.watch}" target="_blank" class="btn-play">▶️ Play</a>
                                     <a href="${file.download}" class="btn-dl">⬇️ Download</a>
                                 </div>
                             </div>
                         `;
-                        resultsDiv.innerHTML += card;
                     });
+                    
+                    // Auto-scroll to top of results on next page
+                    if(offset > 0) window.scrollTo({ top: 200, behavior: 'smooth' });
+
                 } catch (err) {
                     loader.style.display = "none";
-                    resultsDiv.innerHTML = '<h3 style="color:red; text-align:center; width:100%;">Connection Error!</h3>';
+                    resultsDiv.innerHTML = '<h3 style="color:red; text-align:center; width:100%;">Error!</h3>';
                 }
             }
 
-            function goNext() {
-                if (nextOffsetValue !== "") performSearch(nextOffsetValue);
-            }
-
+            function goNext() { if (nextOffsetValue !== "") performSearch(nextOffsetValue); }
             function goPrev() {
-                // Assuming 20 items per page
-                let newOffset = currentOffset - 20;
-                if (newOffset < 0) newOffset = 0;
+                let newOffset = Math.max(0, currentOffset - 20);
                 performSearch(newOffset);
             }
 
-            // Enter key support
-            document.getElementById("searchInput").addEventListener("keypress", function(event) {
-                if (event.key === "Enter") performSearch(0);
+            document.getElementById("searchInput").addEventListener("keypress", (e) => {
+                if (e.key === "Enter") performSearch(0);
             });
         </script>
     </body>
     </html>
     """
     return web.Response(text=html, content_type='text/html')
-8
