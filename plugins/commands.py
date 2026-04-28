@@ -7,7 +7,6 @@ from hydrogram import Client, filters, enums
 from hydrogram.types import InlineKeyboardButton, InlineKeyboardMarkup
 
 from Script import script
-# ✅ Updated Import
 from database.ia_filterdb import db_count_documents, get_file_details, delete_files
 from database.users_chats_db import db
 
@@ -55,7 +54,6 @@ async def start(client, message):
         )
 
     # 2. PRIVATE HANDLING
-    # Reactions & Stickers (Non-blocking)
     if REACTIONS:
         try: await message.react(random.choice(REACTIONS), big=True)
         except: pass
@@ -93,12 +91,8 @@ async def start(client, message):
                 except: pass
                 
                 grp_id = int(parts[1])
-                
-                # ✅ CRITICAL FIX: अगर File ID में "_" हुआ तो यह उसे तोड़ देगा।
-                # join का उपयोग करके उसे वापस जोड़ना जरूरी है।
                 file_id = "_".join(parts[2:])
                 
-                # Async DB Calls
                 file = await get_file_details(file_id)
                 if not file:
                     return await message.reply("❌ File Not Found!")
@@ -106,24 +100,21 @@ async def start(client, message):
                 settings = await get_settings(grp_id)
                 cap_template = settings.get('caption', '{file_name}\n\n💾 Size: {file_size}')
                 
-                caption = cap_template.format(
-                    file_name=file.get('file_name', 'File'),
-                    file_size=get_size(file.get('file_size', 0)),
-                    file_caption=file.get('caption', '')
-                )
+                # ✅ CRITICAL FIX: Safe Formatting (बॉट क्रैश होने से बचाएगा)
+                caption = cap_template.replace('{file_name}', str(file.get('file_name', 'File')))\
+                                      .replace('{file_size}', get_size(file.get('file_size', 0)))\
+                                      .replace('{file_caption}', str(file.get('caption', '')))
                 
-                btn = [[InlineKeyboardButton('❌ Close', callback_data='close_data')]]
+                # ✅ FIX: Secure Close Button
+                btn = [[InlineKeyboardButton('❌ Close', callback_data=f'close_{message.from_user.id}')]]
                 if IS_STREAM:
                     btn.insert(0, [InlineKeyboardButton("▶️ Watch / Download", callback_data=f"stream#{file_id}")])
 
-                # ✅ SAFETY FIX: 
-                # हम Database से 'file_ref' (Original ID) लेंगे।
-                # अगर वो नहीं मिला, तो URL वाले ID का इस्तेमाल करेंगे।
                 real_file_id = file.get('file_ref', file_id)
 
                 msg = await client.send_cached_media(
                     chat_id=message.chat.id,
-                    file_id=real_file_id, # ✅ Using safe ID
+                    file_id=real_file_id, 
                     caption=caption,
                     reply_markup=InlineKeyboardMarkup(btn)
                 )
@@ -166,7 +157,6 @@ async def stats(_, message):
     users = await db.total_users_count()
     chats = await db.total_chat_count()
     
-    # Accessing collection directly from DB instance
     premium = await db.premium.count_documents({"status.premium": True})
 
     text = f"""
@@ -219,7 +209,7 @@ async def delete_all_cmd(client, message):
     
     btn = [[
         InlineKeyboardButton("✅ CONFIRM DELETE", callback_data=f"confirm_del#{storage}"),
-        InlineKeyboardButton("❌ CANCEL", callback_data="close_data")
+        InlineKeyboardButton("❌ CANCEL", callback_data=f"close_{message.from_user.id}")
     ]]
     
     await message.reply(
@@ -227,8 +217,12 @@ async def delete_all_cmd(client, message):
         reply_markup=InlineKeyboardMarkup(btn)
     )
 
+# ✅ CRITICAL FIX: Admin Verification in Callback
 @Client.on_callback_query(filters.regex(r"^confirm_del#"))
 async def confirm_del(client, query):
+    if query.from_user.id not in ADMINS:
+        return await query.answer("❌ You are not an Admin!", show_alert=True)
+        
     storage = query.data.split("#")[1]
     await query.message.edit("🗑 Processing... This may take time.")
     
@@ -270,8 +264,6 @@ async def stream_cb(client, query):
     file_id = query.data.split("#")[1]
     await query.answer("🔗 Generating Links...")
     
-    # यहाँ हम file_id का उपयोग करके Bin Channel में भेज रहे हैं
-    # यह ठीक है क्योंकि Bin Channel में भेजना एक नया Message Create करता है
     try:
         msg = await client.send_cached_media(BIN_CHANNEL, file_id)
         watch = f"{URL}watch/{msg.id}"
@@ -279,15 +271,23 @@ async def stream_cb(client, query):
         
         btn = [
             [InlineKeyboardButton("▶️ Watch", url=watch), InlineKeyboardButton("⬇️ Download", url=dl)],
-            [InlineKeyboardButton("❌ Close", callback_data="close_data")]
+            [InlineKeyboardButton("❌ Close", callback_data=f"close_{query.from_user.id}")]
         ]
         await query.message.edit_reply_markup(InlineKeyboardMarkup(btn))
     except Exception as e:
         await query.answer(f"Error: {e}", show_alert=True)
 
-@Client.on_callback_query(filters.regex("^close_data$"))
+# ✅ FIX: Secure Close Generic Handler
+@Client.on_callback_query(filters.regex(r"^close_"))
 async def close_cb(c, q):
     try:
+        # Check if the close button belongs to the user
+        parts = q.data.split("_")
+        if len(parts) > 1 and parts[1].isdigit():
+            req_id = int(parts[1])
+            if req_id != q.from_user.id:
+                return await q.answer("❌ You cannot close this!", show_alert=True)
+
         await q.message.delete()
         if hasattr(temp, 'PM_FILES') and q.message.id in temp.PM_FILES:
             try:
