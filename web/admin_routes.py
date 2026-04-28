@@ -1,223 +1,160 @@
 from aiohttp import web
 import time
 import uuid
-from info import ADMIN_USERNAME, ADMIN_PASSWORD
-from utils import temp
+import asyncio
+from info import ADMIN_USERNAME, ADMIN_PASSWORD, BIN_CHANNEL
+from utils import temp, get_size
+from database.users_chats_db import db as user_db
+from database.ia_filterdb import db_count_documents, get_search_results
 
 admin_routes = web.RouteTableDef()
 
+# ─────────────────────────────────────────────
+# 🔒 AUTHENTICATION HELPERS
+# ─────────────────────────────────────────────
+def is_logged_in(request):
+    session_id = request.cookies.get('admin_session')
+    if not hasattr(temp, 'ADMIN_SESSIONS'): return False
+    return session_id in temp.ADMIN_SESSIONS and time.time() < temp.ADMIN_SESSIONS[session_id]
+
+# ─────────────────────────────────────────────
+# 🔑 LOGIN ROUTES
+# ─────────────────────────────────────────────
 @admin_routes.get('/admin')
-async def admin_login_page(request):
+async def login_page(request):
     token = request.query.get('token')
     if not hasattr(temp, 'ADMIN_TOKENS'): temp.ADMIN_TOKENS = {}
-
-    if not token or token not in temp.ADMIN_TOKENS:
-        return web.Response(text="❌ Invalid or Missing Token! Generate a new link from Telegram.", status=403)
-    if time.time() > temp.ADMIN_TOKENS[token]:
-        del temp.ADMIN_TOKENS[token]
-        return web.Response(text="⏳ Token Expired! Please generate a new link via Telegram.", status=403)
-
+    if not token or token not in temp.ADMIN_TOKENS or time.time() > temp.ADMIN_TOKENS[token]:
+        return web.Response(text="❌ Invalid/Expired Token. Get new link from Telegram.", status=403)
+    
     html = f"""
-    <html>
-        <head>
-            <title>Admin Login</title>
-            <meta name="viewport" content="width=device-width, initial-scale=1">
-            <style>
-                body {{ font-family: 'Segoe UI', sans-serif; background-color: #f4f7f6; display: flex; justify-content: center; align-items: center; height: 100vh; margin: 0; }}
-                .login-box {{ background: white; padding: 40px 30px; border-radius: 12px; box-shadow: 0px 8px 20px rgba(0,0,0,0.1); text-align: center; width: 100%; max-width: 320px; }}
-                h2 {{ margin-bottom: 20px; color: #333; }}
-                input {{ display: block; width: 100%; box-sizing: border-box; margin: 15px 0; padding: 12px; border: 1px solid #ddd; border-radius: 6px; font-size: 14px; outline: none; }}
-                button {{ background: #0088cc; color: white; border: none; padding: 12px; width: 100%; border-radius: 6px; cursor: pointer; font-size: 16px; font-weight: bold; margin-top: 10px; transition: 0.3s; }}
-                button:hover {{ background: #006699; }}
-            </style>
-        </head>
-        <body>
-            <div class="login-box">
-                <h2>🔒 Admin Login</h2>
-                <form action="/login" method="post">
-                    <input type="hidden" name="token" value="{token}">
-                    <input type="text" name="username" placeholder="Enter Username" required>
-                    <input type="password" name="password" placeholder="Enter Password" required>
-                    <button type="submit">Login</button>
-                </form>
-            </div>
-        </body>
-    </html>
+    <html><head><meta name="viewport" content="width=device-width, initial-scale=1"><style>
+    body {{ font-family: sans-serif; display: flex; justify-content: center; align-items: center; height: 100vh; background: #f0f2f5; margin: 0; }}
+    .box {{ background: white; padding: 30px; border-radius: 12px; box-shadow: 0 5px 15px rgba(0,0,0,0.1); width: 300px; text-align: center; }}
+    input {{ width: 100%; padding: 10px; margin: 10px 0; border: 1px solid #ddd; border-radius: 6px; box-sizing: border-box; }}
+    button {{ width: 100%; padding: 10px; background: #0088cc; color: white; border: none; border-radius: 6px; cursor: pointer; font-weight: bold; }}
+    </style></head><body><div class="box"><h2>🔒 Admin Login</h2>
+    <form action="/login" method="post"><input type="hidden" name="token" value="{token}">
+    <input type="text" name="user" placeholder="Username" required><input type="password" name="pass" placeholder="Password" required>
+    <button type="submit">Login</button></form></div></body></html>
     """
     return web.Response(text=html, content_type='text/html')
 
 @admin_routes.post('/login')
-async def admin_login_post(request):
+async def login_post(request):
     data = await request.post()
-    token, username, password = data.get('token'), data.get('username'), data.get('password')
-
-    if not hasattr(temp, 'ADMIN_TOKENS'): temp.ADMIN_TOKENS = {}
-    if not hasattr(temp, 'ADMIN_SESSIONS'): temp.ADMIN_SESSIONS = {}
-
-    if not token or token not in temp.ADMIN_TOKENS or time.time() > temp.ADMIN_TOKENS[token]:
-        return web.Response(text="⏳ Token Expired or Invalid!", status=403)
-
-    if username == ADMIN_USERNAME and password == ADMIN_PASSWORD:
+    if data.get('user') == ADMIN_USERNAME and data.get('pass') == ADMIN_PASSWORD:
         session_id = str(uuid.uuid4())
-        temp.ADMIN_SESSIONS[session_id] = temp.ADMIN_TOKENS[token]
-        del temp.ADMIN_TOKENS[token]
-        response = web.HTTPFound('/dashboard')
-        response.set_cookie('admin_session', session_id, max_age=3600)
-        return response
-    else:
-        error_html = f"<html><body style='text-align:center; margin-top:50px;'><h2 style='color:red;'>❌ Invalid Username or Password!</h2><a href='/admin?token={token}'>Try Again</a></body></html>"
-        return web.Response(text=error_html, content_type='text/html', status=401)
+        if not hasattr(temp, 'ADMIN_SESSIONS'): temp.ADMIN_SESSIONS = {}
+        temp.ADMIN_SESSIONS[session_id] = time.time() + 3600 
+        res = web.HTTPFound('/dashboard')
+        res.set_cookie('admin_session', session_id)
+        return res
+    return web.Response(text="❌ Invalid Credentials")
 
+# ─────────────────────────────────────────────
+# 📊 MAIN DASHBOARD
+# ─────────────────────────────────────────────
 @admin_routes.get('/dashboard')
 async def admin_dashboard(request):
-    session_id = request.cookies.get('admin_session')
-    if not hasattr(temp, 'ADMIN_SESSIONS'): temp.ADMIN_SESSIONS = {}
+    if not is_logged_in(request): return web.HTTPFound('/admin')
 
-    if not session_id or session_id not in temp.ADMIN_SESSIONS:
-        return web.Response(text="❌ Unauthorized Access! Please login via Telegram link.", status=403)
-    if time.time() > temp.ADMIN_SESSIONS[session_id]:
-        del temp.ADMIN_SESSIONS[session_id]
-        return web.Response(text="⏳ Session Expired! Please generate a new link from Telegram.", status=403)
+    # Fetch Data
+    stats = await db_count_documents()
+    total_u = await user_db.total_users_count()
+    total_c = await user_db.total_chat_count()
+    db_size = get_size(await user_db.get_data_db_size())
 
-    html = """
-    <!DOCTYPE html>
-    <html lang="en">
-    <head>
-        <title>Admin Dashboard</title>
-        <meta name="viewport" content="width=device-width, initial-scale=1">
-        <style>
-            body { font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; padding: 20px; background: #eef2f3; margin: 0; color: #333; }
-            .container { max-width: 900px; margin: auto; }
-            .header { background: linear-gradient(135deg, #0088cc, #00d2ff); color: white; padding: 25px; border-radius: 12px; text-align: center; box-shadow: 0 4px 10px rgba(0,0,0,0.1); }
-            h1 { margin: 0; font-size: 26px; }
-            .card { background: white; padding: 25px; margin-top: 20px; border-radius: 12px; box-shadow: 0 4px 15px rgba(0,0,0,0.05); }
-            
-            .search-box { display: flex; gap: 10px; margin-top: 15px; }
-            .search-box input { flex: 1; padding: 15px 20px; border: 2px solid #ddd; border-radius: 30px; font-size: 16px; outline: none; transition: 0.3s; }
-            .search-box button { background: #0088cc; color: white; border: none; padding: 15px 30px; border-radius: 30px; font-size: 16px; font-weight: bold; cursor: pointer; transition: 0.3s; }
-            
-            #totalCountTop { margin-top: 15px; font-weight: bold; color: #28a745; display: none; }
-            
-            #results { display: grid; grid-template-columns: repeat(auto-fill, minmax(280px, 1fr)); gap: 20px; margin-top: 20px; }
-            .res-card { background: #fff; padding: 20px; border-radius: 10px; border: 1px solid #eee; box-shadow: 0 2px 10px rgba(0,0,0,0.02); }
-            .res-title { font-size: 15px; font-weight: bold; margin-bottom: 10px; }
-            .res-info { color: #777; font-size: 13px; margin-bottom: 15px; }
-            .btn-group { display: flex; gap: 10px; }
-            .btn-play { background: #28a745; flex: 1; text-align: center; padding: 10px; border-radius: 6px; color: white; text-decoration: none; font-weight: bold; }
-            .btn-dl { background: #ffc107; flex: 1; text-align: center; padding: 10px; border-radius: 6px; color: black; text-decoration: none; font-weight: bold; }
-            
-            /* Pagination moved to bottom */
-            .pagination-container { display: none; justify-content: center; align-items: center; gap: 15px; margin-top: 30px; padding-top: 20px; border-top: 1px solid #eee; }
-            .pagination-container button { background: #333; color: white; border: none; padding: 10px 25px; border-radius: 30px; cursor: pointer; font-weight: bold; }
-            .pagination-container button:hover { background: #0088cc; }
-            
-            .loader { text-align: center; color: #0088cc; display: none; margin-top: 20px; font-weight: bold; }
-        </style>
-    </head>
-    <body>
-        <div class="container">
-            <div class="header">
-                <h1>👋 Welcome to Admin Dashboard</h1>
+    # Premium Users List
+    p_users = []
+    async for u in await user_db.get_premium_users():
+        if u.get('status', {}).get('premium'):
+            p_users.append(f"<li>👤 <code>{u['id']}</code> | Plan: {u['status'].get('plan')}</li>")
+    p_list = "".join(p_users) if p_users else "<li>No premium users</li>"
+
+    html = f"""
+    <!DOCTYPE html><html><head>
+    <title>Admin Panel</title>
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <style>
+        body {{ font-family: 'Segoe UI', sans-serif; background: #eef2f3; margin: 0; padding: 20px; }}
+        .container {{ max-width: 1000px; margin: auto; }}
+        .header {{ background: #0088cc; color: white; padding: 20px; border-radius: 12px; text-align: center; margin-bottom: 20px; }}
+        .grid {{ display: grid; grid-template-columns: repeat(auto-fit, minmax(280px, 1fr)); gap: 20px; }}
+        .card {{ background: white; padding: 20px; border-radius: 12px; box-shadow: 0 4px 10px rgba(0,0,0,0.05); }}
+        h3 {{ margin-top: 0; color: #0088cc; border-bottom: 20px; }}
+        .stat-val {{ font-size: 24px; font-weight: bold; color: #333; }}
+        .search-box {{ display: flex; gap: 10px; margin: 15px 0; }}
+        .search-box input {{ flex: 1; padding: 12px; border-radius: 25px; border: 1px solid #ddd; outline: none; }}
+        .search-box button {{ padding: 10px 20px; border-radius: 25px; border: none; background: #0088cc; color: white; cursor: pointer; }}
+        #results {{ margin-top: 15px; }}
+        .res-item {{ padding: 10px; border-bottom: 1px solid #eee; }}
+        .btn-s {{ padding: 5px 10px; text-decoration: none; border-radius: 4px; font-size: 12px; color: white; }}
+        .p-list {{ list-style: none; padding: 0; max-height: 200px; overflow-y: auto; }}
+        .p-list li {{ padding: 8px; border-bottom: 1px dotted #ccc; font-size: 14px; }}
+    </style>
+    </head><body>
+    <div class="container">
+        <div class="header"><h1>🚀 Bot Admin Dashboard</h1></div>
+        
+        <div class="grid">
+            <div class="card">
+                <h3>📊 Database Stats</h3>
+                <div class="stat-val">{stats['total']} <small>Files</small></div>
+                <div class="stat-val">{total_u} <small>Users</small></div>
+                <div class="stat-val">{total_c} <small>Groups</small></div>
+                <p>🗄️ Size: {db_size}</p>
             </div>
 
             <div class="card">
-                <h3>🔍 Live Database Search</h3>
-                
+                <h3>💎 Premium Users</h3>
+                <ul class="p-list">{p_list}</ul>
+            </div>
+
+            <div class="card" style="grid-column: 1 / -1;">
+                <h3>🔍 Live Search & Manage</h3>
                 <div class="search-box">
-                    <input type="text" id="searchInput" placeholder="Enter movie name...">
-                    <button onclick="performSearch(0)">Search 🔍</button>
+                    <input type="text" id="q" placeholder="Search file name...">
+                    <button onclick="search(0)">Search</button>
                 </div>
-
-                <div id="totalCountTop"></div>
-
-                <div id="loader" class="loader">Searching... ⏳</div>
-
+                <div id="loader" style="display:none">Searching...</div>
                 <div id="results"></div>
-
-                <div id="pagination-bottom" class="pagination-container">
-                    <button id="prevBtn" onclick="goPrev()" style="display:none;">⬅️ Previous</button>
-                    <button id="nextBtn" onclick="goNext()" style="display:none;">Next Page ➡️</button>
+                <div id="page" style="margin-top:15px; display:none; gap:10px;">
+                    <button id="pBtn" onclick="prev()">⬅️ Prev</button>
+                    <button id="nBtn" onclick="next()">Next ➡️</button>
                 </div>
             </div>
         </div>
+    </div>
 
-        <script>
-            let currentQuery = "";
-            let currentOffset = 0;
-            let nextOffsetValue = "";
-
-            async function performSearch(offset) {
-                const query = document.getElementById('searchInput').value.trim();
-                if (!query) return;
-
-                currentQuery = query;
-                currentOffset = offset;
-
-                const resultsDiv = document.getElementById('results');
-                const totalCountTop = document.getElementById('totalCountTop');
-                const paginationContainer = document.getElementById('pagination-bottom');
-                const prevBtn = document.getElementById('prevBtn');
-                const nextBtn = document.getElementById('nextBtn');
-                const loader = document.getElementById('loader');
-                
-                resultsDiv.innerHTML = "";
-                totalCountTop.style.display = "none";
-                paginationContainer.style.display = "none";
-                loader.style.display = "block";
-                
-                try {
-                    const response = await fetch(`/api/search?q=${encodeURIComponent(query)}&offset=${offset}`);
-                    const data = await response.json();
-                    
-                    loader.style.display = "none";
-                    
-                    if (data.total === 0) {
-                        resultsDiv.innerHTML = '<h3 style="text-align:center; width:100%;">❌ No results!</h3>';
-                        return;
-                    }
-
-                    totalCountTop.innerHTML = `📊 Found ${data.total} Results`;
-                    totalCountTop.style.display = "block";
-                    nextOffsetValue = data.next_offset;
-
-                    // Show pagination at bottom
-                    paginationContainer.style.display = "flex";
-                    prevBtn.style.display = (offset > 0) ? "block" : "none";
-                    nextBtn.style.display = (nextOffsetValue !== "") ? "block" : "none";
-                    
-                    data.results.forEach(file => {
-                        resultsDiv.innerHTML += `
-                            <div class="res-card">
-                                <div class="res-title">${file.name}</div>
-                                <div class="res-info">💾 ${file.size} | 📁 ${file.type}</div>
-                                <div class="btn-group">
-                                    <a href="${file.watch}" target="_blank" class="btn-play">▶️ Play</a>
-                                    <a href="${file.download}" class="btn-dl">⬇️ Download</a>
-                                </div>
-                            </div>
-                        `;
-                    });
-                    
-                    // Auto-scroll to top of results on next page
-                    if(offset > 0) window.scrollTo({ top: 200, behavior: 'smooth' });
-
-                } catch (err) {
-                    loader.style.display = "none";
-                    resultsDiv.innerHTML = '<h3 style="color:red; text-align:center; width:100%;">Error!</h3>';
-                }
-            }
-
-            function goNext() { if (nextOffsetValue !== "") performSearch(nextOffsetValue); }
-            function goPrev() {
-                let newOffset = Math.max(0, currentOffset - 20);
-                performSearch(newOffset);
-            }
-
-            document.getElementById("searchInput").addEventListener("keypress", (e) => {
-                if (e.key === "Enter") performSearch(0);
-            });
-        </script>
-    </body>
-    </html>
+    <script>
+    let curQ = "", curOff = 0, nextOff = "";
+    async def search(off) {{
+        let q = document.getElementById('q').value;
+        if(!q) return;
+        curQ = q; curOff = off;
+        document.getElementById('loader').style.display = 'block';
+        let res = await fetch(`/api/search?q=${{encodeURIComponent(q)}}&offset=${{off}}`);
+        let data = await res.json();
+        document.getElementById('loader').style.display = 'none';
+        
+        let out = "";
+        data.results.forEach(f => {{
+            out += `<div class="res-item">
+                <b>${{f.name}}</b> (${{f.size}})<br>
+                <a href="${{f.watch}}" target="_blank" style="color:green">[PLAY]</a> 
+                <a href="${{f.download}}" style="color:blue">[DL]</a>
+            </div>`;
+        }});
+        document.getElementById('results').innerHTML = out || "No results";
+        nextOff = data.next_offset;
+        document.getElementById('page').style.display = data.total > 20 ? 'flex' : 'none';
+        document.getElementById('pBtn').style.display = off > 0 ? 'block' : 'none';
+        document.getElementById('nBtn').style.display = nextOff ? 'block' : 'none';
+    }}
+    function next() {{ if(nextOff) search(nextOff); }}
+    function prev() {{ search(Math.max(0, curOff-20)); }}
+    </script>
+    </body></html>
     """
     return web.Response(text=html, content_type='text/html')
