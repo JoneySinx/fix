@@ -122,12 +122,16 @@ def _build_regex(query: str):
         return re.compile(re.escape(query), flags=re.IGNORECASE)
 
 # ─────────────────────────────────────────────────────────
-# 🚀 SMART SEARCH (HYBRID: TEXT INDEX + REGEX)
+# 🚀 SMART SEARCH (HYBRID: TEXT INDEX + REGEX) -> STRICT AND LOGIC
 # ─────────────────────────────────────────────────────────
 async def _search(col, raw_query: str, regex, offset: int, limit: int, lang=None):
     
-    # 1. ⚡ सुपरफास्ट Text Search (पूरे शब्दों के लिए)
-    text_flt = {"$text": {"$search": raw_query}}
+    # 1. ⚡ सुपरफास्ट Text Search (Strict AND Logic)
+    # हर शब्द को Quotes (") में डाल रहे हैं ताकि सटीक मैच ही मिले
+    clean_query = raw_query.replace('"', '').replace("'", "")
+    strict_query = " ".join(f'"{word}"' for word in clean_query.split())
+
+    text_flt = {"$text": {"$search": strict_query}}
     if lang:
         lang_regex = re.compile(lang, re.IGNORECASE)
         text_flt = {"$and": [text_flt, {"file_name": lang_regex}]}
@@ -218,8 +222,13 @@ async def get_web_search_results(query, offset=0, limit=20):
         return []
         
     raw_query = str(query).strip()
+    
+    # ✅ यहाँ भी Strict AND Logic लगा दिया
+    clean_query = raw_query.replace('"', '').replace("'", "")
+    strict_query = " ".join(f'"{word}"' for word in clean_query.split())
+    
     regex = _build_regex(raw_query)
-    text_flt = {"$text": {"$search": raw_query}}
+    text_flt = {"$text": {"$search": strict_query}}
     reg_flt = {"file_name": regex}
     
     results = []
