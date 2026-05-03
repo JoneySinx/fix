@@ -1,7 +1,7 @@
 import os
 import random
 import asyncio
-import uuid  # ✅ वेब टोकन जनरेट करने के लिए
+import uuid
 from datetime import datetime
 from time import time as time_now
 from hydrogram import Client, filters, enums
@@ -101,12 +101,10 @@ async def start(client, message):
                 settings = await get_settings(grp_id)
                 cap_template = settings.get('caption', '{file_name}\n\n💾 Size: {file_size}')
                 
-                # ✅ CRITICAL FIX: Safe Formatting
                 caption = cap_template.replace('{file_name}', str(file.get('file_name', 'File')))\
                                       .replace('{file_size}', get_size(file.get('file_size', 0)))\
                                       .replace('{file_caption}', str(file.get('caption', '')))
                 
-                # ✅ FIX: Secure Close Button
                 btn = [[InlineKeyboardButton('❌ Close', callback_data=f'close_{message.from_user.id}')]]
                 if IS_STREAM:
                     btn.insert(0, [InlineKeyboardButton("▶️ Watch / Download", callback_data=f"stream#{file_id}")])
@@ -120,7 +118,6 @@ async def start(client, message):
                     reply_markup=InlineKeyboardMarkup(btn)
                 )
 
-                # Auto Delete
                 if PM_FILE_DELETE_TIME > 0:
                     del_msg = await msg.reply(
                         f"⚠️ This message will delete in {get_readable_time(PM_FILE_DELETE_TIME)}."
@@ -154,27 +151,27 @@ async def start(client, message):
 async def stats(_, message):
     msg = await message.reply("🔄 Fetching Stats...")
     
+    # डेटाबेस से गिनती ला रहे हैं
     files = await db_count_documents()
     users = await db.total_users_count()
     chats = await db.total_chat_count()
-    
     premium = await db.premium.count_documents({"status.premium": True})
+    uptime = get_readable_time(time_now() - temp.START_TIME)
 
-    text = f"""
-📊 <b>Bot Statistics</b>
-
-👥 <b>Users:</b> `{users}`
-👥 <b>Groups:</b> `{chats}`
-💎 <b>Premium:</b> `{premium}`
-
-📁 <b>Files:</b> `{files['total']}`
- • Primary: `{files['primary']}`
- • Cloud: `{files['cloud']}`
- • Archive: `{files['archive']}`
-
-⏱ <b>Uptime:</b> `{get_readable_time(time_now() - temp.START_TIME)}`
-"""
+    # ✅ FIX: अब यह सीधे Script.py के STATUS_TXT का इस्तेमाल करेगा
+    text = script.STATUS_TXT.format(
+        users, 
+        chats, 
+        premium, 
+        files['total'], 
+        files['primary'], 
+        files['cloud'], 
+        files['archive'], 
+        uptime
+    )
+    
     await msg.edit(text)
+
 
 # ─────────────────────────
 # /delete COMMAND
@@ -266,7 +263,7 @@ async def link_generator(client, message):
         await msg.edit_text(f"❌ **Error generating link:** `{e}`")
 
 # ─────────────────────────
-# ✅ /web COMMAND (MAGIC LINK GENERATOR)
+# /web COMMAND (MAGIC LINK GENERATOR)
 # ─────────────────────────
 @Client.on_message(filters.command("web") & filters.user(ADMINS))
 async def web_admin_link(client, message):
@@ -293,8 +290,58 @@ async def web_admin_link(client, message):
     )
 
 # ─────────────────────────
-# CALLBACKS
+# CALLBACKS (HELP MENU WITH SMART ADMIN CHECK)
 # ─────────────────────────
+@Client.on_callback_query(filters.regex("^help$"))
+async def help_cb(client, query):
+    text = script.HELP_TXT.format(query.from_user.mention)
+    
+    if query.from_user.id in ADMINS:
+        btn = [
+            [InlineKeyboardButton("👨‍💻 User Commands", callback_data="user_cmds"), InlineKeyboardButton("👮‍♂️ Admin Commands", callback_data="admin_cmds")],
+            [InlineKeyboardButton("⬅️ Back", callback_data="back_start")]
+        ]
+    else:
+        btn = [
+            [InlineKeyboardButton("👨‍💻 User Commands", callback_data="user_cmds")],
+            [InlineKeyboardButton("⬅️ Back", callback_data="back_start")]
+        ]
+        
+    await query.message.edit_caption(caption=text, reply_markup=InlineKeyboardMarkup(btn))
+
+@Client.on_callback_query(filters.regex("^user_cmds$"))
+async def user_cmds_cb(client, query):
+    text = script.USER_COMMAND_TXT
+    btn = [[InlineKeyboardButton("⬅️ Back", callback_data="help")]]
+    await query.message.edit_caption(caption=text, reply_markup=InlineKeyboardMarkup(btn))
+
+@Client.on_callback_query(filters.regex("^admin_cmds$"))
+async def admin_cmds_cb(client, query):
+    if query.from_user.id not in ADMINS:
+        return await query.answer("❌ You are not an Admin!", show_alert=True)
+        
+    text = script.ADMIN_COMMAND_TXT
+    btn = [[InlineKeyboardButton("⬅️ Back", callback_data="help")]]
+    await query.message.edit_caption(caption=text, reply_markup=InlineKeyboardMarkup(btn))
+
+@Client.on_callback_query(filters.regex("^about$"))
+async def about_cb(client, query):
+    text = script.MY_ABOUT_TXT
+    btn = [[InlineKeyboardButton("⬅️ Back", callback_data="back_start")]]
+    await query.message.edit_caption(caption=text, reply_markup=InlineKeyboardMarkup(btn), disable_web_page_preview=True)
+
+@Client.on_callback_query(filters.regex("^back_start$"))
+async def back_start_cb(client, query):
+    btn = [
+        [InlineKeyboardButton("+ Add to Group +", url=f"https://t.me/{temp.U_NAME}?startgroup=start")],
+        [InlineKeyboardButton("👨‍🚒 Help", callback_data="help"), InlineKeyboardButton("📚 About", callback_data="about")],
+        [InlineKeyboardButton("💎 Premium Status", callback_data="myplan")]
+    ]
+    await query.message.edit_caption(
+        caption=script.START_TXT.format(query.from_user.mention, get_wish()),
+        reply_markup=InlineKeyboardMarkup(btn)
+    )
+
 @Client.on_callback_query(filters.regex(r"^confirm_del#"))
 async def confirm_del(client, query):
     if query.from_user.id not in ADMINS:
@@ -312,8 +359,11 @@ async def myplan_cb(client, query):
     
     mp = await db.get_plan(query.from_user.id)
     if not mp.get('premium'):
-        btn = [[InlineKeyboardButton('💎 Buy Premium', callback_data='activate_plan')]]
-        return await query.message.edit("❌ No active plan.", reply_markup=InlineKeyboardMarkup(btn))
+        btn = [[
+            InlineKeyboardButton('💎 Buy Premium', callback_data='activate_plan'),
+            InlineKeyboardButton("⬅️ Back", callback_data="back_start")
+        ]]
+        return await query.message.edit_caption("❌ No active plan.", reply_markup=InlineKeyboardMarkup(btn))
     
     expire = mp.get('expire')
     if isinstance(expire, str):
@@ -325,12 +375,14 @@ async def myplan_cb(client, query):
         diff = expire - datetime.now()
         left = f"{diff.days} days, {diff.seconds//3600} hours"
 
-    await query.message.edit(
+    btn = [[InlineKeyboardButton("⬅️ Back", callback_data="back_start")]]
+    await query.message.edit_caption(
         f"💎 <b>Premium Status</b>\n\n"
         f"📦 Plan: {mp.get('plan')}\n"
         f"⏳ Expires: {expire}\n"
         f"⏱ Left: {left}\n\n"
-        f"Use /plan to extend."
+        f"Use /plan to extend.",
+        reply_markup=InlineKeyboardMarkup(btn)
     )
 
 @Client.on_callback_query(filters.regex(r"^stream#"))
@@ -351,7 +403,6 @@ async def stream_cb(client, query):
     except Exception as e:
         await query.answer(f"Error: {e}", show_alert=True)
 
-# ✅ DISCONNECT WEB SESSION CALLBACK
 @Client.on_callback_query(filters.regex(r"^logout_"))
 async def web_logout_callback(client, query):
     session_id = query.data.split("_")[1]
@@ -364,7 +415,6 @@ async def web_logout_callback(client, query):
         await query.answer("⚠️ Session already expired or invalid.", show_alert=True)
         await query.message.delete()
 
-# ✅ CLOSE HANDLER
 @Client.on_callback_query(filters.regex(r"^close_"))
 async def close_cb(c, q):
     try:
