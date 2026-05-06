@@ -8,6 +8,10 @@ from Script import script
 
 VERIFY_CACHE = {}
 
+# ✅ एडमिन के लिए कॉमन मैसेज (DRY Principle)
+ADMIN_MSG = "👑 **You are the Admin!**\nYou have Lifetime Premium access."
+ADMIN_ALERT = "👑 You are the Admin! You have Lifetime Premium access."
+
 # =========================
 # 🔧 HELPERS
 # =========================
@@ -41,7 +45,7 @@ async def is_premium(uid, bot):
     return False
 
 # =========================
-# ⏰ REMINDER SYSTEM (Optimized)
+# ⏰ REMINDER SYSTEM
 # =========================
 async def check_premium_expired(bot):
     intervals = [
@@ -71,7 +75,6 @@ async def check_premium_expired(bot):
                     await db.update_plan(uid, {"expire": "", "plan": "", "premium": False, "reminded_12h": False, "reminded_6h": False, "reminded_3h": False, "reminded_1h": False, "reminded_30m": False, "reminded_10m": False, "last_reminder_id": 0})
                     continue
 
-                # Interval Checker Loop
                 for min_t, max_t, flag, text in intervals:
                     if min_t <= left_mins <= max_t and not mp.get(flag):
                         if mp.get("last_reminder_id"): await safe_del(bot, uid, [mp.get("last_reminder_id")])
@@ -90,17 +93,22 @@ async def check_premium_expired(bot):
 @Client.on_message(filters.command("myplan") & filters.private)
 async def myplan_cmd(c, m):
     if not IS_PREMIUM: return
+    if m.from_user.id in ADMINS: return await m.reply(ADMIN_MSG, quote=True)
+        
     mp = await db.get_plan(m.from_user.id)
     if not mp.get("premium"):
         return await m.reply("❌ **No Active Plan**\nTap below to buy!", reply_markup=InlineKeyboardMarkup([[InlineKeyboardButton("💎 Buy Premium", callback_data="buy_prem")]]))
     
     exp = parse_expire_time(mp.get("expire"))
     left = f"{(exp - datetime.now()).days} days, {(exp - datetime.now()).seconds // 3600} hours" if exp else "Unknown"
-    await m.reply(f"💎 **Premium Status**\n\n📦 **Plan:** {mp.get('plan')}\n🗓 **Expires:** {get_ist_str(exp)} (IST)\n⏲ **Time Left:** {left}", quote=True)
+    await m.reply(f"💎 **Premium Status**\n\n📦 **Plan:** {mp.get('plan')}\n🗓 **Expires:** {get_ist_str(exp)}\n⏲ **Time Left:** {left}", quote=True)
 
 @Client.on_message(filters.command("plan") & filters.private)
 async def plan_cmd(c, m):
-    if IS_PREMIUM: await m.reply(script.PLAN_TXT.format(PRE_DAY_AMOUNT, RECEIPT_SEND_USERNAME), reply_markup=InlineKeyboardMarkup([[InlineKeyboardButton("💎 Activate Premium", callback_data="buy_prem")]]))
+    if not IS_PREMIUM: return
+    if m.from_user.id in ADMINS: return await m.reply(ADMIN_MSG, quote=True)
+        
+    await m.reply(script.PLAN_TXT.format(PRE_DAY_AMOUNT, RECEIPT_SEND_USERNAME), reply_markup=InlineKeyboardMarkup([[InlineKeyboardButton("💎 Activate Premium", callback_data="buy_prem")]]))
 
 @Client.on_message(filters.command(["add_prm", "rm_prm"]) & filters.user(ADMINS))
 async def manage_premium(c, m):
@@ -114,7 +122,7 @@ async def manage_premium(c, m):
     if is_add:
         ex = datetime.now() + timedelta(days=days)
         data = {"expire": ex.strftime("%Y-%m-%d %H:%M:%S"), "plan": f"{days} Days", "premium": True, "reminded_12h": False, "reminded_6h": False, "reminded_3h": False, "reminded_1h": False, "reminded_30m": False, "reminded_10m": False, "last_reminder_id": 0}
-        m_usr, m_adm = f"🎉 **Premium Activated!**\n\n🗓 **Duration:** {days} Days\n📅 **Expires:** {get_ist_str(ex)} (IST)\n\nEnjoy! ❤️", f"✅ Added {days} days premium to `{uid}`."
+        m_usr, m_adm = f"🎉 **Premium Activated!**\n\n🗓 **Duration:** {days} Days\n📅 **Expires:** {get_ist_str(ex)}\n\nEnjoy! ❤️", f"✅ Added {days} days premium to `{uid}`."
     else:
         data, m_usr, m_adm = {"expire": "", "plan": "", "premium": False}, "❌ **Premium Removed by Admin.**", f"🗑 Removed premium from `{uid}`."
 
@@ -138,8 +146,26 @@ async def prm_list(c, m):
 # =========================
 # 🔘 CALLBACKS
 # =========================
+@Client.on_callback_query(filters.regex("^myplan$"))
+async def myplan_cb(client, query):
+    if query.from_user.id in ADMINS: return await query.answer(ADMIN_ALERT, show_alert=True)
+
+    if not IS_PREMIUM: return await query.answer("Premium disabled.", show_alert=True)
+    mp = await db.get_plan(query.from_user.id)
+    btn = [[InlineKeyboardButton("⬅️ Back", callback_data="back_start")]]
+    
+    if not mp.get('premium'):
+        btn.insert(0, [InlineKeyboardButton('💎 Buy Premium', callback_data='activate_plan')])
+        return await query.message.edit_caption("❌ No active plan.", reply_markup=InlineKeyboardMarkup(btn))
+    
+    exp = parse_expire_time(mp.get('expire'))
+    left = f"{(exp - datetime.now()).days} days, {(exp - datetime.now()).seconds//3600} hours" if exp else "Unknown"
+    await query.message.edit_caption(f"💎 <b>Premium Status</b>\n\n📦 Plan: {mp.get('plan')}\n⏳ Expires: {get_ist_str(exp)}\n⏱ Left: {left}\n\nUse /plan to extend.", reply_markup=InlineKeyboardMarkup(btn))
+
 @Client.on_callback_query(filters.regex(r"^(buy_prem|activate_plan)$"))
 async def buy_callback(c, q):
+    if q.from_user.id in ADMINS: return await q.answer(ADMIN_ALERT, show_alert=True)
+
     prm_msg = await q.message.edit(f"💎 **Select Plan Duration**\n\nSend days (e.g. `30`).\nPrice: ₹{PRE_DAY_AMOUNT}/day\n\n⏳ Timeout: 60s")
     try:
         resp = await c.listen(q.message.chat.id, timeout=60)
@@ -147,7 +173,6 @@ async def buy_callback(c, q):
         days = int(resp.text)
         amount = days * int(PRE_DAY_AMOUNT)
         
-        # QR Memory Generation
         img = qrcode.make(f"upi://pay?pa={UPI_ID}&pn={UPI_NAME}&am={amount}&cu=INR")
         bio = io.BytesIO()
         img.save(bio, format="PNG")
@@ -177,7 +202,7 @@ async def pay_action(c, q):
         ex = datetime.now() + timedelta(days=days)
         await db.update_plan(uid, {"expire": ex.strftime("%Y-%m-%d %H:%M:%S"), "plan": f"{days} Days", "premium": True, "reminded_12h": False, "reminded_6h": False, "reminded_3h": False, "reminded_1h": False, "reminded_30m": False, "reminded_10m": False, "last_reminder_id": 0})
         await q.message.edit_caption(caption=q.message.caption + f"\n\n✅ **Approved by** {q.from_user.mention}", reply_markup=None)
-        try: await c.send_message(uid, f"🎉 **Congratulations!**\n\n✅ Your premium of **{days} Days** is Active.\n📅 **Expires:** {get_ist_str(ex)} (IST)\n\nEnjoy our service! ❤️")
+        try: await c.send_message(uid, f"🎉 **Congratulations!**\n\n✅ Your premium of **{days} Days** is Active.\n📅 **Expires:** {get_ist_str(ex)}\n\nEnjoy our service! ❤️")
         except: pass
     else:
         await q.message.edit_caption(caption=q.message.caption + f"\n\n❌ **Rejected by** {q.from_user.mention}", reply_markup=None)
