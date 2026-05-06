@@ -5,154 +5,124 @@ from hydrogram.types import ChatPermissions
 from database.users_chats_db import db
 
 # =========================
-# SMART CACHE (AUTO CLEAR)
+# 🧠 SMART CACHE SYSTEM
 # =========================
 SETTINGS_CACHE = {}
-CACHE_TTL = 300  # 5 मिनट बाद Cache Expire हो जाएगा
+CACHE_TTL = 300  
 
 async def get_settings(chat_id):
-    current_time = time.time()
-    
-    # 🧹 RAM Saver: पुराने (Expired) कैशे को हटाओ ताकि Memory Leak न हो
+    now = time.time()
+    # 🧹 Auto-clean expired cache (RAM Saver)
     if len(SETTINGS_CACHE) > 500:
-        expired_keys = [k for k, (v, ts) in SETTINGS_CACHE.items() if current_time - ts > CACHE_TTL]
-        for k in expired_keys:
+        for k in [k for k, (v, ts) in SETTINGS_CACHE.items() if now - ts > CACHE_TTL]:
             del SETTINGS_CACHE[k]
 
-    # अगर Cache मौजूद है और 5 मिनट से पुराना नहीं है, तो वही यूज़ करो
-    if chat_id in SETTINGS_CACHE:
-        data, timestamp = SETTINGS_CACHE[chat_id]
-        if current_time - timestamp < CACHE_TTL:
-            return data
+    if chat_id in SETTINGS_CACHE and (now - SETTINGS_CACHE[chat_id][1]) < CACHE_TTL:
+        return SETTINGS_CACHE[chat_id][0]
 
-    # वरना DB से लाओ और टाइमस्टैम्प के साथ सेव करो
     data = await db.get_settings(chat_id) or {}
-    SETTINGS_CACHE[chat_id] = (data, current_time)
+    SETTINGS_CACHE[chat_id] = (data, now)
     return data
 
-async def update_local_settings(chat_id, data):
-    # अपडेट करते वक्त टाइमस्टैम्प भी रिसेट करो
+async def update_settings(chat_id, data):
     SETTINGS_CACHE[chat_id] = (data, time.time())
     await db.update_settings(chat_id, data)
 
-async def is_admin(c, chat_id, user_id):
-    # Anonymous Admin (Sender Chat) के लिए
-    if not user_id:
-        return True
+async def is_admin(c, m):
+    # 🔒 SUPER SECURE: Only real anonymous admins of THIS group, not random channels
+    if m.sender_chat and m.sender_chat.id == m.chat.id: return True
+    if not m.from_user: return False
     try:
-        m = await c.get_chat_member(chat_id, user_id)
-        return m.status in (enums.ChatMemberStatus.ADMINISTRATOR, enums.ChatMemberStatus.OWNER)
+        user = await c.get_chat_member(m.chat.id, m.from_user.id)
+        return user.status in (enums.ChatMemberStatus.ADMINISTRATOR, enums.ChatMemberStatus.OWNER)
     except:
         return False
 
 # =========================
-# ADMIN ACTIONS
+# 🛡️ ADMIN ACTIONS
 # =========================
 
 @Client.on_message(filters.group & filters.reply & filters.command(["mute", "unmute", "ban", "warn", "resetwarn"]))
 async def admin_action(c, m):
-    user_id = m.from_user.id if m.from_user else None
-    if not await is_admin(c, m.chat.id, user_id): return
-    
+    if not await is_admin(c, m): return
+    target = m.reply_to_message.from_user
+    if not target: return await m.reply("❌ Cannot perform action on anonymous/channel message.")
+
     cmd = m.command[0]
-    target_user = m.reply_to_message.from_user
-    chat_id = m.chat.id
+    cid, tid, mention = m.chat.id, target.id, target.mention
 
-    if not target_user:
-        return await m.reply("❌ Cannot perform action on this user.")
-
-    if cmd == "mute":
-        # Telegram API prefers UNIX Timestamps integers for future dates
-        until = int(time.time() + 600) 
-        await c.restrict_chat_member(chat_id, target_user.id, ChatPermissions(), until_date=until)
-        await m.reply(f"🔇 {target_user.mention} muted for 10m.")
-
-    elif cmd == "unmute":
-        await c.restrict_chat_member(chat_id, target_user.id, ChatPermissions(can_send_messages=True))
-        await m.reply(f"🔊 {target_user.mention} unmuted.")
-
-    elif cmd == "ban":
-        await c.ban_chat_member(chat_id, target_user.id)
-        await m.reply(f"🚫 {target_user.mention} banned.")
-
-    elif cmd == "warn":
-        data = await db.get_warn(target_user.id, chat_id) or {"count": 0}
-        data["count"] += 1
-        await db.set_warn(target_user.id, chat_id, data)
-        await m.reply(f"⚠️ {target_user.mention} warned ({data['count']}/3).")
-
-    elif cmd == "resetwarn":
-        await db.clear_warn(target_user.id, chat_id)
-        await m.reply(f"♻️ Warnings reset for {target_user.mention}.")
+    try:
+        if cmd == "mute":
+            await c.restrict_chat_member(cid, tid, ChatPermissions(), until_date=int(time.time() + 600))
+            await m.reply(f"🔇 {mention} muted for 10m.")
+        elif cmd == "unmute":
+            await c.restrict_chat_member(cid, tid, ChatPermissions(can_send_messages=True))
+            await m.reply(f"🔊 {mention} unmuted.")
+        elif cmd == "ban":
+            await c.ban_chat_member(cid, tid)
+            await m.reply(f"🚫 {mention} banned.")
+        elif cmd == "warn":
+            data = await db.get_warn(tid, cid) or {"count": 0}
+            data["count"] += 1
+            await db.set_warn(tid, cid, data)
+            await m.reply(f"⚠️ {mention} warned ({data['count']}/3).")
+        elif cmd == "resetwarn":
+            await db.clear_warn(tid, cid)
+            await m.reply(f"♻️ Warnings reset for {mention}.")
+    except Exception:
+        await m.reply("❌ Action failed! Am I admin? Do I have the right permissions?")
 
 # =========================
-# CONFIGURATION
+# ⚙️ CONFIGURATION (Blacklist & DLink)
 # =========================
 
-@Client.on_message(filters.group & filters.command(["addblacklist", "removeblacklist", "dlink", "removedlink"]))
+@Client.on_message(filters.group & filters.command(["addblacklist", "removeblacklist", "blacklist", "dlink", "removedlink", "dlinklist"]))
 async def config_handler(c, m):
-    user_id = m.from_user.id if m.from_user else None
-    if not await is_admin(c, m.chat.id, user_id): return
-    if len(m.command) < 2: return
-
+    if not await is_admin(c, m): return
     cmd = m.command[0]
     data = await get_settings(m.chat.id)
-    args = m.text.split(None, 1)[1] if len(m.text.split()) > 1 else ""
-    
-    # --- Blacklist Logic ---
+    args = m.text.split(maxsplit=1)[1].lower() if len(m.command) > 1 else ""
+
+    # --- View Lists ---
+    if cmd in ["blacklist", "dlinklist"]:
+        if cmd == "blacklist":
+            items = "\n".join(f"• `{w}`" for w in data.get("blacklist", [])) or "📭 Empty"
+            return await m.reply(f"🚫 **Blacklist:**\n{items}")
+        items = "\n".join(f"• `{k}` ({v}s)" for k, v in data.get("dlink", {}).items()) or "📭 Empty"
+        return await m.reply(f"🕒 **DLinks:**\n{items}")
+
+    if not args: return await m.reply("❗ Please provide a word.")
+
+    # --- Modify Lists ---
     if "blacklist" in cmd:
         bl = data.get("blacklist", [])
-        word = args.lower()
-        if cmd == "addblacklist":
-            if word not in bl: bl.append(word)
-            msg = f"➕ Added `{word}` to blacklist."
-        else:
-            if word in bl: bl.remove(word)
-            msg = f"➖ Removed `{word}` from blacklist."   
+        if cmd == "addblacklist" and args not in bl: bl.append(args)
+        elif cmd == "removeblacklist" and args in bl: bl.remove(args)
         data["blacklist"] = bl
-        await update_local_settings(m.chat.id, data)
-        await m.reply(msg)
+        await m.reply(f"✅ Blacklist updated for: `{args}`")
 
-    # --- DLink Logic ---
     elif "dlink" in cmd:
         dl = data.get("dlink", {})
         if cmd == "dlink":
-            parts = m.text.split()
-            delay = 300 
-            idx = 1
-            if len(parts) > 2 and parts[1][-1] in "mh" and parts[1][:-1].isdigit():
-                delay = int(parts[1][:-1]) * (60 if parts[1][-1] == "m" else 3600)
-                idx = 2
-            word = " ".join(parts[idx:]).lower()
-            dl[word] = delay
-            msg = f"🕒 DLink set: `{word}` -> {delay}s (For Everyone)"
+            parts = args.split()
+            delay = 300 # Default 5 mins
+            if len(parts) > 1 and parts[0][-1] in "mh" and parts[0][:-1].isdigit():
+                delay = int(parts[0][:-1]) * (60 if parts[0][-1] == "m" else 3600)
+                args = " ".join(parts[1:])
+            dl[args] = delay
+            await m.reply(f"🕒 DLink set: `{args}` -> {delay}s")
         else:
-            word = args.lower()
-            dl.pop(word, None)
-            msg = f"🗑️ DLink removed: `{word}`"
+            dl.pop(args, None)
+            await m.reply(f"🗑️ DLink removed: `{args}`")
         data["dlink"] = dl
-        await update_local_settings(m.chat.id, data)
-        await m.reply(msg)
 
-@Client.on_message(filters.group & filters.command(["blacklist", "dlinklist"]))
-async def view_lists(c, m):
-    user_id = m.from_user.id if m.from_user else None
-    if not await is_admin(c, m.chat.id, user_id): return
-    data = await get_settings(m.chat.id)
-    
-    if "blacklist" in m.command[0]:
-        items = data.get("blacklist", [])
-        text = "\n".join(f"• `{w}`" for w in items) or "📭 Empty"
-        await m.reply(f"🚫 **Blacklist:**\n{text}")
-    else:
-        items = data.get("dlink", {})
-        text = "\n".join(f"• `{k}` ({v}s)" for k, v in items.items()) or "📭 Empty"
-        await m.reply(f"🕒 **DLinks:**\n{text}")
+    await update_settings(m.chat.id, data)
 
 # =========================
-# SMART WATCHER (UPDATED)
+# 👁️ SMART WATCHER
 # =========================
 
+# ✅ टाइमर वाला फंक्शन (Background deletion के लिए)
 async def delayed_delete(msg, delay):
     await asyncio.sleep(delay)
     try: await msg.delete()
@@ -160,55 +130,50 @@ async def delayed_delete(msg, delay):
 
 @Client.on_message(filters.group & filters.text, group=10)
 async def chat_watcher(c, m):
-    # ✅ FIX: Anonymous admins and channel forwards handled safely
-    if m.sender_chat:
-        user_id = None # It's a channel or anonymous admin
-    elif m.from_user:
-        user_id = m.from_user.id
-    else:
-        return
-    
-    data = await get_settings(m.chat.id)
     text = m.text.lower()
+    data = await get_settings(m.chat.id)
     
-    is_adm = await is_admin(c, m.chat.id, user_id)
-
-    # --- BLOCK A: DLink (APPLIES TO EVERYONE - Even Admins) ---
+    # ----------------------------------------------------
+    # Block A: DLink (APPLIES TO EVERYONE - Even Admins)
+    # ----------------------------------------------------
     dlinks = data.get("dlink", {})
     for w, delay in dlinks.items():
+        # Match word exactly OR match word with wildcard prefix 
         if w in text or (w.endswith("*") and text.startswith(w[:-1])):
+            # Task को background में डाल दिया ताकि बॉट रुके नहीं
             asyncio.create_task(delayed_delete(m, delay))
             return 
 
-    # --- BLOCK B: Blacklist (APPLIES TO MEMBERS ONLY) ---
-    if not is_adm: 
-        blacklist = data.get("blacklist", [])
-        for w in blacklist:
-            if w in text or (w.endswith("*") and text.startswith(w[:-1])):
-                try: await m.delete()
-                except: pass
-                return
+    # ----------------------------------------------------
+    # Block B: Blacklist (ONLY FOR MEMBERS, Ignore Admins)
+    # ----------------------------------------------------
+    if await is_admin(c, m): return
+    
+    for w in data.get("blacklist", []):
+        if w in text or (w.endswith("*") and text.startswith(w[:-1])):
+            try: await m.delete()
+            except: pass
+            return
 
 # =========================
-# ANTI BOT & HELP
+# 🤖 ANTI BOT & HELP
 # =========================
 
-@Client.on_message(filters.new_chat_members)
+@Client.on_message(filters.group & filters.new_chat_members)
 async def anti_bot(c, m):
-    user_id = m.from_user.id if m.from_user else None
+    # If the person adding the bot is an admin, allow it. Otherwise, ban the bot.
+    if await is_admin(c, m): return
     for u in m.new_chat_members:
-        if u.is_bot and not await is_admin(c, m.chat.id, user_id):
+        if u.is_bot:
             try: await c.ban_chat_member(m.chat.id, u.id)
             except: pass
 
 @Client.on_message(filters.group & filters.command("help"))
 async def help_cmd(c, m):
-    user_id = m.from_user.id if m.from_user else None
-    if await is_admin(c, m.chat.id, user_id):
+    if await is_admin(c, m):
         await m.reply(
             "🛠️ **Admin Menu**\n"
-            "• `/mute`, `/unmute`, `/ban`, `/warn`\n"
-            "• `/addblacklist`, `/removeblacklist`\n"
-            "• `/dlink <word>` (Deletes for Admins too!)\n"
-            "• `/removedlink`, `/dlinklist`"
+            "• `/mute`, `/unmute`, `/ban`, `/warn`, `/resetwarn` (Reply to user)\n"
+            "• `/addblacklist <word>`, `/removeblacklist <word>`, `/blacklist`\n"
+            "• `/dlink [time] <word>` (e.g. `/dlink 10m link`), `/removedlink <word>`, `/dlinklist`"
         )
