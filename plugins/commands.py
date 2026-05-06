@@ -43,105 +43,71 @@ async def start(client, message):
     if message.chat.type in [enums.ChatType.GROUP, enums.ChatType.SUPERGROUP]:
         if not await db.get_chat(message.chat.id):
             total = await client.get_chat_members_count(message.chat.id)
-            user = message.chat.username or "Private"
-            await client.send_message(
-                LOG_CHANNEL,
-                script.NEW_GROUP_TXT.format(message.chat.title, message.chat.id, f"@{user}", total)
-            )
+            await client.send_message(LOG_CHANNEL, script.NEW_GROUP_TXT.format(message.chat.title, message.chat.id, f"@{message.chat.username or 'Private'}", total))
             await db.add_chat(message.chat.id, message.chat.title)
-        
-        return await message.reply(
-            f"<b>Hey {message.from_user.mention}, <i>{get_wish()}</i>\nHow can I help you?</b>"
-        )
+        return await message.reply(f"<b>Hey {message.from_user.mention}, <i>{get_wish()}</i>\nHow can I help you?</b>")
 
-    # 2. PRIVATE HANDLING
+    # 2. PRIVATE HANDLING (Reactions, Stickers, DB Add)
     if REACTIONS:
         try: await message.react(random.choice(REACTIONS), big=True)
         except: pass
-    
     if STICKERS:
-        try:
-            stk = await client.send_sticker(message.chat.id, random.choice(STICKERS))
-            asyncio.create_task(del_stk(stk))
+        try: asyncio.create_task(del_stk(await client.send_sticker(message.chat.id, random.choice(STICKERS))))
         except: pass
 
-    # Async User Add
     if not await db.is_user_exist(message.from_user.id):
         await db.add_user(message.from_user.id, message.from_user.first_name)
-        await client.send_message(
-            LOG_CHANNEL,
-            script.NEW_USER_TXT.format(message.from_user.mention, message.from_user.id)
-        )
+        await client.send_message(LOG_CHANNEL, script.NEW_USER_TXT.format(message.from_user.mention, message.from_user.id))
 
-    # Premium Check
-    if IS_PREMIUM and not await is_premium(message.from_user.id, client):
+    # ✅ Premium Check (Admins Bypass)
+    if IS_PREMIUM and message.from_user.id not in ADMINS and not await is_premium(message.from_user.id, client):
         return await message.reply_photo(
-            random.choice(PICS),
-            caption="🔒 **Premium Required**\n\nBot is only for Premium users.\nUse /plan to buy.",
+            random.choice(PICS), caption="🔒 **Premium Required**\n\nBot is only for Premium users.\nUse /plan to buy.",
             reply_markup=InlineKeyboardMarkup([[InlineKeyboardButton("💎 Buy Premium", callback_data="activate_plan")]])
         )
 
     # 3. FILE HANDLING (start=file_id)
     if len(message.command) > 1 and message.command[1] != "premium":
         try:
-            data = message.command[1]
-            parts = data.split("_")
-            
+            parts = message.command[1].split("_")
             if len(parts) >= 3:
                 try: await message.delete()
                 except: pass
                 
-                grp_id = int(parts[1])
-                file_id = "_".join(parts[2:])
-                
+                grp_id, file_id = int(parts[1]), "_".join(parts[2:])
                 file = await get_file_details(file_id)
-                if not file:
-                    return await message.reply("❌ File Not Found!")
+                if not file: return await message.reply("❌ File Not Found!")
                 
                 settings = await get_settings(grp_id)
-                cap_template = settings.get('caption', '{file_name}\n\n💾 Size: {file_size}')
-                
-                caption = cap_template.replace('{file_name}', str(file.get('file_name', 'File')))\
-                                      .replace('{file_size}', get_size(file.get('file_size', 0)))\
-                                      .replace('{file_caption}', str(file.get('caption', '')))
+                # ✅ प्रोफेशनल तरीका: Script.py से FILE_CAPTION ले रहा है
+                cap_template = settings.get('caption', script.FILE_CAPTION)
+                caption = cap_template.format(file_name=str(file.get('file_name', 'File')), file_size=get_size(file.get('file_size', 0)))
                 
                 btn = [[InlineKeyboardButton('❌ Close', callback_data=f'close_{message.from_user.id}')]]
-                if IS_STREAM:
-                    btn.insert(0, [InlineKeyboardButton("▶️ Watch / Download", callback_data=f"stream#{file_id}")])
+                if IS_STREAM: btn.insert(0, [InlineKeyboardButton("▶️ Watch / Download", callback_data=f"stream#{file_id}")])
 
-                real_file_id = file.get('file_ref', file_id)
-
-                msg = await client.send_cached_media(
-                    chat_id=message.chat.id,
-                    file_id=real_file_id, 
-                    caption=caption,
-                    reply_markup=InlineKeyboardMarkup(btn)
-                )
+                msg = await client.send_cached_media(message.chat.id, file.get('file_ref', file_id), caption=caption, reply_markup=InlineKeyboardMarkup(btn))
 
                 if PM_FILE_DELETE_TIME > 0:
-                    del_msg = await msg.reply(
-                        f"⚠️ This message will delete in {get_readable_time(PM_FILE_DELETE_TIME)}."
-                    )
-                    asyncio.create_task(
-                        auto_delete_messages([msg.id, del_msg.id], message.chat.id, client, PM_FILE_DELETE_TIME)
-                    )
-                    
+                    del_msg = await msg.reply(f"⚠️ This message will delete in {get_readable_time(PM_FILE_DELETE_TIME)}.")
+                    asyncio.create_task(auto_delete_messages([msg.id, del_msg.id], message.chat.id, client, PM_FILE_DELETE_TIME))
                     if not hasattr(temp, 'PM_FILES'): temp.PM_FILES = {}
                     temp.PM_FILES[msg.id] = {'file_msg': msg.id, 'note_msg': del_msg.id}
                 return
-
-        except Exception as e:
-            print(f"Start Error: {e}")
+        except Exception as e: print(f"Start Error: {e}")
 
     # 4. DEFAULT START MESSAGE
+    btn = [
+        [InlineKeyboardButton("+ Add to Group +", url=f"https://t.me/{temp.U_NAME}?startgroup=start")],
+        [InlineKeyboardButton("👨‍🚒 Help", callback_data="help"), InlineKeyboardButton("📊 Stats", callback_data="stats")]
+    ]
+    # ✅ FIX: एडमिन को Premium Status बटन नहीं दिखेगा
+    if message.from_user.id not in ADMINS:
+        btn.append([InlineKeyboardButton("💎 Premium Status", callback_data="myplan")])
+
     await message.reply_photo(
-        random.choice(PICS),
-        caption=script.START_TXT.format(message.from_user.mention, get_wish()),
-        reply_markup=InlineKeyboardMarkup([
-            [InlineKeyboardButton("+ Add to Group +", url=f"https://t.me/{temp.U_NAME}?startgroup=start")],
-            [InlineKeyboardButton("👨‍🚒 Help", callback_data="help"), InlineKeyboardButton("📚 About", callback_data="about")],
-            [InlineKeyboardButton("💎 Premium Status", callback_data="myplan")]
-        ])
+        random.choice(PICS), caption=script.START_TXT.format(message.from_user.mention, get_wish()),
+        reply_markup=InlineKeyboardMarkup(btn)
     )
 
 # ─────────────────────────
@@ -150,285 +116,175 @@ async def start(client, message):
 @Client.on_message(filters.command("stats") & filters.user(ADMINS))
 async def stats(_, message):
     msg = await message.reply("🔄 Fetching Stats...")
-    
-    # डेटाबेस से गिनती ला रहे हैं
-    files = await db_count_documents()
-    users = await db.total_users_count()
-    chats = await db.total_chat_count()
-    premium = await db.premium.count_documents({"status.premium": True})
-    uptime = get_readable_time(time_now() - temp.START_TIME)
-
-    # ✅ FIX: अब यह सीधे Script.py के STATUS_TXT का इस्तेमाल करेगा
-    text = script.STATUS_TXT.format(
-        users, 
-        chats, 
-        premium, 
-        files['total'], 
-        files['primary'], 
-        files['cloud'], 
-        files['archive'], 
-        uptime
+    files, users, chats, premium = await asyncio.gather(
+        db_count_documents(), db.total_users_count(), db.total_chat_count(), db.premium.count_documents({"status.premium": True})
     )
-    
-    await msg.edit(text)
-
+    await msg.edit(script.STATUS_TXT.format(users, chats, premium, files['total'], files['primary'], files['cloud'], files['archive'], get_readable_time(time_now() - temp.START_TIME)))
 
 # ─────────────────────────
-# /delete COMMAND
+# ADMIN COMMANDS (/delete, /delete_all, /web)
 # ─────────────────────────
 @Client.on_message(filters.command("delete") & filters.user(ADMINS))
 async def delete_file_cmd(client, message):
-    if len(message.command) < 3:
-        return await message.reply("Usage: `/delete primary Avengers.mkv`")
-    
+    if len(message.command) < 3: return await message.reply("Usage: `/delete primary Avengers.mkv`")
     storage = message.command[1].lower()
-    query = " ".join(message.command[2:])
-    
-    if storage not in ["primary", "cloud", "archive"]:
-        return await message.reply("❌ Invalid Storage! Use: primary, cloud, archive")
+    if storage not in ["primary", "cloud", "archive"]: return await message.reply("❌ Invalid Storage! Use: primary, cloud, archive")
     
     msg = await message.reply("🗑 Deleting...")
-    count = await delete_files(query, storage)
-    
-    if count: await msg.edit(f"✅ Deleted `{count}` files from `{storage}`.")
-    else: await msg.edit("❌ No files found.")
+    count = await delete_files(" ".join(message.command[2:]), storage)
+    await msg.edit(f"✅ Deleted `{count}` files from `{storage}`." if count else "❌ No files found.")
 
-# ─────────────────────────
-# /delete_all COMMAND
-# ─────────────────────────
 @Client.on_message(filters.command("delete_all") & filters.user(ADMINS))
 async def delete_all_cmd(client, message):
-    if len(message.command) < 2:
-        return await message.reply("Usage: `/delete_all primary` or `/delete_all all`")
-    
+    if len(message.command) < 2: return await message.reply("Usage: `/delete_all primary` or `/delete_all all`")
     storage = message.command[1].lower()
-    if storage not in ["primary", "cloud", "archive", "all"]:
-        return await message.reply("❌ Invalid Storage!")
-    
-    btn = [[
-        InlineKeyboardButton("✅ CONFIRM DELETE", callback_data=f"confirm_del#{storage}"),
-        InlineKeyboardButton("❌ CANCEL", callback_data=f"close_{message.from_user.id}")
-    ]]
+    if storage not in ["primary", "cloud", "archive", "all"]: return await message.reply("❌ Invalid Storage!")
     
     await message.reply(
         f"⚠️ <b>WARNING!</b>\n\nDeleting ALL files from `{storage}`.\nConfirm?",
-        reply_markup=InlineKeyboardMarkup(btn)
+        reply_markup=InlineKeyboardMarkup([[InlineKeyboardButton("✅ CONFIRM DELETE", callback_data=f"confirm_del#{storage}"), InlineKeyboardButton("❌ CANCEL", callback_data=f"close_{message.from_user.id}")]])
     )
+
+@Client.on_message(filters.command("web") & filters.user(ADMINS))
+async def web_admin_link(client, message):
+    minutes = int(message.command[1]) if len(message.command) > 1 and message.command[1].isdigit() else 15
+    token = str(uuid.uuid4())
+    if not hasattr(temp, 'ADMIN_TOKENS'): temp.ADMIN_TOKENS = {}
+    temp.ADMIN_TOKENS[token] = time_now() + (minutes * 60)
+    
+    await message.reply(f"🔐 **Admin Web Panel Link Generated!**\n\n🔗 **Link:** {URL}admin?token={token}\n⏳ **Expires in:** {minutes} minutes\n\n⚠️ *Do not share this link with anyone!*", disable_web_page_preview=True)
 
 # ─────────────────────────
 # /link COMMAND
 # ─────────────────────────
 @Client.on_message(filters.command("link"))
 async def link_generator(client, message):
-    
-    if IS_PREMIUM and not await is_premium(message.from_user.id, client):
-        btn = [[InlineKeyboardButton("💎 Buy Premium", callback_data="activate_plan")]]
-        return await message.reply(
-            "🔒 **Premium Feature**\n\nOnly Admins and Premium Users can generate direct links.\nClick below to upgrade!",
-            reply_markup=InlineKeyboardMarkup(btn),
-            quote=True
-        )
+    if IS_PREMIUM and message.from_user.id not in ADMINS and not await is_premium(message.from_user.id, client):
+        return await message.reply("🔒 **Premium Feature**\n\nOnly Admins and Premium Users can generate direct links.", reply_markup=InlineKeyboardMarkup([[InlineKeyboardButton("💎 Buy Premium", callback_data="activate_plan")]]), quote=True)
 
-    if not message.reply_to_message:
-        return await message.reply("❌ **Please reply to a video or file to generate a link.**", quote=True)
-
-    media = message.reply_to_message.document or message.reply_to_message.video or message.reply_to_message.audio
-    if not media:
-        return await message.reply("❌ **No media found in the replied message.**", quote=True)
+    media = getattr(message.reply_to_message, 'document', None) or getattr(message.reply_to_message, 'video', None) or getattr(message.reply_to_message, 'audio', None)
+    if not media: return await message.reply("❌ **No media found in the replied message.**", quote=True)
 
     msg = await message.reply("⏳ **Generating Link...**", quote=True)
-
     try:
-        copied_msg = await message.reply_to_message.copy(BIN_CHANNEL)
-        
-        watch_url = f"{URL}watch/{copied_msg.id}"
-        download_url = f"{URL}download/{copied_msg.id}"
-        
-        btn = [
-            [
-                InlineKeyboardButton("↗️ WATCH ONLINE", url=watch_url),
-                InlineKeyboardButton("↗️ FAST DOWNLOAD", url=download_url)
-            ],
-            [
-                InlineKeyboardButton("❌ CLOSE ❌", callback_data=f"close_{message.from_user.id}")
-            ]
-        ]
-        
-        await msg.edit_text(
-            text="<i><b>Here is your link</b></i>",
-            reply_markup=InlineKeyboardMarkup(btn)
-        )
-        
-    except Exception as e:
-        await msg.edit_text(f"❌ **Error generating link:** `{e}`")
+        copied = await message.reply_to_message.copy(BIN_CHANNEL)
+        btn = [[InlineKeyboardButton("↗️ WATCH ONLINE", url=f"{URL}watch/{copied.id}"), InlineKeyboardButton("↗️ FAST DOWNLOAD", url=f"{URL}download/{copied.id}")], [InlineKeyboardButton("❌ CLOSE ❌", callback_data=f"close_{message.from_user.id}")]]
+        await msg.edit_text("<i><b>Here is your link</b></i>", reply_markup=InlineKeyboardMarkup(btn))
+    except Exception as e: await msg.edit_text(f"❌ **Error generating link:** `{e}`")
 
 # ─────────────────────────
-# /web COMMAND (MAGIC LINK GENERATOR)
+# 🎨 SMART UI CALLBACKS
 # ─────────────────────────
-@Client.on_message(filters.command("web") & filters.user(ADMINS))
-async def web_admin_link(client, message):
-    try:
-        minutes = int(message.command[1]) if len(message.command) > 1 else 15
-    except ValueError:
-        minutes = 15
-
-    token = str(uuid.uuid4())
-    expiry_time = time_now() + (minutes * 60)
-
-    if not hasattr(temp, 'ADMIN_TOKENS'):
-        temp.ADMIN_TOKENS = {}
-        
-    temp.ADMIN_TOKENS[token] = expiry_time
-    magic_link = f"{URL}admin?token={token}"
-
-    await message.reply(
-        f"🔐 **Admin Web Panel Link Generated!**\n\n"
-        f"🔗 **Link:** {magic_link}\n"
-        f"⏳ **Expires in:** {minutes} minutes\n\n"
-        f"⚠️ *Do not share this link with anyone!*",
-        disable_web_page_preview=True
-    )
-
-# ─────────────────────────
-# CALLBACKS (HELP MENU WITH SMART ADMIN CHECK)
-# ─────────────────────────
-@Client.on_callback_query(filters.regex("^help$"))
-async def help_cb(client, query):
-    text = script.HELP_TXT.format(query.from_user.mention)
+@Client.on_callback_query(filters.regex(r"^(help|user_cmds|admin_cmds|stats|back_start)$"))
+async def ui_cb(client, query):
+    data = query.data
     
-    if query.from_user.id in ADMINS:
+    if data == "back_start":
+        text = script.START_TXT.format(query.from_user.mention, get_wish())
         btn = [
-            [InlineKeyboardButton("👨‍💻 User Commands", callback_data="user_cmds"), InlineKeyboardButton("👮‍♂️ Admin Commands", callback_data="admin_cmds")],
-            [InlineKeyboardButton("⬅️ Back", callback_data="back_start")]
+            [InlineKeyboardButton("+ Add to Group +", url=f"https://t.me/{temp.U_NAME}?startgroup=start")],
+            [InlineKeyboardButton("👨‍🚒 Help", callback_data="help"), InlineKeyboardButton("📊 Stats", callback_data="stats")]
         ]
-    else:
-        btn = [
-            [InlineKeyboardButton("👨‍💻 User Commands", callback_data="user_cmds")],
-            [InlineKeyboardButton("⬅️ Back", callback_data="back_start")]
-        ]
+        # ✅ FIX: एडमिन को Premium Status नहीं दिखेगा
+        if query.from_user.id not in ADMINS:
+            btn.append([InlineKeyboardButton("💎 Premium Status", callback_data="myplan")])
+
+    elif data == "help":
+        text = script.HELP_TXT.format(query.from_user.mention)
+        btn = [[InlineKeyboardButton("👨‍💻 User Commands", callback_data="user_cmds")]]
+        if query.from_user.id in ADMINS: btn[0].append(InlineKeyboardButton("👮‍♂️ Admin Commands", callback_data="admin_cmds"))
+        btn.append([InlineKeyboardButton("⬅️ Back", callback_data="back_start")])
         
-    await query.message.edit_caption(caption=text, reply_markup=InlineKeyboardMarkup(btn))
-
-@Client.on_callback_query(filters.regex("^user_cmds$"))
-async def user_cmds_cb(client, query):
-    text = script.USER_COMMAND_TXT
-    btn = [[InlineKeyboardButton("⬅️ Back", callback_data="help")]]
-    await query.message.edit_caption(caption=text, reply_markup=InlineKeyboardMarkup(btn))
-
-@Client.on_callback_query(filters.regex("^admin_cmds$"))
-async def admin_cmds_cb(client, query):
-    if query.from_user.id not in ADMINS:
-        return await query.answer("❌ You are not an Admin!", show_alert=True)
+    elif data == "user_cmds":
+        text = script.USER_COMMAND_TXT
+        btn = [[InlineKeyboardButton("⬅️ Back", callback_data="help")]]
         
-    text = script.ADMIN_COMMAND_TXT
-    btn = [[InlineKeyboardButton("⬅️ Back", callback_data="help")]]
-    await query.message.edit_caption(caption=text, reply_markup=InlineKeyboardMarkup(btn))
+    elif data == "admin_cmds":
+        # 🔒 Security Check
+        if query.from_user.id not in ADMINS: return await query.answer("❌ You are not an Admin!", show_alert=True)
+        text = script.ADMIN_COMMAND_TXT
+        btn = [[InlineKeyboardButton("⬅️ Back", callback_data="help")]]
+        
+    elif data == "stats":
+        files = await db_count_documents()
+        uptime = get_readable_time(time_now() - temp.START_TIME)
 
-@Client.on_callback_query(filters.regex("^about$"))
-async def about_cb(client, query):
-    text = script.MY_ABOUT_TXT
-    btn = [[InlineKeyboardButton("⬅️ Back", callback_data="back_start")]]
-    await query.message.edit_caption(caption=text, reply_markup=InlineKeyboardMarkup(btn), disable_web_page_preview=True)
+        # 🔒 Security Check: Admin को पूरा Stats दिखेगा, Premium User को सिर्फ Files और Uptime
+        if query.from_user.id in ADMINS:
+            users, chats, premium = await asyncio.gather(
+                db.total_users_count(), 
+                db.total_chat_count(), 
+                db.premium.count_documents({"status.premium": True})
+            )
+            text = script.STATUS_TXT.format(
+                users, chats, premium, 
+                files['total'], files['primary'], files['cloud'], files['archive'], 
+                uptime
+            )
+        else:
+            # ✅ प्रीमियम यूजर के लिए Script.py वाला USER_STATUS_TXT इस्तेमाल होगा
+            text = script.USER_STATUS_TXT.format(
+                files['total'], files['primary'], files['cloud'], files['archive'], 
+                uptime
+            )
+        
+        btn = [[InlineKeyboardButton("⬅️ Back", callback_data="back_start")]]
 
-@Client.on_callback_query(filters.regex("^back_start$"))
-async def back_start_cb(client, query):
-    btn = [
-        [InlineKeyboardButton("+ Add to Group +", url=f"https://t.me/{temp.U_NAME}?startgroup=start")],
-        [InlineKeyboardButton("👨‍🚒 Help", callback_data="help"), InlineKeyboardButton("📚 About", callback_data="about")],
-        [InlineKeyboardButton("💎 Premium Status", callback_data="myplan")]
-    ]
     await query.message.edit_caption(
-        caption=script.START_TXT.format(query.from_user.mention, get_wish()),
+        caption=text, 
         reply_markup=InlineKeyboardMarkup(btn)
     )
 
+# ─────────────────────────
+# OTHER CALLBACKS
+# ─────────────────────────
 @Client.on_callback_query(filters.regex(r"^confirm_del#"))
 async def confirm_del(client, query):
-    if query.from_user.id not in ADMINS:
-        return await query.answer("❌ You are not an Admin!", show_alert=True)
-        
+    # 🔒 Security Check
+    if query.from_user.id not in ADMINS: return await query.answer("❌ You are not an Admin!", show_alert=True)
+    
     storage = query.data.split("#")[1]
     await query.message.edit("🗑 Processing... This may take time.")
-    
     count = await delete_files("*", storage)
     await query.message.edit(f"✅ Deleted `{count}` files from `{storage}`.")
-
-@Client.on_callback_query(filters.regex("^myplan$"))
-async def myplan_cb(client, query):
-    if not IS_PREMIUM: return await query.answer("Premium disabled.", show_alert=True)
-    
-    mp = await db.get_plan(query.from_user.id)
-    if not mp.get('premium'):
-        btn = [[
-            InlineKeyboardButton('💎 Buy Premium', callback_data='activate_plan'),
-            InlineKeyboardButton("⬅️ Back", callback_data="back_start")
-        ]]
-        return await query.message.edit_caption("❌ No active plan.", reply_markup=InlineKeyboardMarkup(btn))
-    
-    expire = mp.get('expire')
-    if isinstance(expire, str):
-        try: expire = datetime.strptime(expire, "%Y-%m-%d %H:%M:%S")
-        except: expire = None
-        
-    left = "Unknown"
-    if expire:
-        diff = expire - datetime.now()
-        left = f"{diff.days} days, {diff.seconds//3600} hours"
-
-    btn = [[InlineKeyboardButton("⬅️ Back", callback_data="back_start")]]
-    await query.message.edit_caption(
-        f"💎 <b>Premium Status</b>\n\n"
-        f"📦 Plan: {mp.get('plan')}\n"
-        f"⏳ Expires: {expire}\n"
-        f"⏱ Left: {left}\n\n"
-        f"Use /plan to extend.",
-        reply_markup=InlineKeyboardMarkup(btn)
-    )
 
 @Client.on_callback_query(filters.regex(r"^stream#"))
 async def stream_cb(client, query):
     file_id = query.data.split("#")[1]
     await query.answer("🔗 Generating Links...")
-    
     try:
         msg = await client.send_cached_media(BIN_CHANNEL, file_id)
-        watch = f"{URL}watch/{msg.id}"
-        dl = f"{URL}download/{msg.id}"
-        
-        btn = [
-            [InlineKeyboardButton("▶️ Watch", url=watch), InlineKeyboardButton("⬇️ Download", url=dl)],
-            [InlineKeyboardButton("❌ Close", callback_data=f"close_{query.from_user.id}")]
-        ]
+        btn = [[InlineKeyboardButton("▶️ Watch", url=f"{URL}watch/{msg.id}"), InlineKeyboardButton("⬇️ Download", url=f"{URL}download/{msg.id}")], [InlineKeyboardButton("❌ Close", callback_data=f"close_{query.from_user.id}")]]
         await query.message.edit_reply_markup(InlineKeyboardMarkup(btn))
-    except Exception as e:
-        await query.answer(f"Error: {e}", show_alert=True)
+    except Exception as e: await query.answer(f"Error: {e}", show_alert=True)
 
 @Client.on_callback_query(filters.regex(r"^logout_"))
 async def web_logout_callback(client, query):
+    # 🔒 Security Check: कोई और यूज़र एडमिन का वेब सेशन बंद नहीं कर सकता
+    if query.from_user.id not in ADMINS: 
+        return await query.answer("❌ You are not authorized!", show_alert=True)
+
     session_id = query.data.split("_")[1]
-    
     if hasattr(temp, 'ADMIN_SESSIONS') and session_id in temp.ADMIN_SESSIONS:
         del temp.ADMIN_SESSIONS[session_id]
         await query.answer("✅ Web Session Terminated!", show_alert=True)
-        await query.message.edit("🛑 **Web Access Disconnected.**\n\nThe dashboard session has been killed. To access again, you must login via the website.")
+        await query.message.edit("🛑 **Web Access Disconnected.**\n\nThe dashboard session has been killed.")
     else:
-        await query.answer("⚠️ Session already expired or invalid.", show_alert=True)
+        await query.answer("⚠️ Session expired or invalid.", show_alert=True)
         await query.message.delete()
 
 @Client.on_callback_query(filters.regex(r"^close_"))
 async def close_cb(c, q):
     try:
         parts = q.data.split("_")
-        if len(parts) > 1 and parts[1].isdigit():
-            req_id = int(parts[1])
-            if req_id != q.from_user.id:
-                return await q.answer("❌ You cannot close this!", show_alert=True)
-
+        # 🔒 Security Check: सिर्फ वही यूज़र क्लोज कर सकता है जिसने रिक्वेस्ट की थी
+        if len(parts) > 1 and parts[1].isdigit() and int(parts[1]) != q.from_user.id:
+            return await q.answer("❌ You cannot close this!", show_alert=True)
+        
         await q.message.delete()
         if hasattr(temp, 'PM_FILES') and q.message.id in temp.PM_FILES:
             try:
-                note_id = temp.PM_FILES[q.message.id]['note_msg']
-                await c.delete_messages(q.message.chat.id, note_id)
+                await c.delete_messages(q.message.chat.id, temp.PM_FILES[q.message.id]['note_msg'])
                 del temp.PM_FILES[q.message.id]
             except: pass
     except: pass
