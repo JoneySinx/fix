@@ -1,234 +1,70 @@
 from aiohttp import web
-import time
-import uuid
+import time, uuid
 from info import ADMIN_USERNAME, ADMIN_PASSWORD, ADMINS
-from utils import temp, get_size
+from utils import temp
 from database.users_chats_db import db as user_db
-from database.ia_filterdb import db_count_documents, get_search_results, COLLECTIONS
-from hydrogram.types import InlineKeyboardMarkup, InlineKeyboardButton
+from database.ia_filterdb import db_count_documents
+from hydrogram.types import InlineKeyboardMarkup as IKM, InlineKeyboardButton as IKB
 
 admin_routes = web.RouteTableDef()
 
-def is_logged_in(request):
-    session_id = request.cookies.get('admin_session')
-    if not hasattr(temp, 'ADMIN_SESSIONS'): return False
-    return session_id in temp.ADMIN_SESSIONS and time.time() < temp.ADMIN_SESSIONS[session_id]
+# ----------------- MINIFIED ASSETS -----------------
+CSS = "*{box-sizing:border-box;margin:0;padding:0}:root{--bg:#141414;--bg2:#000;--bg3:#2b2b2b;--bg4:#333;--accent:#e50914;--accent-hover:#b30710;--text:#fff;--muted:#808080;--border:#404040;--card:#181818;--sidebar-w:260px}body.light{--bg:#f3f3f3;--bg2:#fff;--bg3:#e6e6e6;--bg4:#ccc;--text:#141414;--muted:#666;--border:#ccc;--card:#fff}body{font-family:'DM Sans',sans-serif;background:var(--bg);color:var(--text);min-height:100vh;overflow-x:hidden;transition:.2s}.topbar{background:var(--bg2);padding:0 4%;display:flex;align-items:center;height:68px;position:sticky;top:0;z-index:100;gap:15px;box-shadow:0 2px 10px rgba(0,0,0,.5)}.ham-btn{background:0 0;border:0;cursor:pointer;color:var(--text);display:flex;flex-direction:column;gap:5px;padding:6px}.ham-line{width:22px;height:2px;background:currentColor;transition:.2s}.ham-btn.open .ham-line:nth-child(1){transform:translateY(7px) rotate(45deg)}.ham-btn.open .ham-line:nth-child(2){opacity:0}.ham-btn.open .ham-line:nth-child(3){transform:translateY(-7px) rotate(-45deg)}.logo{font-size:18px;font-weight:900;letter-spacing:1px;color:var(--accent);display:flex;align-items:center;gap:8px;text-decoration:none;flex:1}.nf-icon{background:var(--accent);color:#fff;padding:2px 7px;border-radius:3px;font-size:18px;line-height:1}.theme-btn{margin-left:auto;background:0 0;border:1px solid var(--border);border-radius:4px;padding:6px 12px;font-size:12px;font-weight:700;color:var(--text);cursor:pointer}.theme-btn:hover{background:var(--bg3)}.sidebar-overlay{position:fixed;inset:0;background:rgba(0,0,0,.7);z-index:150;opacity:0;pointer-events:none;transition:.2s}.sidebar-overlay.open{opacity:1;pointer-events:all}.sidebar{position:fixed;top:0;left:0;height:100%;width:var(--sidebar-w);background:var(--bg2);border-right:1px solid var(--border);z-index:160;display:flex;flex-direction:column;transform:translateX(-100%);transition:.3s}.sidebar.open{transform:translateX(0)}.sb-header{padding:20px;border-bottom:1px solid var(--border);display:flex;justify-content:space-between}.sb-logo{font-size:14px;font-weight:900;color:var(--accent);display:flex;align-items:center;gap:8px}.sb-close{background:0 0;border:0;color:var(--muted);font-size:22px;cursor:pointer}.sb-nav{padding:15px 10px;flex:1}.sb-section{font-size:11px;font-weight:700;color:var(--muted);padding:8px 12px}.sb-link{display:flex;padding:12px 15px;border-radius:4px;text-decoration:none;color:var(--muted);font-size:15px;font-weight:500;margin-bottom:4px}.sb-link.active{background:var(--accent);color:#fff}.sb-footer{padding:15px 10px;border-top:1px solid var(--border)}.sb-logout{display:block;padding:12px;border-radius:4px;text-align:center;text-decoration:none;color:var(--text);font-weight:700;border:1px solid var(--border)}.search-zone{padding:20px 4%;background:var(--bg)}.search-row{display:flex;gap:10px;flex-wrap:wrap}.filter-tabs{display:flex;gap:4px;background:var(--bg2);border:1px solid var(--border);padding:4px;border-radius:4px}.ftab{background:0 0;border:0;padding:8px 16px;font-weight:700;color:var(--muted);cursor:pointer}.ftab.active{background:var(--bg3);color:var(--text)}.search-wrap{flex:1;position:relative;min-width:200px}.s-icon{position:absolute;left:15px;top:50%;transform:translateY(-50%);color:var(--muted)}.search-input{width:100%;background:var(--bg2);border:1px solid var(--border);border-radius:4px;padding:12px 15px 12px 42px;color:var(--text);font-size:15px;outline:0}.search-btn{background:var(--accent);color:#fff;border:0;border-radius:4px;padding:12px 24px;font-weight:700;cursor:pointer}.main{padding:0 4% 40px;max-width:1400px;margin:0 auto}.stats-row{display:grid;grid-template-columns:repeat(auto-fit,minmax(200px,1fr));gap:15px;margin-bottom:30px}.scard{background:var(--card);padding:20px;border-radius:4px;position:relative;box-shadow:0 4px 6px rgba(0,0,0,.3)}.scard::after{content:'';position:absolute;bottom:0;left:0;right:0;height:3px}.scard.red::after{background:var(--accent)}.scard.white::after{background:#fff}.scard.grey::after{background:#808080}.scard-label{font-size:12px;font-weight:700;color:var(--muted);margin-bottom:10px}.scard-val{font-size:32px;font-weight:900;color:var(--text)}.scard-sub{font-size:12px;color:var(--muted)}.results-info{display:none;justify-content:space-between;padding:10px 0 20px;font-weight:700}.file-card{background:var(--card);border-radius:4px;padding:18px;display:flex;justify-content:space-between;align-items:center;gap:15px;margin-bottom:12px;border:1px solid var(--bg3)}.fc-left{flex:1}.fc-top{display:flex;gap:8px;margin-bottom:8px}.source-badge{font-size:10px;font-weight:900;padding:2px 6px;border-radius:2px;border:1px solid}.source-badge.primary{color:var(--accent);border-color:var(--accent)}.source-badge.cloud{color:#fff;border-color:#fff}.source-badge.archive{color:var(--muted);border-color:var(--muted)}.type-tag{font-size:12px;font-weight:700;color:var(--muted)}.fc-name{font-size:16px;font-weight:500;margin-bottom:6px}.fc-meta{font-size:13px;color:var(--muted)}.btn-play{background:#fff;color:#000;padding:10px 24px;border-radius:4px;font-weight:800;text-decoration:none;display:flex;gap:8px}.empty{text-align:center;padding:80px 20px;color:var(--muted)}.empty-icon{font-size:40px;margin-bottom:15px}.pagination{display:none;justify-content:center;gap:15px;padding:30px 0;align-items:center}.pg-btn{background:var(--bg3);border:0;color:var(--text);padding:10px 20px;border-radius:4px;font-weight:700;cursor:pointer}.pg-btn:disabled{opacity:.3}.toast{position:fixed;bottom:20px;right:20px;background:var(--accent);color:#fff;padding:12px 20px;border-radius:4px;font-weight:700;z-index:300;transform:translateX(150%);transition:.3s}.toast.show{transform:translateX(0)}.toast.error{background:#000;border:1px solid var(--accent)}.login-bg{background:linear-gradient(rgba(0,0,0,.8) 0,rgba(0,0,0,.4) 50%,rgba(0,0,0,.8) 100%),url('https://assets.nflxext.com/ffe/siteui/vlv3/f841d4c7-10e1-40af-bcae-07a3f8dc141a/f6d7434e-d6de-4185-a6d4-c77a2d08737b/IN-en-20220502-popsignuptwoweeks-perspective_alpha_website_medium.jpg') center/cover;min-height:100vh;display:flex;flex-direction:column}.login-top{padding:20px 4%}.login-logo-big{font-size:32px;font-weight:900;color:var(--accent);display:flex;gap:8px}.login-wrap{flex:1;display:flex;align-items:center;justify-content:center;padding:20px}.login-card{background:rgba(0,0,0,.75);padding:60px;border-radius:4px;width:100%;max-width:450px}.login-card h2{font-size:32px;margin-bottom:28px}.login-card input{width:100%;background:#333;border:0;padding:16px;color:#fff;margin-bottom:16px;border-radius:4px}.login-card .submit-btn{width:100%;background:var(--accent);color:#fff;border:0;padding:16px;font-weight:700;margin-top:24px;border-radius:4px;cursor:pointer}.err-box{background:#e87c03;color:#fff;padding:10px 20px;border-radius:4px;margin-bottom:16px}.big-stat{background:var(--card);padding:40px 20px;border-radius:4px;text-align:center;margin-bottom:30px}.big-stat-val{font-size:64px;font-weight:900;color:var(--accent);margin-bottom:10px}.big-stat-label{font-size:16px;color:var(--muted);font-weight:700;letter-spacing:2px}"
+JS = "(function(){if(localStorage.getItem('theme')==='light')document.body.classList.add('light')})();function toggleTheme(){var l=document.body.classList.toggle('light');localStorage.setItem('theme',l?'light':'dark');}function openSidebar(){document.getElementById('sidebar').classList.add('open');document.getElementById('sbOverlay').classList.add('open');document.getElementById('hamBtn').classList.add('open');}function closeSidebar(){document.getElementById('sidebar').classList.remove('open');document.getElementById('sbOverlay').classList.remove('open');document.getElementById('hamBtn').classList.remove('open');}var curQ='',curOff=0,nextOff='',curCol='all',curPage=1;function setCol(e){document.querySelectorAll('.ftab').forEach(t=>t.classList.remove('active'));e.classList.add('active');curCol=e.dataset.col;}async function doSearch(o){var q=document.getElementById('q').value.trim();if(!q){showToast('Please enter a movie name','error');return;}curQ=q;curOff=o;if(o===0)curPage=1;try{var r=await fetch(`/api/search?q=${encodeURIComponent(q)}&offset=${o}&col=${curCol}`);if(!r.ok){showToast('Error fetching','error');return;}var d=await r.json();if(d.error){showToast(d.error,'error');return;}document.getElementById('resInfo').style.display='flex';document.getElementById('resCount').innerHTML=`More to explore: <span style=\"color:var(--text)\">${q}</span>`;if(!d.results||!d.results.length){document.getElementById('results').innerHTML=`<div class=\"empty\"><div class=\"empty-icon\">&#9888;</div><p>No titles found for \"${q}\"</p></div>`;document.getElementById('pageBox').style.display='none';return;}var h='';d.results.forEach(f=>{var sc=(f.source||'primary').toLowerCase();if(!['primary','cloud','archive'].includes(sc))sc='primary';h+=`<div class=\"file-card\"><div class=\"fc-left\"><div class=\"fc-top\"><span class=\"source-badge ${sc}\">${sc.toUpperCase()}</span><span class=\"type-tag\">${f.type.toUpperCase()}</span></div><div class=\"fc-name\">${f.name}</div><div class=\"fc-meta\">Size: ${f.size}</div></div><a href=\"${f.watch}\" target=\"_blank\" class=\"btn-play\">&#9654; Play</a></div>`;});document.getElementById('results').innerHTML=h;nextOff=d.next_offset;document.getElementById('pageBox').style.display='flex';document.getElementById('pBtn').disabled=(o===0);document.getElementById('nBtn').disabled=!nextOff;document.getElementById('pgInfo').textContent='Page '+curPage;}catch(e){showToast('Network error','error');}}function next(){if(nextOff){curPage++;doSearch(nextOff);scrollTo(0,0);}}function prev(){if(curPage>1){curPage--;doSearch(Math.max(0,curOff-20));scrollTo(0,0);}}var _tt;function showToast(m,t='success'){var x=document.getElementById('toast');x.textContent=m;x.className=`toast ${t} show`;clearTimeout(_tt);_tt=setTimeout(()=>x.classList.remove('show'),3000);}document.addEventListener('DOMContentLoaded',()=>{var q=document.getElementById('q');if(q)q.addEventListener('keydown',e=>{if(e.key==='Enter')doSearch(0);});});"
 
+# ----------------- UTILS & BUILDERS -----------------
+def _h(html): return web.Response(text=html.encode('utf-8','replace').decode('utf-8'), content_type='text/html', charset='utf-8')
+
+def is_auth(req): 
+    s = req.cookies.get('admin_session')
+    return bool(s and hasattr(temp, 'ADMIN_SESSIONS') and s in temp.ADMIN_SESSIONS and time.time() < temp.ADMIN_SESSIONS[s])
+
+def build_page(title, body, cls="", ad="", as_=""):
+    nav = f'<div class="sidebar-overlay" id="sbOverlay" onclick="closeSidebar()"></div><div class="sidebar" id="sidebar"><div class="sb-header"><div class="sb-logo"><span class="nf-icon">F</span> FAST FINDER</div><button class="sb-close" onclick="closeSidebar()">&#10005;</button></div><nav class="sb-nav"><div class="sb-section">Menu</div><a href="/dashboard" class="sb-link {ad}">Home</a><a href="/stats" class="sb-link {as_}">Database Stats</a></nav><div class="sb-footer"><a href="/logout" class="sb-logout">Sign Out</a></div></div><div class="topbar"><button class="ham-btn" id="hamBtn" onclick="openSidebar()"><span class="ham-line"></span><span class="ham-line"></span><span class="ham-line"></span></button><a class="logo" href="/dashboard"><span class="nf-icon">F</span> FAST FINDER</a><div class="topbar-right"><button class="theme-btn" onclick="toggleTheme()">Theme</button></div></div>' if ad or as_ else ""
+    return _h(f'<!DOCTYPE html><html><head><title>{title}</title><meta name="viewport" content="width=device-width,initial-scale=1"><link href="https://fonts.googleapis.com/css2?family=DM+Sans:wght@400;500;700;900&display=swap" rel="stylesheet"><style>{CSS}</style><script>{JS}</script></head><body class="{cls}">{nav}{body}</body></html>')
+
+def login_form(err=""):
+    e = f'<div class="err-box">{err}</div>' if err else ""
+    return f'<div class="login-top"><div class="login-logo-big"><span class="nf-icon" style="font-size:32px">F</span> FAST FINDER</div></div><div class="login-wrap"><div class="login-card"><h2>Sign In</h2>{e}<form action="/login" method="post"><input type="text" name="user" placeholder="Email or phone number" required autocomplete="off"><input type="password" name="pass" placeholder="Password" required><button class="submit-btn" type="submit">Sign In</button></form></div></div>'
+
+# ----------------- ROUTES -----------------
 @admin_routes.get('/admin')
-async def login_page(request):
-    html = f"""
-    <html><head><meta name="viewport" content="width=device-width, initial-scale=1">
-    <style>
-        body {{ font-family: sans-serif; display: flex; justify-content: center; align-items: center; height: 100vh; background: #0f0f1a; margin: 0; color: white; }}
-        .box {{ background: #1a1a2e; padding: 30px; border-radius: 15px; box-shadow: 0 10px 30px rgba(0,0,0,0.5); width: 300px; text-align: center; }}
-        input {{ width: 100%; padding: 12px; margin: 10px 0; border: 1px solid #333; border-radius: 8px; background: #16213e; color: white; box-sizing: border-box; outline: none; }}
-        button {{ width: 100%; padding: 12px; background: #00d2ff; color: #0f0f1a; border: none; border-radius: 8px; cursor: pointer; font-weight: bold; font-size: 16px; margin-top: 10px; }}
-    </style></head><body><div class="box"><h2>🔐 Admin Login</h2><form action="/login" method="post">
-    <input type="text" name="user" placeholder="Username" required><input type="password" name="pass" placeholder="Password" required>
-    <button type="submit">Login</button></form></div></body></html>
-    """
-    return web.Response(text=html, content_type='text/html')
+async def login_p(req): return build_page("Sign In", login_form(), "login-bg")
 
 @admin_routes.post('/login')
-async def login_post(request):
-    data = await request.post()
-    if data.get('user') == ADMIN_USERNAME and data.get('pass') == ADMIN_PASSWORD:
-        session_id = str(uuid.uuid4())
+async def login_post(req):
+    d = await req.post()
+    if d.get('user') == ADMIN_USERNAME and d.get('pass') == ADMIN_PASSWORD:
+        s = str(uuid.uuid4())
         if not hasattr(temp, 'ADMIN_SESSIONS'): temp.ADMIN_SESSIONS = {}
-        temp.ADMIN_SESSIONS[session_id] = time.time() + 3600
+        temp.ADMIN_SESSIONS[s] = time.time() + 3600
         res = web.HTTPFound('/dashboard')
-        res.set_cookie('admin_session', session_id, max_age=3600)
-        try:
-            btn = [[InlineKeyboardButton("🛑 Disconnect Web Session", callback_data=f"logout_{session_id}")]]
-            await temp.BOT.send_message(
-                chat_id=ADMINS[0], 
-                text="✅ **Web Login Detected!**\n\nYour session is active for 1 hour.",
-                reply_markup=InlineKeyboardMarkup(btn)
-            )
+        res.set_cookie('admin_session', s, max_age=3600)
+        try: await temp.BOT.send_message(ADMINS[0], "✅ **Fast Finder Web Login!**", reply_markup=IKM([[IKB("🛑 Disconnect", callback_data=f"logout_{s}")]]))
         except: pass
         return res
-    return web.Response(text="<html><body style='background:#0f0f1a;color:red;text-align:center;padding:50px;'><h2>❌ Wrong Credentials!</h2><a href='/admin' style='color:white;'>Try Again</a></body></html>", content_type='text/html')
-
-@admin_routes.post('/api/edit_file')
-async def edit_file_api(request):
-    if not is_logged_in(request): return web.json_response({"err": "no"}, status=403)
-    data = await request.json()
-    fid, name = data.get('id'), data.get('name')
-    for col in COLLECTIONS.values():
-        res = await col.update_one({"_id": fid}, {"$set": {"file_name": name}})
-        if res.modified_count > 0: return web.json_response({"status": "success"})
-    return web.json_response({"status": "fail"})
-
-@admin_routes.post('/api/delete_file')
-async def delete_file_api(request):
-    if not is_logged_in(request): return web.json_response({"err": "no"}, status=403)
-    data = await request.json()
-    fid = data.get('id')
-    for col in COLLECTIONS.values():
-        res = await col.delete_one({"_id": fid})
-        if res.deleted_count > 0: return web.json_response({"status": "success"})
-    return web.json_response({"status": "fail"})
+    return build_page("Sign In", login_form("Sorry, account not found. Try again."), "login-bg")
 
 @admin_routes.get('/dashboard')
-async def admin_dashboard(request):
-    if not is_logged_in(request): return web.HTTPFound('/admin')
-    stats = await db_count_documents()
-    total_u = await user_db.total_users_count()
+async def dash(req):
+    if not is_auth(req): return web.HTTPFound('/admin')
+    b = '<div class="search-zone"><div class="search-row"><div class="filter-tabs"><button class="ftab active" data-col="all" onclick="setCol(this)">All</button><button class="ftab" data-col="primary" onclick="setCol(this)">Movies</button><button class="ftab" data-col="cloud" onclick="setCol(this)">Series</button><button class="ftab" data-col="archive" onclick="setCol(this)">Archive</button></div><div class="search-wrap"><span class="s-icon">&#9906;</span><input class="search-input" id="q" placeholder="Titles, people, genres"></div><button class="search-btn" onclick="doSearch(0)">Search</button></div></div><div class="main" style="padding-top:20px;"><div class="results-info" id="resInfo"><span class="results-count" id="resCount"></span></div><div id="results"><div class="empty"><div class="empty-icon">&#8981;</div><p>Find your favorite movies and TV shows.</p></div></div><div class="pagination" id="pageBox"><button class="pg-btn" id="pBtn" onclick="prev()" disabled>Previous</button><span class="pg-info" id="pgInfo">Page 1</span><button class="pg-btn" id="nBtn" onclick="next()">Next</button></div></div><div class="toast" id="toast"></div>'
+    return build_page("Home - Fast Finder", b, "", "active", "")
 
-    html = f"""
-    <!DOCTYPE html><html><head>
-    <title>Admin Dashboard</title>
-    <meta name="viewport" content="width=device-width, initial-scale=1">
-    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css">
-    <style>
-        body {{ font-family: 'Segoe UI', sans-serif; background: #0f0f1a; color: white; margin: 0; padding: 15px; }}
-        .container {{ max-width: 800px; margin: auto; }}
-        .header {{ text-align: center; margin-bottom: 25px; background: #1a1a2e; padding: 20px; border-radius: 15px; }}
-        
-        /* SEARCH BOX WITH DROPDOWN */
-        .search-box {{ display: flex; gap: 5px; margin-bottom: 20px; flex-wrap: wrap; }}
-        .search-box select {{ padding: 12px; border-radius: 30px; border: 1px solid #333; background: #16213e; color: #00d2ff; outline: none; font-weight: bold; cursor: pointer; }}
-        .search-box input {{ flex: 1; min-width: 200px; padding: 15px 20px; border-radius: 30px; border: 1px solid #333; background: #16213e; color: white; outline: none; }}
-        .search-box button {{ padding: 12px 25px; border-radius: 30px; border: none; background: #00d2ff; color: #0f0f1a; font-weight: bold; cursor: pointer; }}
-        
-        #results-info {{ color: #00d2ff; font-weight: bold; margin-bottom: 15px; display: none; text-align: center; }}
-        
-        .card {{ background: #1a1a2e; padding: 20px; border-radius: 15px; margin-bottom: 15px; box-shadow: 0 5px 15px rgba(0,0,0,0.2); border-left: 4px solid #00d2ff; position: relative; }}
-        .card-title {{ font-weight: bold; margin-bottom: 8px; font-size: 16px; line-height: 1.4; word-break: break-all; padding-right: 50px; }}
-        .card-meta {{ font-size: 13px; color: #a0a0b0; margin-bottom: 15px; }}
-        
-        /* COLLECTION BADGE (Primary/Cloud/Archive) */
-        .source-badge {{ position: absolute; top: 15px; right: 15px; background: #3a3a5e; color: #00d2ff; padding: 3px 8px; border-radius: 5px; font-size: 11px; font-weight: bold; }}
-        
-        .btn-group {{ display: flex; gap: 10px; }}
-        .btn-play {{ flex: 1; background: #28a745; color: white; text-align: center; padding: 10px; border-radius: 8px; text-decoration: none; font-weight: bold; }}
-        
-        .btn-action {{ background: #3a3a5e; color: white; padding: 10px 15px; border-radius: 8px; cursor: pointer; border: none; }}
-        .dropdown {{ display: none; position: absolute; right: 0; top: 45px; background: white; border-radius: 8px; min-width: 120px; box-shadow: 0 5px 20px rgba(0,0,0,0.5); z-index: 10; }}
-        .dropdown button {{ display: block; width: 100%; padding: 12px; border: none; background: none; text-align: left; cursor: pointer; font-size: 14px; color: #333; }}
-        .dropdown button:hover {{ background: #f0f0f0; }}
-        .drop-del {{ color: #dc3545 !important; font-weight: bold; border-top: 1px solid #eee !important; }}
+@admin_routes.get('/stats')
+async def stats(req):
+    if not is_auth(req): return web.HTTPFound('/admin')
+    try: s = await db_count_documents(); s = s if isinstance(s, dict) else {'total':s,'primary':s,'cloud':0,'archive':0}
+    except: s = {'total':0,'primary':0,'cloud':0,'archive':0}
+    try: u = await user_db.total_users_count()
+    except: u = 0
+    b = f'<div class="main" style="padding-top:40px;"><div class="big-stat"><div class="big-stat-val">{s.get("total",0):,}</div><div class="big-stat-label">Total Titles Available</div></div><div class="stats-row"><div class="scard red"><div class="scard-label">Movies</div><div class="scard-val">{s.get("primary",0):,}</div><div class="scard-sub">Primary source</div></div><div class="scard white"><div class="scard-label">Series</div><div class="scard-val">{s.get("cloud",0):,}</div><div class="scard-sub">Cloud storage</div></div><div class="scard grey"><div class="scard-label">Archive</div><div class="scard-val">{s.get("archive",0):,}</div><div class="scard-sub">Backup library</div></div><div class="scard red"><div class="scard-label">Profiles</div><div class="scard-val">{u:,}</div><div class="scard-sub">Active watchers</div></div></div></div>'
+    return build_page("Stats - Fast Finder", b, "", "", "active")
 
-        .pagination {{ display: none; justify-content: center; gap: 15px; margin-top: 25px; }}
-        .pagination button {{ padding: 10px 20px; background: #16213e; color: white; border-radius: 8px; border: 1px solid #333; cursor: pointer; }}
-        
-        #editModal {{ display: none; position: fixed; top:0; left:0; width:100%; height:100%; background:rgba(0,0,0,0.8); justify-content: center; align-items: center; z-index: 100; }}
-        .modal-content {{ background: white; padding: 25px; border-radius: 12px; width: 90%; max-width: 400px; color: #333; }}
-        .modal-content input {{ width: 100%; padding: 12px; margin: 15px 0; border: 1px solid #ddd; border-radius: 8px; box-sizing: border-box; }}
-    </style>
-    </head><body>
-    
-    <div class="container">
-        <div class="header">
-            <h1>🍿 Admin Control</h1>
-            <p>Total Files: <b>{stats['total']}</b> | Users: <b>{total_u}</b></p>
-        </div>
-
-        <div class="search-box">
-            <select id="colSelect">
-                <option value="all">🌍 All</option>
-                <option value="primary">📁 Primary</option>
-                <option value="cloud">☁️ Cloud</option>
-                <option value="archive">📦 Archive</option>
-            </select>
-            <input type="text" id="q" placeholder="Search file name...">
-            <button onclick="search(0)">Search</button>
-        </div>
-        
-        <div id="results-info"></div>
-        <div id="results"></div>
-
-        <div class="pagination" id="page-box">
-            <button id="pBtn" onclick="prev()">⬅️ Previous</button>
-            <button id="nBtn" onclick="next()">Next ➡️</button>
-        </div>
-    </div>
-
-    <div id="editModal"><div class="modal-content">
-        <h3>📝 Edit File Name</h3>
-        <input type="text" id="newName">
-        <input type="hidden" id="editFid">
-        <div style="display:flex; gap:10px;">
-            <button onclick="saveEdit()" style="flex:1; background:#28a745; color:white; border:none; padding:12px; border-radius:8px;">Save</button>
-            <button onclick="closeModal()" style="flex:1; background:#6c757d; color:white; border:none; padding:12px; border-radius:8px;">Cancel</button>
-        </div>
-    </div></div>
-
-    <script>
-    let curQ = "", curOff = 0, nextOff = "", curCol = "all";
-
-    async function search(off) {{
-        let q = document.getElementById('q').value;
-        let col = document.getElementById('colSelect').value;
-        if(!q) return;
-        
-        curQ = q; curOff = off; curCol = col;
-        let res = await fetch(`/api/search?q=${{encodeURIComponent(q)}}&offset=${{off}}&col=${{col}}`);
-        let data = await res.json();
-        
-        document.getElementById('results-info').style.display = 'block';
-        document.getElementById('results-info').innerText = `📊 Found ${{data.total}} Results`;
-
-        let out = "";
-        data.results.forEach(f => {{
-            let fid = f.watch.split('file_id=')[1].split('&')[0];
-            out += `
-            <div class="card" id="row-${{fid}}">
-                <span class="source-badge">${{f.source}}</span> <div class="card-title">${{f.name}}</div>
-                <div class="card-meta">💾 ${{f.size}} | 📁 ${{f.type}}</div>
-                <div class="btn-group">
-                    <a href="${{f.watch}}" target="_blank" class="btn-play">▶️ Play</a>
-                    <div style="position:relative">
-                        <button class="btn-action" onclick="toggleDrop('${{fid}}')"><i class="fas fa-ellipsis-v"></i> Action</button>
-                        <div class="dropdown" id="drop-${{fid}}">
-                            <button onclick="openEdit('${{fid}}', '${{f.name.replace(/'/g, "\\'")}}')"><i class="fas fa-edit"></i> Edit</button>
-                            <button class="drop-del" onclick="deleteFile('${{fid}}')"><i class="fas fa-trash"></i> Delete</button>
-                        </div>
-                    </div>
-                </div>
-            </div>`;
-        }});
-        document.getElementById('results').innerHTML = out || "<h3 style='text-align:center;'>❌ No Files Found in this collection.</h3>";
-        
-        nextOff = data.next_offset;
-        document.getElementById('page-box').style.display = 'flex';
-        document.getElementById('pBtn').style.display = off > 0 ? 'block' : 'none';
-        document.getElementById('nBtn').style.display = nextOff ? 'block' : 'none';
-    }}
-
-    function toggleDrop(id) {{
-        let d = document.getElementById('drop-'+id);
-        document.querySelectorAll('.dropdown').forEach(x => {{ if(x.id !== 'drop-'+id) x.style.display = 'none'; }});
-        d.style.display = (d.style.display === 'block') ? 'none' : 'block';
-    }}
-
-    function openEdit(id, name) {{
-        document.getElementById('editFid').value = id;
-        document.getElementById('newName').value = name;
-        document.getElementById('editModal').style.display = 'flex';
-    }}
-
-    function closeModal() {{ document.getElementById('editModal').style.display = 'none'; }}
-
-    async function saveEdit() {{
-        let id = document.getElementById('editFid').value;
-        let name = document.getElementById('newName').value;
-        let res = await fetch('/api/edit_file', {{ method:'POST', body:JSON.stringify({{id: id, name: name}}) }});
-        if((await res.json()).status === 'success') {{
-            location.reload(); 
-        }}
-    }}
-
-    async function deleteFile(id) {{
-        if(!confirm("⚠️ Delete this file permanently?")) return;
-        let res = await fetch('/api/delete_file', {{ method:'POST', body:JSON.stringify({{id: id}}) }});
-        if((await res.json()).status === 'success') {{ document.getElementById('row-'+id).remove(); }}
-    }}
-
-    // पेज बदलते वक्त वही कलेक्शन याद रखेगा
-    function next() {{ if(nextOff) search(nextOff); window.scrollTo(0,0); }}
-    function prev() {{ search(Math.max(0, curOff-20)); window.scrollTo(0,0); }}
-    </script>
-    </body></html>
-    """
-    return web.Response(text=html, content_type='text/html')
+@admin_routes.get('/logout')
+async def logout(req):
+    s = req.cookies.get('admin_session')
+    if hasattr(temp, 'ADMIN_SESSIONS') and s in temp.ADMIN_SESSIONS: del temp.ADMIN_SESSIONS[s]
+    res = web.HTTPFound('/admin')
+    res.del_cookie('admin_session')
+    return res
