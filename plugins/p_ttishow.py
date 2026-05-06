@@ -1,243 +1,109 @@
-import random
-import os
-import sys
-import asyncio
+import os, sys, random
 from hydrogram import Client, filters, enums
-from hydrogram.errors import MessageTooLong
 from info import ADMINS, LOG_CHANNEL, PICS
 from database.users_chats_db import db
-from utils import temp, get_settings
+from utils import temp
 from Script import script
 
 # ======================================================
-# 👋 WELCOME MESSAGE
+# 👋 WELCOME MESSAGE & LOGGER
 # ======================================================
 @Client.on_chat_member_updated()
-async def welcome(bot, message):
-    if message.chat.type not in [enums.ChatType.GROUP, enums.ChatType.SUPERGROUP]:
-        return
-    
-    if message.new_chat_member and not message.old_chat_member:
-        # Bot Added to New Group
-        if message.new_chat_member.user.id == temp.ME:
-            user = message.from_user.mention if message.from_user else "Admin"
-            await bot.send_photo(
-                chat_id=message.chat.id, 
-                photo=random.choice(PICS), 
-                caption=f"👋 Hello {user},\n\nThanks for adding me to **{message.chat.title}**!\nDon't forget to make me Admin."
-            )
+async def welcome(c, m):
+    if m.chat.type in (enums.ChatType.GROUP, enums.ChatType.SUPERGROUP) and m.new_chat_member and not m.old_chat_member:
+        if m.new_chat_member.user.id == temp.ME:
+            u = m.from_user.mention if m.from_user else "Admin"
+            await c.send_photo(m.chat.id, random.choice(PICS), f"👋 Hello {u},\n\nThanks for adding me to **{m.chat.title}**!\nDon't forget to make me Admin.")
             
-            # Save to DB if not exists
-            if not await db.get_chat(message.chat.id):
-                total = await bot.get_chat_members_count(message.chat.id)
-                username = f'@{message.chat.username}' if message.chat.username else 'Private'
-                await bot.send_message(
-                    LOG_CHANNEL, 
-                    script.NEW_GROUP_TXT.format(message.chat.title, message.chat.id, username, total)
-                )       
-                await db.add_chat(message.chat.id, message.chat.title)
-            return
-        
-        # User Joined Group
-        settings = await get_settings(message.chat.id)
-        if settings.get("welcome", True):
-            # Default welcome logic if needed, currently just logging
-            pass
-
+            if not await db.get_chat(m.chat.id):
+                uname = f'@{m.chat.username}' if m.chat.username else 'Private'
+                total = await c.get_chat_members_count(m.chat.id)
+                await c.send_message(LOG_CHANNEL, script.NEW_GROUP_TXT.format(m.chat.title, m.chat.id, uname, total))       
+                await db.add_chat(m.chat.id, m.chat.title)
 
 # ======================================================
-# 🔄 RESTART
+# 🔄 RESTART, LEAVE & INVITE (Merged)
 # ======================================================
 @Client.on_message(filters.command('restart') & filters.user(ADMINS))
-async def restart_bot(bot, message):
-    msg = await message.reply("🔄 Restarting...")
-    with open('restart.txt', 'w+') as file:
-        file.write(f"{msg.chat.id} {msg.id}")
+async def restart_bot(c, m):
+    msg = await m.reply("🔄 Restarting...")
+    with open('restart.txt', 'w') as f: f.write(f"{m.chat.id} {msg.id}")
     os.execl(sys.executable, sys.executable, "bot.py")
 
-
-# ======================================================
-# 🚪 LEAVE CHAT
-# ======================================================
-@Client.on_message(filters.command('leave') & filters.user(ADMINS))
-async def leave_a_chat(bot, message):
-    if len(message.command) < 2:
-        return await message.reply('Usage: `/leave chat_id`')
-    
-    chat_id = message.command[1]
+@Client.on_message(filters.command(['leave', 'invite_link']) & filters.user(ADMINS))
+async def chat_actions(c, m):
+    if len(m.command) < 2: return await m.reply(f'Usage: `/{m.command[0]} chat_id`')
     try:
-        await bot.leave_chat(int(chat_id))
-        await message.reply(f"✅ Left chat `{chat_id}`")
-    except Exception as e:
-        await message.reply(f"❌ Error: {e}")
-
-
-# ======================================================
-# 🚫 BAN / UNBAN CHAT (Blacklist Group)
-# ======================================================
-@Client.on_message(filters.command('ban_grp') & filters.user(ADMINS))
-async def disable_chat(bot, message):
-    if len(message.command) < 2:
-        return await message.reply('Usage: `/ban_grp chat_id reason`')
-    
-    chat_id = message.command[1]
-    reason = " ".join(message.command[2:]) or "Violation of Rules"
-    
-    try:
-        chat_id = int(chat_id)
-    except:
-        return await message.reply("Invalid Chat ID")
-    
-    chat_data = await db.get_chat(chat_id)
-    if not chat_data:
-        return await message.reply("Chat not found in DB.")
-    
-    if chat_data.get('is_disabled'):
-        return await message.reply("Chat already disabled.")
-    
-    await db.disable_chat(chat_id, reason)
-    temp.BANNED_CHATS.append(chat_id)
-    
-    await message.reply(f"✅ Chat `{chat_id}` disabled.\nReason: {reason}")
-    try:
-        await bot.leave_chat(chat_id)
-    except:
-        pass
-
-
-@Client.on_message(filters.command('unban_grp') & filters.user(ADMINS))
-async def re_enable_chat(bot, message):
-    if len(message.command) < 2:
-        return await message.reply('Usage: `/unban_grp chat_id`')
-    
-    try:
-        chat_id = int(message.command[1])
-    except:
-        return await message.reply("Invalid Chat ID")
-    
-    chat_data = await db.get_chat(chat_id)
-    if not chat_data:
-        return await message.reply("Chat not found in DB.")
-        
-    if not chat_data.get('is_disabled'):
-        return await message.reply("Chat is not disabled.")
-    
-    await db.re_enable_chat(chat_id)
-    if chat_id in temp.BANNED_CHATS:
-        temp.BANNED_CHATS.remove(chat_id)
-        
-    await message.reply(f"✅ Chat `{chat_id}` re-enabled.")
-
+        cid = int(m.command[1])
+        if m.command[0] == 'leave':
+            await c.leave_chat(cid)
+            await m.reply(f"✅ Left chat `{cid}`")
+        else:
+            link = await c.create_chat_invite_link(cid)
+            await m.reply(f"🔗 Invite Link: {link.invite_link}")
+    except Exception as e: await m.reply(f"❌ Error: {e}")
 
 # ======================================================
-# 🔗 GENERATE INVITE LINK
+# 🚫 BAN / UNBAN SYSTEM (Users & Groups Merged)
 # ======================================================
-@Client.on_message(filters.command('invite_link') & filters.user(ADMINS))
-async def gen_invite_link(bot, message):
-    if len(message.command) < 2:
-        return await message.reply('Usage: `/invite_link chat_id`')
+@Client.on_message(filters.command(['ban_grp', 'unban_grp', 'ban_user', 'unban_user']) & filters.user(ADMINS))
+async def ban_system(c, m):
+    cmd = m.command[0]
+    if len(m.command) < 2: return await m.reply(f'Usage: `/{cmd} id [reason]`')
+    try: tgt_id = int(m.command[1])
+    except: return await m.reply("❌ Invalid ID")
     
-    try:
-        chat_id = int(message.command[1])
-        link = await bot.create_chat_invite_link(chat_id)
-        await message.reply(f"🔗 Invite Link: {link.invite_link}")
-    except Exception as e:
-        await message.reply(f"❌ Error: {e}")
-
-
-# ======================================================
-# 🚫 BAN / UNBAN USER (Blacklist User)
-# ======================================================
-@Client.on_message(filters.command('ban_user') & filters.user(ADMINS))
-async def ban_a_user(bot, message):
-    if len(message.command) < 2:
-        return await message.reply('Usage: `/ban_user user_id reason`')
+    rsn = " ".join(m.command[2:]) or "Violation of Rules / Admin Action"
     
-    try:
-        user_id = int(message.command[1])
-        reason = " ".join(message.command[2:]) or "Banned by Admin"
-    except:
-        return await message.reply("Invalid User ID")
-        
-    if user_id in ADMINS:
-        return await message.reply("❌ Cannot ban Admin!")
-        
-    ban_status = await db.get_ban_status(user_id)
-    if ban_status.get('is_banned'):
-        return await message.reply("User already banned.")
-        
-    await db.ban_user(user_id, reason)
-    temp.BANNED_USERS.append(user_id)
-    await message.reply(f"✅ User `{user_id}` Banned.\nReason: {reason}")
-
-
-@Client.on_message(filters.command('unban_user') & filters.user(ADMINS))
-async def unban_a_user(bot, message):
-    if len(message.command) < 2:
-        return await message.reply('Usage: `/unban_user user_id`')
-    
-    try:
-        user_id = int(message.command[1])
-    except:
-        return await message.reply("Invalid User ID")
-        
-    ban_status = await db.get_ban_status(user_id)
-    if not ban_status.get('is_banned'):
-        return await message.reply("User is not banned.")
-        
-    await db.unban_user(user_id)
-    if user_id in temp.BANNED_USERS:
-        temp.BANNED_USERS.remove(user_id)
-        
-    await message.reply(f"✅ User `{user_id}` Unbanned.")
-
+    if 'user' in cmd:
+        if tgt_id in ADMINS: return await m.reply("❌ Cannot ban Admin!")
+        if 'unban' in cmd:
+            await db.unban_user(tgt_id)
+            if tgt_id in temp.BANNED_USERS: temp.BANNED_USERS.remove(tgt_id)
+            await m.reply(f"✅ User `{tgt_id}` Unbanned.")
+        else:
+            await db.ban_user(tgt_id, rsn)
+            temp.BANNED_USERS.append(tgt_id)
+            await m.reply(f"✅ User `{tgt_id}` Banned.\nReason: {rsn}")
+    else:
+        if 'unban' in cmd:
+            await db.re_enable_chat(tgt_id)
+            if tgt_id in temp.BANNED_CHATS: temp.BANNED_CHATS.remove(tgt_id)
+            await m.reply(f"✅ Chat `{tgt_id}` re-enabled.")
+        else:
+            await db.disable_chat(tgt_id, rsn)
+            temp.BANNED_CHATS.append(tgt_id)
+            await m.reply(f"✅ Chat `{tgt_id}` disabled.\nReason: {rsn}")
+            try: await c.leave_chat(tgt_id)
+            except: pass
 
 # ======================================================
-# 📜 LIST USERS & CHATS (Optimized File Gen)
+# 📜 DATABASE EXPORT & STATS (Merged & Optimized)
 # ======================================================
-@Client.on_message(filters.command('users') & filters.user(ADMINS))
-async def list_users(bot, message):
-    msg = await message.reply('🔄 Generating User List...')
+@Client.on_message(filters.command(['users', 'chats']) & filters.user(ADMINS))
+async def export_db(c, m):
+    is_user = m.command[0] == 'users'
+    typ, fn = ('User', 'users.txt') if is_user else ('Chat', 'chats.txt')
     
-    # Direct Async Iteration (Memory Efficient)
-    count = 0
-    with open('users.txt', 'w') as f:
-        async for user in db.users.find({}):
-            f.write(f"ID: {user['id']} | Name: {user.get('name', 'N/A')}\n")
-            count += 1
+    msg = await m.reply(f'🔄 Generating {typ} List...')
+    cnt = 0
+    with open(fn, 'w') as f:
+        cursor = db.users.find({}) if is_user else db.groups.find({})
+        async for x in cursor:
+            f.write(f"ID: {x['id']} | Name/Title: {x.get('name' if is_user else 'title', 'N/A')}\n")
+            cnt += 1
             
-    if count == 0:
-        await msg.edit("📭 Database Empty.")
-        os.remove('users.txt')
-        return
+    if cnt == 0:
+        os.remove(fn)
+        return await msg.edit("📭 Database Empty.")
 
-    await message.reply_document(
-        'users.txt', 
-        caption=f"👥 Total Users: {count}"
-    )
+    await m.reply_document(fn, caption=f"👥 Total {typ}s: {cnt}")
     await msg.delete()
-    os.remove('users.txt')
+    os.remove(fn)
 
-
-@Client.on_message(filters.command('chats') & filters.user(ADMINS))
-async def list_chats(bot, message):
-    msg = await message.reply('🔄 Generating Chat List...')
-    
-    count = 0
-    with open('chats.txt', 'w') as f:
-        async for chat in db.groups.find({}):
-            f.write(f"ID: {chat['id']} | Title: {chat.get('title', 'N/A')}\n")
-            count += 1
-            
-    if count == 0:
-        await msg.edit("📭 Database Empty.")
-        os.remove('chats.txt')
-        return
-
-    await message.reply_document(
-        'chats.txt', 
-        caption=f"👥 Total Chats: {count}"
-    )
-    await msg.delete()
-    os.remove('chats.txt')
-
+@Client.on_message(filters.command('stats') & filters.user(ADMINS))
+async def quick_stats(c, m):
+    msg = await m.reply('🔄 Fetching stats...')
+    u_count = await db.users.count_documents({})
+    c_count = await db.groups.count_documents({})
+    await msg.edit(f"📊 **BOT DATABASE STATS**\n\n👤 **Total Users:** `{u_count}`\n👥 **Total Groups:** `{c_count}`")
