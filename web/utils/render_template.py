@@ -5,7 +5,7 @@ from utils import temp
 logger = logging.getLogger(__name__)
 
 # ─────────────────────────────────────────────
-# 🎬 FAST FINDER OPTIMIZED STREAM TEMPLATE (WITH THEME TOGGLE & AUTO LANDSCAPE)
+# 🎬 FAST FINDER OPTIMIZED STREAM TEMPLATE
 # ─────────────────────────────────────────────
 watch_tmplt = """<!DOCTYPE html>
 <html lang="en" data-theme="dark">
@@ -85,7 +85,7 @@ themeBtn.addEventListener('click',()=>{{
     localStorage.setItem('ff-theme', newT);
 }});
 
-// PLAYER & SKIP LOGIC
+// PLAYER INITIALIZATION
 const player=new Plyr('#player',{{controls:['play-large','play','progress','current-time','mute','settings','pip','fullscreen'],settings:['quality','speed'],autoplay:!1,doubleClick:{{togglesFullscreen:!1}}}});
 
 // AUTO LANDSCAPE ON FULLSCREEN
@@ -100,6 +100,7 @@ player.on('exitfullscreen', ()=>{{
     }}
 }});
 
+// MULTI-TAP SKIP LOGIC
 player.on('ready',()=>{{
     const c=document.querySelector('.plyr'), l=document.createElement('div'), r=document.createElement('div');
     l.className='skip-zone left'; r.className='skip-zone right';
@@ -114,8 +115,10 @@ player.on('ready',()=>{{
         if(cur!==side){{tc=0; cur=side;}}
         tc++; clearTimeout(tmr);
         if(tc===1){{
-            tmr=setTimeout(()=>{{player.togglePlay(); tc=0; cur=null;}},250);
+            // सिंगल टैप होने पर वीडियो Pause नहीं होगा, सिर्फ 250ms का इंतज़ार करेगा
+            tmr=setTimeout(()=>{{tc=0; cur=null;}},250);
         }}else{{
+            // डबल या मल्टीपल टैप पर स्किप होगा
             let t=tc*5; z.querySelector('.skip-text').innerText=t+'s';
             z.classList.remove('active'); void z.offsetWidth; z.classList.add('active');
             tmr=setTimeout(()=>{{player.currentTime+=side==='l'?-t:t; z.classList.remove('active'); tc=0; cur=null;}},600);
@@ -131,7 +134,7 @@ function copyLink(){{navigator.clipboard.writeText("{src}"); let t=document.getE
 </body></html>"""
 
 # ─────────────────────────────────────────────
-# 🎬 MEDIA WATCH FUNCTION (Optimized)
+# 🎬 MEDIA WATCH FUNCTION
 # ─────────────────────────────────────────────
 async def media_watch(message_id):
     try:
