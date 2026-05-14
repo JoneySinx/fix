@@ -12,7 +12,7 @@ from database.ia_filterdb import db_count_documents, get_file_details, delete_fi
 from database.users_chats_db import db
 
 from info import (
-    IS_PREMIUM, URL, BIN_CHANNEL, STICKERS, ADMINS, 
+    IS_PREMIUM, URL, BIN_CHANNEL, ADMINS, 
     LOG_CHANNEL, PICS, IS_STREAM, REACTIONS, PM_FILE_DELETE_TIME
 )
 from utils import (
@@ -23,11 +23,6 @@ from utils import (
 # ─────────────────────────
 # HELPERS
 # ─────────────────────────
-async def del_stk(s):
-    await asyncio.sleep(3)
-    try: await s.delete()
-    except: pass
-
 async def auto_delete_messages(msg_ids, chat_id, client, delay):
     await asyncio.sleep(delay)
     try: await client.delete_messages(chat_id=chat_id, message_ids=msg_ids)
@@ -47,12 +42,9 @@ async def start(client, message):
             await db.add_chat(message.chat.id, message.chat.title)
         return await message.reply(f"<b>Hey {message.from_user.mention}, <i>{get_wish()}</i>\nHow can I help you?</b>")
 
-    # 2. PRIVATE HANDLING (Reactions, Stickers, DB Add)
+    # 2. PRIVATE HANDLING (Reactions, DB Add)
     if REACTIONS:
         try: await message.react(random.choice(REACTIONS), big=True)
-        except: pass
-    if STICKERS:
-        try: asyncio.create_task(del_stk(await client.send_sticker(message.chat.id, random.choice(STICKERS))))
         except: pass
 
     if not await db.is_user_exist(message.from_user.id):
@@ -268,10 +260,20 @@ async def web_logout_callback(client, query):
     if hasattr(temp, 'ADMIN_SESSIONS') and session_id in temp.ADMIN_SESSIONS:
         del temp.ADMIN_SESSIONS[session_id]
         await query.answer("✅ Web Session Terminated!", show_alert=True)
-        await query.message.edit("🛑 **Web Access Disconnected.**\n\nThe dashboard session has been killed.")
+        try:
+            await query.message.edit("🛑 **Web Access Disconnected.**\n\nThe dashboard session has been killed.")
+        except Exception:
+            pass
     else:
         await query.answer("⚠️ Session expired or invalid.", show_alert=True)
-        await query.message.delete()
+        # ✅ BUG FIX: Delete एरर को हैंडल किया गया है
+        try:
+            await query.message.delete()
+        except Exception:
+            try:
+                await query.message.edit("⚠️ **Session already expired.**")
+            except Exception:
+                pass
 
 @Client.on_callback_query(filters.regex(r"^close_"))
 async def close_cb(c, q):
