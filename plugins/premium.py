@@ -1,6 +1,13 @@
 import os, io, qrcode, asyncio, traceback
-import pyromod.listen # ✅ FIX: c.listen() क्रैश को रोकने के लिए इसे जोड़ा गया है
 from datetime import datetime, timedelta
+
+# ✅ FIX: pyromod Event Loop Crash (बॉट को स्टार्ट होने से रोकने वाले एरर का फिक्स)
+try:
+    asyncio.get_event_loop()
+except RuntimeError:
+    asyncio.set_event_loop(asyncio.new_event_loop())
+
+import pyromod.listen # ✅ अब यह बिल्कुल क्रैश नहीं होगा
 from hydrogram import Client, filters, enums
 from hydrogram.types import InlineKeyboardButton, InlineKeyboardMarkup
 
