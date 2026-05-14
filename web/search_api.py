@@ -1,6 +1,6 @@
 from aiohttp import web
 import time, re, asyncio
-from utils import temp, get_size, is_rate_limited
+from utils import temp, get_size, is_rate_limited, is_premium  # ✅ FIX: is_premium को यहाँ इम्पोर्ट कर लिया
 from info import BIN_CHANNEL, ADMINS
 from database.ia_filterdb import COLLECTIONS
 
@@ -16,10 +16,8 @@ async def get_user_role(req):
         if tg_id in ADMINS:
             return 'admin', tg_id
             
-        # 2. Premium User चेक
-        from database.users_chats_db import db
-        mp = await db.get_plan(tg_id)
-        if mp.get("premium"):
+        # 2. Premium User चेक (🔥 FIX: अब यह utils.py के Cache और Expire लॉजिक का इस्तेमाल करेगा)
+        if await is_premium(tg_id):
             return 'user', tg_id
             
     return None, None
@@ -41,19 +39,32 @@ async def api_search(req):
     if not q: return web.json_response({"results": [], "total": 0, "next_offset": ""})
     
     off = int(off) if off.isdigit() else 0
-    flt = {"file_name": re.compile(q, re.IGNORECASE)}
+    
+    # 🚀 SPEED FIX: Hybrid Search Logic (Text Index 100x Faster + Regex Fallback)
+    flt_text = {"$text": {"$search": q}}
+    flt_regex = {"file_name": re.compile(q, re.IGNORECASE)}
     
     res, all_m, tot, lim = [], [], 0, 20
     tgt_cols = {col: COLLECTIONS[col]} if col in COLLECTIONS else COLLECTIONS
 
-    # 🚀 SPEED FIX 1: Save counts to avoid double DB hits
     col_counts = {}
+    col_filters = {} # यह याद रखेगा कि $text चला या Regex
+
     for n, c in tgt_cols.items():
-        count = await c.count_documents(flt)
+        # पहले $text से ढूँढो (Superfast)
+        count = await c.count_documents(flt_text)
+        active_flt = flt_text
+        
+        # अगर कुछ नहीं मिला, तो Fallback में Regex चलाओ
+        if count == 0:
+            count = await c.count_documents(flt_regex)
+            active_flt = flt_regex
+            
         col_counts[n] = count
+        col_filters[n] = active_flt
         tot += count
 
-    # 🚀 SPEED FIX 2: Smart Skip Pagination (No more memory leaks!)
+    # 🚀 Smart Skip Pagination
     remaining_skip = off
     for n, c in tgt_cols.items():
         if len(all_m) >= lim:
@@ -67,15 +78,15 @@ async def api_search(req):
             remaining_skip -= count
             continue
             
-        # सिर्फ ज़रूरी डेटाबेस को ही फेच करें (skip & limit)
         local_limit = lim - len(all_m)
-        docs = await c.find(flt).sort('_id', -1).skip(remaining_skip).limit(local_limit).to_list(length=local_limit)
+        # जो फ़िल्टर काम किया था, उसी से डेटा निकालो
+        docs = await c.find(col_filters[n]).sort('_id', -1).skip(remaining_skip).limit(local_limit).to_list(length=local_limit)
         
         for d in docs: 
             d['source_col'] = n.lower()
         all_m.extend(docs)
         
-        remaining_skip = 0 # एक बार स्किप पूरा होने के बाद 0 कर दें
+        remaining_skip = 0 
 
     # रिज़ल्ट्स को फॉर्मेट करना
     for d in all_m:
@@ -95,7 +106,7 @@ async def api_search(req):
         "results": res, 
         "total": tot, 
         "next_offset": off + lim if off + lim < tot else "",
-        "is_admin": role == 'admin' # ✅ Frontend को बताने के लिए कि एडमिन है या नहीं
+        "is_admin": role == 'admin' 
     })
 
 # ✅ Auto Delete Task
@@ -120,7 +131,6 @@ async def setup_stream(req):
         # ✅ 1 घंटे (3600 seconds) बाद auto-delete
         asyncio.create_task(_auto_del_msg(msg, 3600))
         
-        # 🚀 FIX: Directly returning HTTPFound is cleaner than raising it as an exception
         return web.HTTPFound(f"/{'download' if mode == 'download' else 'watch'}/{msg.id}")
     except Exception as e: 
         return web.Response(text=f"❌ Error: {e}", status=500)
