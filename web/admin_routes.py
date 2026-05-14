@@ -13,7 +13,9 @@ if not hasattr(temp, 'REG_PENDING'):
     temp.REG_PENDING = {}
 
 # ----------------- MINIFIED ASSETS -----------------
-CSS = "*{box-sizing:border-box;margin:0;padding:0}:root{--bg:#141414;--bg2:#000;--bg3:#2b2b2b;--bg4:#333;--accent:#e50914;--accent-hover:#b30710;--text:#fff;--muted:#808080;--border:#404040;--card:#181818;--sidebar-w:260px}body.light{--bg:#f3f3f3;--bg2:#fff;--bg3:#e6e6e6;--bg4:#ccc;--text:#141414;--muted:#666;--border:#ccc;--card:#fff}body{font-family:'DM Sans',sans-serif;background:var(--bg);color:var(--text);min-height:100vh;overflow-x:hidden;transition:.2s}.topbar{background:var(--bg2);padding:0 4%;display:flex;align-items:center;height:68px;position:sticky;top:0;z-index:100;gap:15px;box-shadow:0 2px 10px rgba(0,0,0,.5)}.ham-btn{background:0 0;border:0;cursor:pointer;color:var(--text);display:flex;flex-direction:column;gap:5px;padding:6px}.ham-line{width:22px;height:2px;background:currentColor;transition:.2s}.ham-btn.open .ham-line:nth-child(1){transform:translateY(7px) rotate(45deg)}.ham-btn.open .ham-line:nth-child(2){opacity:0}.ham-btn.open .ham-line:nth-child(3){transform:translateY(-7px) rotate(-45deg)}.logo{font-size:18px;font-weight:900;letter-spacing:1px;color:var(--accent);display:flex;align-items:center;gap:8px;text-decoration:none;flex:1}.nf-icon{background:var(--accent);color:#fff;padding:2px 7px;border-radius:3px;font-size:18px;line-height:1}.theme-btn{margin-left:auto;background:0 0;border:1px solid var(--border);border-radius:4px;padding:6px 12px;font-size:12px;font-weight:700;color:var(--text);cursor:pointer}.theme-btn:hover{background:var(--bg3)}.sidebar-overlay{position:fixed;inset:0;background:rgba(0,0,0,.7);z-index:150;opacity:0;pointer-events:none;transition:.2s}.sidebar-overlay.open{opacity:1;pointer-events:all}.sidebar{position:fixed;top:0;left:0;height:100%;width:var(--sidebar-w);background:var(--bg2);border-right:1px solid var(--border);z-index:160;display:flex;flex-direction:column;transform:translateX(-100%);transition:.3s}.sidebar.open{transform:translateX(0)}.sb-header{padding:20px;border-bottom:1px solid var(--border);display:flex;justify-content:space-between}.sb-logo{font-size:14px;font-weight:900;color:var(--accent);display:flex;align-items:center;gap:8px}.sb-close{background:0 0;border:0;color:var(--muted);font-size:22px;cursor:pointer}.sb-nav{padding:15px 10px;flex:1}.sb-section{font-size:11px;font-weight:700;color:var(--muted);padding:8px 12px}.sb-link{display:flex;padding:12px 15px;border-radius:4px;text-decoration:none;color:var(--muted);font-size:15px;font-weight:500;margin-bottom:4px}.sb-link.active{background:var(--accent);color:#fff}.sb-footer{padding:15px 10px;border-top:1px solid var(--border)}.sb-logout{display:block;padding:12px;border-radius:4px;text-align:center;text-decoration:none;color:var(--text);font-weight:700;border:1px solid var(--border)}.search-zone{padding:20px 4%;background:var(--bg)}.search-row{display:flex;gap:10px;flex-wrap:wrap}.filter-tabs{display:flex;gap:4px;background:var(--bg2);border:1px solid var(--border);padding:4px;border-radius:4px}.ftab{background:0 0;border:0;padding:8px 16px;font-weight:700;color:var(--muted);cursor:pointer}.ftab.active{background:var(--bg3);color:var(--text)}.search-wrap{flex:1;position:relative;min-width:200px}.s-icon{position:absolute;left:15px;top:50%;transform:translateY(-50%);color:var(--muted)}.search-input{width:100%;background:var(--bg2);border:1px solid var(--border);border-radius:4px;padding:12px 15px 12px 42px;color:var(--text);font-size:15px;outline:0}.search-btn{background:var(--accent);color:#fff;border:0;border-radius:4px;padding:12px 24px;font-weight:700;cursor:pointer}.main{padding:0 4% 40px;max-width:1400px;margin:0 auto}.stats-row{display:grid;grid-template-columns:repeat(auto-fit,minmax(200px,1fr));gap:15px;margin-bottom:30px}.scard{background:var(--card);padding:20px;border-radius:4px;position:relative;box-shadow:0 4px 6px rgba(0,0,0,.3)}.scard::after{content:'';position:absolute;bottom:0;left:0;right:0;height:3px}.scard.red::after{background:var(--accent)}.scard.white::after{background:#fff}.scard.grey::after{background:#808080}.scard-label{font-size:12px;font-weight:700;color:var(--muted);margin-bottom:10px}.scard-val{font-size:32px;font-weight:900;color:var(--text)}.scard-sub{font-size:12px;color:var(--muted)}.results-info{display:none;justify-content:space-between;padding:10px 0 20px;font-weight:700}.file-card{background:var(--card);border-radius:4px;padding:18px;display:flex;justify-content:space-between;align-items:center;gap:15px;margin-bottom:12px;border:1px solid var(--bg3)}.fc-left{flex:1}.fc-top{display:flex;gap:8px;margin-bottom:8px}.source-badge{font-size:10px;font-weight:900;padding:2px 6px;border-radius:2px;border:1px solid}.source-badge.primary{color:var(--accent);border-color:var(--accent)}.source-badge.cloud{color:#fff;border-color:#fff}.source-badge.archive{color:var(--muted);border-color:var(--muted)}.type-tag{font-size:12px;font-weight:700;color:var(--muted)}.fc-name{font-size:16px;font-weight:500;margin-bottom:6px}.fc-meta{font-size:13px;color:var(--muted)}.btn-play{background:#fff;color:#000;padding:10px 24px;border-radius:4px;font-weight:800;text-decoration:none;display:flex;gap:8px}.empty{text-align:center;padding:80px 20px;color:var(--muted)}.empty-icon{font-size:40px;margin-bottom:15px}.pagination{display:none;justify-content:center;gap:15px;padding:30px 0;align-items:center}.pg-btn{background:var(--bg3);border:0;color:var(--text);padding:10px 20px;border-radius:4px;font-weight:700;cursor:pointer}.pg-btn:disabled{opacity:.3}.toast{position:fixed;bottom:20px;right:20px;background:var(--accent);color:#fff;padding:12px 20px;border-radius:4px;font-weight:700;z-index:300;transform:translateX(150%);transition:.3s}.toast.show{transform:translateX(0)}.toast.error{background:#000;border:1px solid var(--accent)}.login-bg{background:linear-gradient(rgba(0,0,0,.8) 0,rgba(0,0,0,.4) 50%,rgba(0,0,0,.8) 100%),url('https://assets.nflxext.com/ffe/siteui/vlv3/f841d4c7-10e1-40af-bcae-07a3f8dc141a/f6d7434e-d6de-4185-a6d4-c77a2d08737b/IN-en-20220502-popsignuptwoweeks-perspective_alpha_website_medium.jpg') center/cover;min-height:100vh;display:flex;flex-direction:column}.login-top{padding:20px 4%; display:flex; justify-content:space-between; align-items:center;}.login-logo-big{font-size:32px;font-weight:900;color:var(--accent);display:flex;gap:8px;text-decoration:none;}.login-wrap{flex:1;display:flex;align-items:center;justify-content:center;padding:20px}.login-card{background:rgba(0,0,0,.75);padding:60px;border-radius:4px;width:100%;max-width:450px}.login-card h2{font-size:32px;margin-bottom:28px}.login-card input{width:100%;background:#333;border:0;padding:16px;color:#fff;margin-bottom:16px;border-radius:4px}.login-card .submit-btn{width:100%;background:var(--accent);color:#fff;border:0;padding:16px;font-weight:700;margin-top:24px;border-radius:4px;cursor:pointer}.err-box{background:#e87c03;color:#fff;padding:10px 20px;border-radius:4px;margin-bottom:16px}.success-box{background:#28a745;color:#fff;padding:10px 20px;border-radius:4px;margin-bottom:16px}.big-stat{background:var(--card);padding:40px 20px;border-radius:4px;text-align:center;margin-bottom:30px}.big-stat-val{font-size:64px;font-weight:900;color:var(--accent);margin-bottom:10px}.big-stat-label{font-size:16px;color:var(--muted);font-weight:700;letter-spacing:2px}"
+# ✅ CSS FIX: .btn-play को डायनामिक बनाया गया है (Light mode में डार्क, Dark mode में लाइट)
+CSS = "*{box-sizing:border-box;margin:0;padding:0}:root{--bg:#141414;--bg2:#000;--bg3:#2b2b2b;--bg4:#333;--accent:#e50914;--accent-hover:#b30710;--text:#fff;--muted:#808080;--border:#404040;--card:#181818;--sidebar-w:260px}body.light{--bg:#f3f3f3;--bg2:#fff;--bg3:#e6e6e6;--bg4:#ccc;--text:#141414;--muted:#666;--border:#ccc;--card:#fff}body{font-family:'DM Sans',sans-serif;background:var(--bg);color:var(--text);min-height:100vh;overflow-x:hidden;transition:.2s}.topbar{background:var(--bg2);padding:0 4%;display:flex;align-items:center;height:68px;position:sticky;top:0;z-index:100;gap:15px;box-shadow:0 2px 10px rgba(0,0,0,.5)}.ham-btn{background:0 0;border:0;cursor:pointer;color:var(--text);display:flex;flex-direction:column;gap:5px;padding:6px}.ham-line{width:22px;height:2px;background:currentColor;transition:.2s}.ham-btn.open .ham-line:nth-child(1){transform:translateY(7px) rotate(45deg)}.ham-btn.open .ham-line:nth-child(2){opacity:0}.ham-btn.open .ham-line:nth-child(3){transform:translateY(-7px) rotate(-45deg)}.logo{font-size:18px;font-weight:900;letter-spacing:1px;color:var(--accent);display:flex;align-items:center;gap:8px;text-decoration:none;flex:1}.nf-icon{background:var(--accent);color:#fff;padding:2px 7px;border-radius:3px;font-size:18px;line-height:1}.theme-btn{margin-left:auto;background:0 0;border:1px solid var(--border);border-radius:4px;padding:6px 12px;font-size:12px;font-weight:700;color:var(--text);cursor:pointer}.theme-btn:hover{background:var(--bg3)}.sidebar-overlay{position:fixed;inset:0;background:rgba(0,0,0,.7);z-index:150;opacity:0;pointer-events:none;transition:.2s}.sidebar-overlay.open{opacity:1;pointer-events:all}.sidebar{position:fixed;top:0;left:0;height:100%;width:var(--sidebar-w);background:var(--bg2);border-right:1px solid var(--border);z-index:160;display:flex;flex-direction:column;transform:translateX(-100%);transition:.3s}.sidebar.open{transform:translateX(0)}.sb-header{padding:20px;border-bottom:1px solid var(--border);display:flex;justify-content:space-between}.sb-logo{font-size:14px;font-weight:900;color:var(--accent);display:flex;align-items:center;gap:8px}.sb-close{background:0 0;border:0;color:var(--muted);font-size:22px;cursor:pointer}.sb-nav{padding:15px 10px;flex:1}.sb-section{font-size:11px;font-weight:700;color:var(--muted);padding:8px 12px}.sb-link{display:flex;padding:12px 15px;border-radius:4px;text-decoration:none;color:var(--muted);font-size:15px;font-weight:500;margin-bottom:4px}.sb-link.active{background:var(--accent);color:#fff}.sb-footer{padding:15px 10px;border-top:1px solid var(--border)}.sb-logout{display:block;padding:12px;border-radius:4px;text-align:center;text-decoration:none;color:var(--text);font-weight:700;border:1px solid var(--border)}.search-zone{padding:20px 4%;background:var(--bg)}.search-row{display:flex;gap:10px;flex-wrap:wrap}.filter-tabs{display:flex;gap:4px;background:var(--bg2);border:1px solid var(--border);padding:4px;border-radius:4px}.ftab{background:0 0;border:0;padding:8px 16px;font-weight:700;color:var(--muted);cursor:pointer}.ftab.active{background:var(--bg3);color:var(--text)}.search-wrap{flex:1;position:relative;min-width:200px}.s-icon{position:absolute;left:15px;top:50%;transform:translateY(-50%);color:var(--muted)}.search-input{width:100%;background:var(--bg2);border:1px solid var(--border);border-radius:4px;padding:12px 15px 12px 42px;color:var(--text);font-size:15px;outline:0}.search-btn{background:var(--accent);color:#fff;border:0;border-radius:4px;padding:12px 24px;font-weight:700;cursor:pointer}.main{padding:0 4% 40px;max-width:1400px;margin:0 auto}.stats-row{display:grid;grid-template-columns:repeat(auto-fit,minmax(200px,1fr));gap:15px;margin-bottom:30px}.scard{background:var(--card);padding:20px;border-radius:4px;position:relative;box-shadow:0 4px 6px rgba(0,0,0,.3)}.scard::after{content:'';position:absolute;bottom:0;left:0;right:0;height:3px}.scard.red::after{background:var(--accent)}.scard.white::after{background:#fff}.scard.grey::after{background:#808080}.scard-label{font-size:12px;font-weight:700;color:var(--muted);margin-bottom:10px}.scard-val{font-size:32px;font-weight:900;color:var(--text)}.scard-sub{font-size:12px;color:var(--muted)}.results-info{display:none;justify-content:space-between;padding:10px 0 20px;font-weight:700}.file-card{background:var(--card);border-radius:4px;padding:18px;display:flex;justify-content:space-between;align-items:center;gap:15px;margin-bottom:12px;border:1px solid var(--bg3)}.fc-left{flex:1}.fc-top{display:flex;gap:8px;margin-bottom:8px}.source-badge{font-size:10px;font-weight:900;padding:2px 6px;border-radius:2px;border:1px solid}.source-badge.primary{color:var(--accent);border-color:var(--accent)}.source-badge.cloud{color:#3399ff;border-color:#3399ff}.source-badge.archive{color:var(--muted);border-color:var(--muted)}.type-tag{font-size:12px;font-weight:700;color:var(--muted)}.fc-name{font-size:16px;font-weight:500;margin-bottom:6px}.fc-meta{font-size:13px;color:var(--muted)}.btn-play{background:var(--text);color:var(--card);padding:10px 24px;border-radius:4px;font-weight:800;text-decoration:none;display:flex;gap:8px;transition:0.2s}.btn-play:hover{opacity:0.8}.empty{text-align:center;padding:80px 20px;color:var(--muted)}.empty-icon{font-size:40px;margin-bottom:15px}.pagination{display:none;justify-content:center;gap:15px;padding:30px 0;align-items:center}.pg-btn{background:var(--bg3);border:0;color:var(--text);padding:10px 20px;border-radius:4px;font-weight:700;cursor:pointer}.pg-btn:disabled{opacity:.3}.toast{position:fixed;bottom:20px;right:20px;background:var(--accent);color:#fff;padding:12px 20px;border-radius:4px;font-weight:700;z-index:300;transform:translateX(150%);transition:.3s}.toast.show{transform:translateX(0)}.toast.error{background:#000;border:1px solid var(--accent)}.login-bg{background:linear-gradient(rgba(0,0,0,.8) 0,rgba(0,0,0,.4) 50%,rgba(0,0,0,.8) 100%),url('https://assets.nflxext.com/ffe/siteui/vlv3/f841d4c7-10e1-40af-bcae-07a3f8dc141a/f6d7434e-d6de-4185-a6d4-c77a2d08737b/IN-en-20220502-popsignuptwoweeks-perspective_alpha_website_medium.jpg') center/cover;min-height:100vh;display:flex;flex-direction:column}.login-top{padding:20px 4%; display:flex; justify-content:space-between; align-items:center;}.login-logo-big{font-size:32px;font-weight:900;color:var(--accent);display:flex;gap:8px;text-decoration:none;}.login-wrap{flex:1;display:flex;align-items:center;justify-content:center;padding:20px}.login-card{background:rgba(0,0,0,.75);padding:60px;border-radius:4px;width:100%;max-width:450px}.login-card h2{font-size:32px;margin-bottom:28px}.login-card input{width:100%;background:#333;border:0;padding:16px;color:#fff;margin-bottom:16px;border-radius:4px}.login-card .submit-btn{width:100%;background:var(--accent);color:#fff;border:0;padding:16px;font-weight:700;margin-top:24px;border-radius:4px;cursor:pointer}.err-box{background:#e87c03;color:#fff;padding:10px 20px;border-radius:4px;margin-bottom:16px}.success-box{background:#28a745;color:#fff;padding:10px 20px;border-radius:4px;margin-bottom:16px}.big-stat{background:var(--card);padding:40px 20px;border-radius:4px;text-align:center;margin-bottom:30px}.big-stat-val{font-size:64px;font-weight:900;color:var(--accent);margin-bottom:10px}.big-stat-label{font-size:16px;color:var(--muted);font-weight:700;letter-spacing:2px}"
+
 JS = """
 (function(){if(localStorage.getItem('theme')==='light')document.body.classList.add('light')})();
 function toggleTheme(){var l=document.body.classList.toggle('light');localStorage.setItem('theme',l?'light':'dark');}
@@ -152,7 +154,6 @@ async def register_user(req):
     role, _ = await get_auth(req)
     if role: return web.HTTPFound('/dashboard')
     
-    # Step 1 Form: Send OTP button instead of direct Sign Up
     content = '<form action="/api/register_step1" method="post"><input type="number" name="tg_id" placeholder="Telegram ID (e.g. 123456)" required><input type="email" name="email" placeholder="Email Address" required><input type="password" name="password" placeholder="Create Password" required><button class="submit-btn" type="submit">Send OTP via Telegram</button></form><p style="margin-top:15px; font-size:14px; color:var(--muted)">Already have an account? <a href="/login" style="color:#fff; text-decoration:none">Sign In</a></p>'
     return build_page("Sign Up", form_wrapper("Create Account", content, req.query.get('err','')), "login-bg")
 
@@ -164,14 +165,11 @@ async def api_register_step1(req):
     email = d.get('email')
     password = d.get('password')
     
-    # Check if User already exists
     if await web_db.col.find_one({"$or": [{"tg_id": tg_id}, {"email": email}]}):
         return web.HTTPFound('/register?err=Telegram ID or Email already registered!')
         
-    # Generate 6-digit OTP
     otp = str(random.randint(100000, 999999))
     
-    # Save to temp memory (expires in 5 mins)
     temp.REG_PENDING[tg_id] = {
         'email': email, 
         'password': password, 
@@ -179,7 +177,6 @@ async def api_register_step1(req):
         'expiry': time.time() + 300 
     }
     
-    # Send OTP to Telegram user
     msg_text = f"🔐 **Web Registration Verification**\n\nSomeone is trying to link your Telegram ID to this email: `{email}`\n\n**Your OTP is:** `{otp}`\n\n_Valid for 5 mins. If this wasn't you, just ignore this message._"
     try:
         await temp.BOT.send_message(tg_id, msg_text)
@@ -203,24 +200,20 @@ async def api_register_step2(req):
     except: return web.HTTPFound('/register?err=Invalid Request')
     otp = d.get('otp')
     
-    # Verify session
     if tg_id not in getattr(temp, 'REG_PENDING', {}):
         return web.HTTPFound('/register?err=Session expired. Try again.')
         
     pending = temp.REG_PENDING[tg_id]
     
-    # Verify Expiry
     if time.time() > pending['expiry']:
         del temp.REG_PENDING[tg_id]
         return web.HTTPFound('/register?err=OTP Expired. Please restart registration.')
         
-    # Verify OTP
     if pending['otp'] != otp:
         return web.HTTPFound(f'/verify_registration?tg_id={tg_id}&err=Invalid OTP')
         
-    # OTP Matched -> Create User
     success, msg = await web_db.create_user(tg_id, pending['email'], pending['password'])
-    del temp.REG_PENDING[tg_id] # Clean up
+    del temp.REG_PENDING[tg_id]
     
     if success:
         try:
@@ -282,10 +275,41 @@ async def profile_page(req):
     email = user.get('email', '') if user else ''
     err, msg = req.query.get('err',''), req.query.get('msg','')
     
+    mp = await user_db.get_plan(tg_id)
+    if role == 'admin':
+        status_text = "👑 Admin (Lifetime Access)"
+        exp_text = "Never (Lifetime)"
+        status_color = "#e50914" 
+    else:
+        status_text = "💎 Premium User"
+        exp_text = mp.get('expire', 'Unknown')
+        status_color = "#3399ff" 
+
     e = f'<div class="err-box">{err}</div>' if err else ""
     m = f'<div class="success-box">{msg}</div>' if msg else ""
     
-    b = f'<div class="main" style="padding-top:40px; max-width:700px;"><div class="scard">{e}{m}<h2 style="margin-bottom:25px;">Account Settings</h2><form action="/api/update_profile" method="post"><div class="scard-label">Telegram ID (Non-changeable)</div><input type="text" value="{tg_id}" class="search-input" style="margin-bottom:20px; opacity:0.6" disabled><div class="scard-label">Email Address</div><input type="email" name="new_email" value="{email}" class="search-input" style="margin-bottom:20px;" required><div class="scard-label">New Password (Leave blank to keep current)</div><input type="password" name="new_pass" placeholder="Enter New Password" class="search-input" style="margin-bottom:30px;"><button class="search-btn" style="width:100%" type="submit">Save Changes</button></form></div></div>'
+    b = f'''<div class="main" style="padding-top:40px; max-width:700px;">
+        <div class="scard">{e}{m}
+        <h2 style="margin-bottom:25px;">Account Settings</h2>
+        
+        <div style="background:var(--bg3); padding:15px; border-radius:4px; margin-bottom:25px; border-left:4px solid {status_color};">
+            <div style="font-size:12px; color:var(--muted); margin-bottom:5px;">Account Status</div>
+            <div style="font-size:18px; font-weight:700; color:{status_color}; margin-bottom:10px;">{status_text}</div>
+            <div style="font-size:12px; color:var(--muted); margin-bottom:2px;">Premium Expires:</div>
+            <div style="font-size:15px; font-weight:500;">{exp_text}</div>
+        </div>
+
+        <form action="/api/update_profile" method="post">
+            <div class="scard-label">Telegram ID (Non-changeable)</div>
+            <input type="text" value="{tg_id}" class="search-input" style="margin-bottom:20px; opacity:0.6" disabled>
+            <div class="scard-label">Email Address</div>
+            <input type="email" name="new_email" value="{email}" class="search-input" style="margin-bottom:20px;" required>
+            <div class="scard-label">New Password (Leave blank to keep current)</div>
+            <input type="password" name="new_pass" placeholder="Enter New Password" class="search-input" style="margin-bottom:30px;">
+            <button class="search-btn" style="width:100%" type="submit">Save Changes</button>
+        </form>
+        </div>
+    </div>'''
     return build_page("Profile - Fast Finder", b, "", "profile", role)
 
 @admin_routes.post('/api/update_profile')
