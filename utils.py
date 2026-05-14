@@ -20,7 +20,7 @@ class temp(object):
     ADMIN_TOKENS, ADMIN_SESSIONS, FILES, PM_FILES = {}, {}, {}, {}
 
 # ─────────────────────────────────────────────
-# 🛡️ RATE LIMITER UTILITY (Anti-Abuse)
+# 🛡️ RATE LIMITER UTILITY (Anti-Abuse & Memory Leak Fixed)
 # ─────────────────────────────────────────────
 _rate_limits = {}
 
@@ -28,8 +28,16 @@ def is_rate_limited(user_id, action, seconds):
     """हैवी कमांड्स जैसे /ask, spell check, और /link पर स्पैम रोकता है।"""
     key = f"{user_id}:{action}"
     now = time.time()
+    
+    # 🧹 Auto-Cleanup: अगर 1000 से ज़्यादा एंट्रीज़ हों, तो 1 घंटे पुरानी हटा दो
+    if len(_rate_limits) > 1000:
+        cutoff = now - 3600 
+        for k in [k for k, v in _rate_limits.items() if v < cutoff]:
+            del _rate_limits[k]
+            
     if key in _rate_limits and now - _rate_limits[key] < seconds:
         return True
+        
     _rate_limits[key] = now
     return False
 
