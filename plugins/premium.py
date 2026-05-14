@@ -34,6 +34,22 @@ async def safe_del(c, cid, mids):
     except: pass
 
 # =========================
+# 💎 PREMIUM CHECKER
+# =========================
+async def is_premium(uid, bot):
+    if not IS_PREMIUM or uid in ADMINS: return True
+    mp = await db.get_plan(uid)
+    if mp.get("premium"):
+        exp = parse_expire_time(mp.get("expire"))
+        if exp and exp < datetime.now():
+            try: await bot.send_message(uid, "❌ **Plan Expired!**\nRenew with /plan", reply_markup=InlineKeyboardMarkup([[InlineKeyboardButton("💎 Buy Premium", callback_data="buy_prem")]]))
+            except: pass
+            await db.update_plan(uid, {"expire": "", "plan": "", "premium": False})
+            return False
+        return True
+    return False
+
+# =========================
 # ⏰ REMINDER SYSTEM
 # =========================
 async def check_premium_expired(bot):
@@ -109,6 +125,10 @@ async def manage_premium(c, m):
     except: return await m.reply("❌ Invalid Format!")
 
     if is_add:
+        # ✅ FIX: Admin 0 दिन का प्रीमियम न ऐड कर पाए
+        if days <= 0:
+            return await m.reply("❌ **Error:** Days must be at least 1.")
+            
         ex = datetime.now() + timedelta(days=days)
         data = {"expire": ex.strftime("%Y-%m-%d %H:%M:%S"), "plan": f"{days} Days", "premium": True, "reminded_12h": False, "reminded_6h": False, "reminded_3h": False, "reminded_1h": False, "reminded_30m": False, "reminded_10m": False, "last_reminder_id": 0}
         m_usr, m_adm = f"🎉 **Premium Activated!**\n\n🗓 **Duration:** {days} Days\n📅 **Expires:** {get_ist_str(ex)}\n\nEnjoy! ❤️", f"✅ Added {days} days premium to `{uid}`."
@@ -179,6 +199,11 @@ async def buy_callback(c, q):
         resp = await c.listen(q.message.chat.id, timeout=60)
         await safe_del(c, q.message.chat.id, [prm_msg.id, resp.id])
         days = int(resp.text)
+        
+        # ✅ FIX: यूज़र 0 या माइनस (-) में दिन डालकर 0 का पेमेंट न कर पाए
+        if days <= 0:
+            return await q.message.reply("❌ **Invalid Duration!** Days must be at least 1.")
+            
         amount = days * int(PRE_DAY_AMOUNT)
         
         img = qrcode.make(f"upi://pay?pa={UPI_ID}&pn={UPI_NAME}&am={amount}&cu=INR")
