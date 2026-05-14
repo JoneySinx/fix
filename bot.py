@@ -34,8 +34,8 @@ logger = logging.getLogger(__name__)
 # IMPORTS
 # ==========================================================
 from aiohttp import web
-from hydrogram import Client, types, StopPropagation # ✅ Corrected: StopPropagation is here
-from hydrogram.errors import FloodWait # ✅ FloodWait is correctly imported from errors
+from hydrogram import Client, types, StopPropagation 
+from hydrogram.errors import FloodWait 
 from hydrogram.handlers import MessageHandler 
 from web import web_app
 from info import (
@@ -46,6 +46,17 @@ from utils import temp
 from database.users_chats_db import db
 from database.ia_filterdb import ensure_indexes
 from plugins.premium import check_premium_expired
+
+# ==========================================================
+# 🛠️ HEALTH CHECK ENDPOINT (Koyeb Optimized)
+# ==========================================================
+# Koyeb के लिए explicit health endpoint जोड़ा गया
+routes = web.RouteTableDef()
+
+@routes.get("/health")
+async def health_check(request):
+    uptime = time.time() - temp.START_TIME
+    return web.json_response({"status": "healthy", "uptime": f"{uptime:.2f}s"})
 
 # ==========================================================
 # BOT CLASS
@@ -111,11 +122,13 @@ class Bot(Client):
         temp.U_NAME = me.username
         temp.B_NAME = me.first_name
 
-        # 7. Start Web Server
+        # 7. Start Web Server with Health Routes
+        # Health routes को web_app में रजिस्टर किया गया
+        web_app.add_routes(routes)
         self._runner = web.AppRunner(web_app, access_log=None)
         await self._runner.setup()
         await web.TCPSite(self._runner, "0.0.0.0", PORT).start()
-        logger.info(f"✅ Web Server Started on Port {PORT}")
+        logger.info(f"✅ Web Server & Health Endpoint Started on Port {PORT}")
 
         # 8. Start Premium Checker Task
         self._premium_task = asyncio.create_task(check_premium_expired(self))
@@ -151,6 +164,8 @@ class Bot(Client):
 
         logger.info(f"@{me.username} is Online & Ready!")
 
+    # ✅ GRACEFUL SHUTDOWN (Premium Task Await)
+    # प्रीमियम टास्क को सुरक्षित रूप से बंद करने के लिए await जोड़ा गया
     async def stop(self, *args):
         if getattr(self, '_runner', None):
             await self._runner.cleanup()
@@ -158,7 +173,11 @@ class Bot(Client):
         
         if getattr(self, '_premium_task', None):
             self._premium_task.cancel()
-            logger.info("✅ Premium Task Cancelled")
+            try:
+                await self._premium_task # Await for cleanup
+            except asyncio.CancelledError:
+                pass
+            logger.info("✅ Premium Task Safely Stopped")
 
         await super().stop()
         logger.info("Bot stopped Gracefully. Bye 👋")
