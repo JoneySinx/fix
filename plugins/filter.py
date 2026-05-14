@@ -282,10 +282,3 @@ async def pagination_handler(client, query):
     if settings.get("auto_delete") and query.message.id in SMART_TASKS:
         SMART_TASKS[query.message.id].cancel()
         SMART_TASKS[query.message.id] = asyncio.create_task(smart_delete_msg(query.message, delay=300))
-
-@Client.on_callback_query(filters.regex(r"^close_"))
-async def close_cb(c, q):
-    try:
-        if int(q.data.split("_")[1]) != q.from_user.id: return await q.answer("❌ This is not your search!", show_alert=True)
-        await q.message.delete()
-    except Exception: pass
