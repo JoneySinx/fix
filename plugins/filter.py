@@ -2,13 +2,14 @@ import asyncio
 import re
 import math
 import random
+import aiohttp  # ✅ Spell Check के लिए जोड़ा गया
 from hydrogram import Client, filters, enums
 from hydrogram.types import InlineKeyboardMarkup, InlineKeyboardButton
 
-from info import ADMINS, DELETE_TIME, MAX_BTN, IS_PREMIUM, PICS, IS_STREAM
+from info import ADMINS, DELETE_TIME, MAX_BTN, IS_PREMIUM, PICS, IS_STREAM, SPELL_CHECK
 from utils import is_premium, get_size, is_check_admin, temp, get_settings, save_group_settings
 from database.ia_filterdb import get_search_results
-from Script import script  # ✅ Script इम्पोर्ट किया गया
+from Script import script  
 
 BUTTONS = {}
 SRC_TO_SHORT = {"primary": "pri", "cloud": "cld", "archive": "arc"}
@@ -28,6 +29,25 @@ async def is_valid_search(message):
     return True
 
 # ─────────────────────────────────────────────
+# 🧠 SPELL CHECKER (Google Suggest API - Superfast)
+# ─────────────────────────────────────────────
+async def get_spell_suggestion(query):
+    try:
+        async with aiohttp.ClientSession() as session:
+            # Google Suggest API का इस्तेमाल (बिना किसी API Key के)
+            url = f"http://suggestqueries.google.com/complete/search?client=firefox&q={query} movie"
+            async with session.get(url) as resp:
+                data = await resp.json()
+                if data and len(data) > 1 and data[1]:
+                    # ' movie' शब्द हटाकर असली सजेशन निकालें
+                    suggestion = data[1][0].replace(" movie", "").replace(" series", "").strip()
+                    if suggestion.lower() != query.lower():
+                        return suggestion.title()
+    except Exception:
+        pass
+    return None
+
+# ─────────────────────────────────────────────
 # 🎨 UI HELPER FUNCTION
 # ─────────────────────────────────────────────
 def get_filter_ui(search, files, total, act_src, offset, chat_id, req_id, key, next_off):
@@ -45,7 +65,6 @@ def get_filter_ui(search, files, total, act_src, offset, chat_id, req_id, key, n
     btn = []
     act_src_short = SRC_TO_SHORT.get(act_src, "pri")
 
-    # ✅ Send All Logic
     if total <= MAX_BTN:
         btn.append([InlineKeyboardButton("📤 Send All", callback_data=f"sendall_{req_id}_{key}_{act_src_short}")])
     else:
@@ -56,7 +75,6 @@ def get_filter_ui(search, files, total, act_src, offset, chat_id, req_id, key, n
         if next_off: nav.append(InlineKeyboardButton("Next »", callback_data=f"nav_{req_id}_{key}_{next_off}_{act_src_short}"))
         btn.append(nav)
 
-    # Collection Switcher Buttons
     col_btn = []
     for c in ["primary", "cloud", "archive"]:
         tick = "✅" if c == act_src else "📂"
@@ -117,16 +135,29 @@ async def search_toggle(client, message):
     await message.reply(f"✅ Search is now **{'ENABLED' if state else 'DISABLED'}**")
 
 # ─────────────────────────────────────────────
-# 🚀 AUTO FILTER CORE
+# 🚀 AUTO FILTER CORE (With Spell Check)
 # ─────────────────────────────────────────────
 async def auto_filter(client, msg, collection_type="all"):
     check_cache_limit() 
     search = msg.text.strip()
     files, next_offset, total, act_src = await get_search_results(search, MAX_BTN, 0, collection_type=collection_type)
 
+    # 🌟 SPELL CHECK LOGIC IN ACTION 🌟
     if not files:
+        if SPELL_CHECK:
+            suggestion = await get_spell_suggestion(search)
+            if suggestion:
+                btn = [[InlineKeyboardButton(f"✅ Yes, search '{suggestion}'", callback_data=f"spellchk_{msg.from_user.id}_{suggestion}")]]
+                cap = f"❌ **{search}** not found.\n\n🤔 **Did you mean:** __{suggestion}__?"
+                
+                try:
+                    m = await msg.reply(cap, reply_markup=InlineKeyboardMarkup(btn), quote=True)
+                    if (await get_settings(msg.chat.id)).get("auto_delete"):
+                        asyncio.create_task(auto_delete_msg(m, msg))
+                except: pass
+                return
+
         try:
-            # ✅ प्रोफेशनल: NOT_FILE_TXT को Script.py से लिया गया 
             m = await msg.reply(script.NOT_FILE_TXT.format(msg.from_user.mention, search), quote=True)
             await asyncio.sleep(5)
             await m.delete()
@@ -145,14 +176,48 @@ async def auto_filter(client, msg, collection_type="all"):
             asyncio.create_task(auto_delete_msg(m, msg))
     except Exception as e: print(f"Error: {e}")
 
-async def auto_delete_msg(bot_msg, user_msg):
+# ✅ Crash-Proof Auto Delete (NoneType Error Fix)
+async def auto_delete_msg(bot_msg, user_msg=None):
     await asyncio.sleep(DELETE_TIME)
-    try: await bot_msg.delete(); await user_msg.delete()
+    try: await bot_msg.delete()
     except: pass
+    if user_msg:
+        try: await user_msg.delete()
+        except: pass
 
 # ─────────────────────────────────────────────
 # 📤 CALLBACK HANDLERS
 # ─────────────────────────────────────────────
+# 🌟 SPELL CHECK CALLBACK
+@Client.on_callback_query(filters.regex(r"^spellchk_"))
+async def spell_check_handler(client, query):
+    try:
+        _, req_id, suggestion = query.data.split("_", 2)
+        
+        # Security Check
+        if int(req_id) != query.from_user.id:
+            return await query.answer("❌ This suggestion is not for you!", show_alert=True)
+            
+        await query.answer(f"🔍 Searching for {suggestion}...", show_alert=False)
+        
+        # Search again with corrected spelling
+        files, next_offset, total, act_src = await get_search_results(suggestion, MAX_BTN, 0, collection_type="all")
+        
+        if not files:
+            return await query.message.edit_text(f"❌ Still no results found for **{suggestion}**.")
+            
+        key = f"{query.message.chat.id}-{query.message.id}"
+        temp.FILES[key] = files
+        BUTTONS[key] = suggestion
+        
+        cap, markup = get_filter_ui(suggestion, files, total, act_src, 0, query.message.chat.id, query.from_user.id, key, next_offset)
+        
+        await query.message.edit_text(cap, reply_markup=markup, disable_web_page_preview=True)
+        
+    except Exception as e:
+        print(f"Spellcheck Callback Error: {e}")
+        await query.answer("❌ Error during search!", show_alert=True)
+
 @Client.on_callback_query(filters.regex(r"^sendall_"))
 async def send_all_handler(client, query):
     try:
@@ -173,7 +238,6 @@ async def send_all_handler(client, query):
             target_id = file.get("file_ref") or file.get("file_id")
             if not target_id or str(target_id).strip() == 'None': continue
             
-            # ✅ प्रोफेशनल: FILE_CAPTION को Script.py से लिया गया 
             cap = script.FILE_CAPTION.format(file_name=str(file.get('file_name', 'File')), file_size=get_size(file.get('file_size', 0)))
             
             btn = [[InlineKeyboardButton('❌ Close', callback_data=f'close_{query.from_user.id}')]]
