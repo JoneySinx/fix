@@ -51,7 +51,7 @@ async def get_spell_suggestion(query):
 # ─────────────────────────────────────────────
 # 🎨 UI HELPER FUNCTION (Simple Mode Added)
 # ─────────────────────────────────────────────
-def get_filter_ui(search, files, total, act_src, offset, chat_id, req_id, key, next_off, simple_mode=False):
+def get_filter_ui(search, files, total, act_src, offset, chat_id, req_id, key, next_off, simple_mode=True):
     list_items = [
         f"📁 <a href='https://t.me/{temp.U_NAME}?start=file_{chat_id}_{f['_id']}'>[{get_size(f['file_size'])}] {f['file_name']}</a>"
         for f in files
@@ -114,17 +114,23 @@ async def smart_delete_msg(bot_msg, user_msg=None, delay=300): # 300 sec = 5 min
 # ─────────────────────────────────────────────
 # 🔍 COMMAND HANDLERS
 # ─────────────────────────────────────────────
-@Client.on_message(filters.command("button_style") & filters.group)
+@Client.on_message(filters.command("button_style"))
 async def button_style_toggle(client, message):
-    """एडमिन द्वारा सिंपल या फुल बटन मोड सेट करने के लिए"""
-    if not await is_check_admin(client, message.chat.id, message.from_user.id): return
+    """एडमिन (ग्रुप में) या यूज़र (PM में) द्वारा सिंपल/फुल बटन मोड सेट करने के लिए"""
+    # अगर ग्रुप है, तो सिर्फ एडमिन कर सकता है
+    if message.chat.type in [enums.ChatType.GROUP, enums.ChatType.SUPERGROUP]:
+        if not await is_check_admin(client, message.chat.id, message.from_user.id): return
+        
     settings = await get_settings(message.chat.id)
-    current_mode = settings.get("simple_mode", False)
+    # ✅ डिफ़ॉल्ट अब True है
+    current_mode = settings.get("simple_mode", True)
     
     # टॉगल मोड
-    await save_group_settings(message.chat.id, "simple_mode", not current_mode)
-    new_mode = "SIMPLE (Only Next/Prev)" if not current_mode else "FULL (All Buttons)"
-    await message.reply(f"✅ Button style changed to: **{new_mode}**")
+    new_mode_val = not current_mode
+    await save_group_settings(message.chat.id, "simple_mode", new_mode_val)
+    
+    new_mode_str = "SIMPLE (Only Next/Prev)" if new_mode_val else "FULL (All Buttons)"
+    await message.reply(f"✅ Button style changed to: **{new_mode_str}**")
 
 @Client.on_message(filters.command("search") & filters.group)
 async def search_toggle(client, message):
@@ -139,7 +145,10 @@ async def pm_search(client, message):
     if not await is_valid_search(message): return
     if IS_PREMIUM and message.from_user.id not in ADMINS and not await is_premium(message.from_user.id, client):
         return await message.reply_photo(random.choice(PICS), caption="🔒 **Premium Required**\n\nOnly Premium users can use this bot in DM.", reply_markup=InlineKeyboardMarkup([[InlineKeyboardButton("💎 Buy Premium", callback_data="activate_plan"), InlineKeyboardButton("📊 My Plan", callback_data="myplan")]]))
-    await auto_filter(client, message, collection_type="all")
+    
+    # PM में भी सेटिंग्स पास करना ताकि button_style काम करे
+    settings = await get_settings(message.chat.id)
+    await auto_filter(client, message, collection_type="all", settings=settings)
 
 @Client.on_message(filters.group & filters.text & filters.incoming)
 async def group_search(client, message):
@@ -176,7 +185,8 @@ async def auto_filter(client, msg, collection_type="all", settings=None):
     files, next_offset, total, act_src = await get_search_results(search, MAX_BTN, 0, collection_type=collection_type)
 
     if not settings: settings = await get_settings(msg.chat.id)
-    is_simple_mode = settings.get("simple_mode", False)
+    # ✅ डिफ़ॉल्ट अब True है
+    is_simple_mode = settings.get("simple_mode", True)
 
     if not files:
         if SPELL_CHECK:
@@ -230,7 +240,8 @@ async def spell_check_handler(client, query):
         BUTTONS[key] = suggestion
         
         settings = await get_settings(query.message.chat.id)
-        is_simple_mode = settings.get("simple_mode", False)
+        # ✅ डिफ़ॉल्ट अब True है
+        is_simple_mode = settings.get("simple_mode", True)
         
         cap, markup = get_filter_ui(suggestion, files, total, act_src, 0, query.message.chat.id, query.from_user.id, key, next_offset, is_simple_mode)
         await query.message.edit_text(cap, reply_markup=markup, disable_web_page_preview=True)
@@ -298,7 +309,8 @@ async def pagination_handler(client, query):
     temp.FILES[key] = files
     
     settings = await get_settings(query.message.chat.id)
-    is_simple_mode = settings.get("simple_mode", False)
+    # ✅ डिफ़ॉल्ट अब True है
+    is_simple_mode = settings.get("simple_mode", True)
     
     cap, markup = get_filter_ui(search, files, total, act_src, offset, query.message.chat.id, req, key, next_off, is_simple_mode)
 
