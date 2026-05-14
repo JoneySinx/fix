@@ -1,5 +1,5 @@
 from aiohttp import web
-import time, uuid
+import time, uuid, random
 from info import ADMINS
 from utils import temp
 from database.users_chats_db import db as user_db, web_db
@@ -8,10 +8,12 @@ from hydrogram.types import InlineKeyboardMarkup as IKM, InlineKeyboardButton as
 
 admin_routes = web.RouteTableDef()
 
+# रजिस्ट्रेशन OTP को स्टोर करने के लिए टेम्पररी डिक्शनरी
+if not hasattr(temp, 'REG_PENDING'):
+    temp.REG_PENDING = {}
+
 # ----------------- MINIFIED ASSETS -----------------
 CSS = "*{box-sizing:border-box;margin:0;padding:0}:root{--bg:#141414;--bg2:#000;--bg3:#2b2b2b;--bg4:#333;--accent:#e50914;--accent-hover:#b30710;--text:#fff;--muted:#808080;--border:#404040;--card:#181818;--sidebar-w:260px}body.light{--bg:#f3f3f3;--bg2:#fff;--bg3:#e6e6e6;--bg4:#ccc;--text:#141414;--muted:#666;--border:#ccc;--card:#fff}body{font-family:'DM Sans',sans-serif;background:var(--bg);color:var(--text);min-height:100vh;overflow-x:hidden;transition:.2s}.topbar{background:var(--bg2);padding:0 4%;display:flex;align-items:center;height:68px;position:sticky;top:0;z-index:100;gap:15px;box-shadow:0 2px 10px rgba(0,0,0,.5)}.ham-btn{background:0 0;border:0;cursor:pointer;color:var(--text);display:flex;flex-direction:column;gap:5px;padding:6px}.ham-line{width:22px;height:2px;background:currentColor;transition:.2s}.ham-btn.open .ham-line:nth-child(1){transform:translateY(7px) rotate(45deg)}.ham-btn.open .ham-line:nth-child(2){opacity:0}.ham-btn.open .ham-line:nth-child(3){transform:translateY(-7px) rotate(-45deg)}.logo{font-size:18px;font-weight:900;letter-spacing:1px;color:var(--accent);display:flex;align-items:center;gap:8px;text-decoration:none;flex:1}.nf-icon{background:var(--accent);color:#fff;padding:2px 7px;border-radius:3px;font-size:18px;line-height:1}.theme-btn{margin-left:auto;background:0 0;border:1px solid var(--border);border-radius:4px;padding:6px 12px;font-size:12px;font-weight:700;color:var(--text);cursor:pointer}.theme-btn:hover{background:var(--bg3)}.sidebar-overlay{position:fixed;inset:0;background:rgba(0,0,0,.7);z-index:150;opacity:0;pointer-events:none;transition:.2s}.sidebar-overlay.open{opacity:1;pointer-events:all}.sidebar{position:fixed;top:0;left:0;height:100%;width:var(--sidebar-w);background:var(--bg2);border-right:1px solid var(--border);z-index:160;display:flex;flex-direction:column;transform:translateX(-100%);transition:.3s}.sidebar.open{transform:translateX(0)}.sb-header{padding:20px;border-bottom:1px solid var(--border);display:flex;justify-content:space-between}.sb-logo{font-size:14px;font-weight:900;color:var(--accent);display:flex;align-items:center;gap:8px}.sb-close{background:0 0;border:0;color:var(--muted);font-size:22px;cursor:pointer}.sb-nav{padding:15px 10px;flex:1}.sb-section{font-size:11px;font-weight:700;color:var(--muted);padding:8px 12px}.sb-link{display:flex;padding:12px 15px;border-radius:4px;text-decoration:none;color:var(--muted);font-size:15px;font-weight:500;margin-bottom:4px}.sb-link.active{background:var(--accent);color:#fff}.sb-footer{padding:15px 10px;border-top:1px solid var(--border)}.sb-logout{display:block;padding:12px;border-radius:4px;text-align:center;text-decoration:none;color:var(--text);font-weight:700;border:1px solid var(--border)}.search-zone{padding:20px 4%;background:var(--bg)}.search-row{display:flex;gap:10px;flex-wrap:wrap}.filter-tabs{display:flex;gap:4px;background:var(--bg2);border:1px solid var(--border);padding:4px;border-radius:4px}.ftab{background:0 0;border:0;padding:8px 16px;font-weight:700;color:var(--muted);cursor:pointer}.ftab.active{background:var(--bg3);color:var(--text)}.search-wrap{flex:1;position:relative;min-width:200px}.s-icon{position:absolute;left:15px;top:50%;transform:translateY(-50%);color:var(--muted)}.search-input{width:100%;background:var(--bg2);border:1px solid var(--border);border-radius:4px;padding:12px 15px 12px 42px;color:var(--text);font-size:15px;outline:0}.search-btn{background:var(--accent);color:#fff;border:0;border-radius:4px;padding:12px 24px;font-weight:700;cursor:pointer}.main{padding:0 4% 40px;max-width:1400px;margin:0 auto}.stats-row{display:grid;grid-template-columns:repeat(auto-fit,minmax(200px,1fr));gap:15px;margin-bottom:30px}.scard{background:var(--card);padding:20px;border-radius:4px;position:relative;box-shadow:0 4px 6px rgba(0,0,0,.3)}.scard::after{content:'';position:absolute;bottom:0;left:0;right:0;height:3px}.scard.red::after{background:var(--accent)}.scard.white::after{background:#fff}.scard.grey::after{background:#808080}.scard-label{font-size:12px;font-weight:700;color:var(--muted);margin-bottom:10px}.scard-val{font-size:32px;font-weight:900;color:var(--text)}.scard-sub{font-size:12px;color:var(--muted)}.results-info{display:none;justify-content:space-between;padding:10px 0 20px;font-weight:700}.file-card{background:var(--card);border-radius:4px;padding:18px;display:flex;justify-content:space-between;align-items:center;gap:15px;margin-bottom:12px;border:1px solid var(--bg3)}.fc-left{flex:1}.fc-top{display:flex;gap:8px;margin-bottom:8px}.source-badge{font-size:10px;font-weight:900;padding:2px 6px;border-radius:2px;border:1px solid}.source-badge.primary{color:var(--accent);border-color:var(--accent)}.source-badge.cloud{color:#fff;border-color:#fff}.source-badge.archive{color:var(--muted);border-color:var(--muted)}.type-tag{font-size:12px;font-weight:700;color:var(--muted)}.fc-name{font-size:16px;font-weight:500;margin-bottom:6px}.fc-meta{font-size:13px;color:var(--muted)}.btn-play{background:#fff;color:#000;padding:10px 24px;border-radius:4px;font-weight:800;text-decoration:none;display:flex;gap:8px}.empty{text-align:center;padding:80px 20px;color:var(--muted)}.empty-icon{font-size:40px;margin-bottom:15px}.pagination{display:none;justify-content:center;gap:15px;padding:30px 0;align-items:center}.pg-btn{background:var(--bg3);border:0;color:var(--text);padding:10px 20px;border-radius:4px;font-weight:700;cursor:pointer}.pg-btn:disabled{opacity:.3}.toast{position:fixed;bottom:20px;right:20px;background:var(--accent);color:#fff;padding:12px 20px;border-radius:4px;font-weight:700;z-index:300;transform:translateX(150%);transition:.3s}.toast.show{transform:translateX(0)}.toast.error{background:#000;border:1px solid var(--accent)}.login-bg{background:linear-gradient(rgba(0,0,0,.8) 0,rgba(0,0,0,.4) 50%,rgba(0,0,0,.8) 100%),url('https://assets.nflxext.com/ffe/siteui/vlv3/f841d4c7-10e1-40af-bcae-07a3f8dc141a/f6d7434e-d6de-4185-a6d4-c77a2d08737b/IN-en-20220502-popsignuptwoweeks-perspective_alpha_website_medium.jpg') center/cover;min-height:100vh;display:flex;flex-direction:column}.login-top{padding:20px 4%; display:flex; justify-content:space-between; align-items:center;}.login-logo-big{font-size:32px;font-weight:900;color:var(--accent);display:flex;gap:8px;text-decoration:none;}.login-wrap{flex:1;display:flex;align-items:center;justify-content:center;padding:20px}.login-card{background:rgba(0,0,0,.75);padding:60px;border-radius:4px;width:100%;max-width:450px}.login-card h2{font-size:32px;margin-bottom:28px}.login-card input{width:100%;background:#333;border:0;padding:16px;color:#fff;margin-bottom:16px;border-radius:4px}.login-card .submit-btn{width:100%;background:var(--accent);color:#fff;border:0;padding:16px;font-weight:700;margin-top:24px;border-radius:4px;cursor:pointer}.err-box{background:#e87c03;color:#fff;padding:10px 20px;border-radius:4px;margin-bottom:16px}.success-box{background:#28a745;color:#fff;padding:10px 20px;border-radius:4px;margin-bottom:16px}.big-stat{background:var(--card);padding:40px 20px;border-radius:4px;text-align:center;margin-bottom:30px}.big-stat-val{font-size:64px;font-weight:900;color:var(--accent);margin-bottom:10px}.big-stat-label{font-size:16px;color:var(--muted);font-weight:700;letter-spacing:2px}"
-
-# ✅ JS में अब एडमिन के लिए Edit और Delete की Logic जुड़ गई है
 JS = """
 (function(){if(localStorage.getItem('theme')==='light')document.body.classList.add('light')})();
 function toggleTheme(){var l=document.body.classList.toggle('light');localStorage.setItem('theme',l?'light':'dark');}
@@ -40,7 +42,6 @@ async function doSearch(o){
             var sc=(f.source||'primary').toLowerCase();
             if(!['primary','cloud','archive'].includes(sc))sc='primary';
             
-            // ✅ एडमिन कंट्रोल्स रेंडर करें
             var adminControls='';
             if(d.is_admin){
                 adminControls=`<div style="display:flex;gap:5px;margin-top:10px;">
@@ -67,7 +68,6 @@ function showToast(m,t='success'){var x=document.getElementById('toast');x.textC
 
 document.addEventListener('DOMContentLoaded',()=>{var q=document.getElementById('q');if(q)q.addEventListener('keydown',e=>{if(e.key==='Enter')doSearch(0);});});
 
-// ✅ Delete API Call
 async function deleteFile(fid,col){
     if(!confirm('Are you sure you want to delete this file?'))return;
     try{
@@ -78,7 +78,6 @@ async function deleteFile(fid,col){
     }catch(e){showToast('Delete failed','error');}
 }
 
-// ✅ Edit API Call
 async function editFile(fid,col,oldName){
     var newName=prompt("Enter new file name:",oldName);
     if(!newName||newName===oldName)return;
@@ -98,14 +97,12 @@ async def get_auth(req):
     s_user = req.cookies.get('user_session')
     if s_user and hasattr(temp, 'USER_SESSIONS') and s_user in temp.USER_SESSIONS and temp.USER_SESSIONS[s_user]['expiry'] > time.time():
         tg_id = temp.USER_SESSIONS[s_user]['tg_id']
-        # ✅ जादू यहाँ है: अगर ID ADMINS में है, तो वो एडमिन है।
         if tg_id in ADMINS:
             return 'admin', tg_id
         return 'user', tg_id
     return None, None
 
 def build_page(title, body, cls="", active_tab="", role=None):
-    # एडमिन को 'Database Stats' भी दिखेगा
     if role == 'admin':
         nav_links = f'<a href="/dashboard" class="sb-link {"active" if active_tab=="dash" else ""}">Home</a><a href="/stats" class="sb-link {"active" if active_tab=="stats" else ""}">Database Stats</a><a href="/profile" class="sb-link {"active" if active_tab=="profile" else ""}">Profile Settings</a>'
     elif role == 'user':
@@ -127,7 +124,6 @@ def form_wrapper(title, content, err="", msg=""):
 # ----------------- UNIFIED ROUTES -----------------
 @admin_routes.get('/admin')
 async def old_admin_route(req):
-    # अगर कोई पुराने /admin लिंक पर जाता है तो उसे /login पर भेज दो
     return web.HTTPFound('/login')
 
 @admin_routes.get('/login')
@@ -150,21 +146,88 @@ async def api_login_user(req):
         return res
     return web.HTTPFound('/login?err=Invalid Email or Password')
 
+# ----------------- 🔒 SECURE REGISTRATION (WITH OTP) -----------------
 @admin_routes.get('/register')
 async def register_user(req):
     role, _ = await get_auth(req)
     if role: return web.HTTPFound('/dashboard')
-    content = '<form action="/api/register" method="post"><input type="number" name="tg_id" placeholder="Telegram ID (e.g. 123456)" required><input type="email" name="email" placeholder="Email Address" required><input type="password" name="password" placeholder="Create Password" required><button class="submit-btn" type="submit">Sign Up</button></form><p style="margin-top:15px; font-size:14px; color:var(--muted)">Already have an account? <a href="/login" style="color:#fff; text-decoration:none">Sign In</a></p>'
+    
+    # Step 1 Form: Send OTP button instead of direct Sign Up
+    content = '<form action="/api/register_step1" method="post"><input type="number" name="tg_id" placeholder="Telegram ID (e.g. 123456)" required><input type="email" name="email" placeholder="Email Address" required><input type="password" name="password" placeholder="Create Password" required><button class="submit-btn" type="submit">Send OTP via Telegram</button></form><p style="margin-top:15px; font-size:14px; color:var(--muted)">Already have an account? <a href="/login" style="color:#fff; text-decoration:none">Sign In</a></p>'
     return build_page("Sign Up", form_wrapper("Create Account", content, req.query.get('err','')), "login-bg")
 
-@admin_routes.post('/api/register')
-async def api_register_user(req):
+@admin_routes.post('/api/register_step1')
+async def api_register_step1(req):
     d = await req.post()
     try: tg_id = int(d.get('tg_id'))
     except: return web.HTTPFound('/register?err=Invalid Telegram ID')
+    email = d.get('email')
+    password = d.get('password')
     
-    success, msg = await web_db.create_user(tg_id, d.get('email'), d.get('password'))
-    if success: return web.HTTPFound(f'/login?msg={msg}')
+    # Check if User already exists
+    if await web_db.col.find_one({"$or": [{"tg_id": tg_id}, {"email": email}]}):
+        return web.HTTPFound('/register?err=Telegram ID or Email already registered!')
+        
+    # Generate 6-digit OTP
+    otp = str(random.randint(100000, 999999))
+    
+    # Save to temp memory (expires in 5 mins)
+    temp.REG_PENDING[tg_id] = {
+        'email': email, 
+        'password': password, 
+        'otp': otp, 
+        'expiry': time.time() + 300 
+    }
+    
+    # Send OTP to Telegram user
+    msg_text = f"🔐 **Web Registration Verification**\n\nSomeone is trying to link your Telegram ID to this email: `{email}`\n\n**Your OTP is:** `{otp}`\n\n_Valid for 5 mins. If this wasn't you, just ignore this message._"
+    try:
+        await temp.BOT.send_message(tg_id, msg_text)
+    except Exception:
+        return web.HTTPFound('/register?err=Failed to send OTP. Please start the Bot first.')
+        
+    return web.HTTPFound(f'/verify_registration?tg_id={tg_id}')
+
+@admin_routes.get('/verify_registration')
+async def verify_registration_page(req):
+    tg_id = req.query.get('tg_id', '')
+    if not tg_id: return web.HTTPFound('/register')
+    
+    content = f'<p style="color:var(--muted); margin-bottom:15px; font-size:14px;">We sent a 6-digit OTP to your Telegram bot.</p><form action="/api/register_step2" method="post"><input type="hidden" name="tg_id" value="{tg_id}"><input type="text" name="otp" placeholder="Enter 6-digit OTP" required><button class="submit-btn" type="submit">Verify & Create Account</button></form>'
+    return build_page("Verify Registration", form_wrapper("Verify OTP", content, req.query.get('err','')), "login-bg")
+
+@admin_routes.post('/api/register_step2')
+async def api_register_step2(req):
+    d = await req.post()
+    try: tg_id = int(d.get('tg_id'))
+    except: return web.HTTPFound('/register?err=Invalid Request')
+    otp = d.get('otp')
+    
+    # Verify session
+    if tg_id not in getattr(temp, 'REG_PENDING', {}):
+        return web.HTTPFound('/register?err=Session expired. Try again.')
+        
+    pending = temp.REG_PENDING[tg_id]
+    
+    # Verify Expiry
+    if time.time() > pending['expiry']:
+        del temp.REG_PENDING[tg_id]
+        return web.HTTPFound('/register?err=OTP Expired. Please restart registration.')
+        
+    # Verify OTP
+    if pending['otp'] != otp:
+        return web.HTTPFound(f'/verify_registration?tg_id={tg_id}&err=Invalid OTP')
+        
+    # OTP Matched -> Create User
+    success, msg = await web_db.create_user(tg_id, pending['email'], pending['password'])
+    del temp.REG_PENDING[tg_id] # Clean up
+    
+    if success:
+        try:
+            await temp.BOT.send_message(tg_id, "✅ **Web Account Successfully Created!**\n*You can now log in to the website.*")
+        except: pass
+        return web.HTTPFound('/login?msg=Account created successfully! Please login.')
+        
     return web.HTTPFound(f'/register?err={msg}')
 
 # ----------------- OTP & FORGOT PASSWORD -----------------
@@ -181,7 +244,7 @@ async def api_forgot_password(req):
     otp = await web_db.generate_otp(tg_id)
     if otp:
         try:
-            await temp.BOT.send_message(tg_id, f"🔐 **Fast Finder Web Login**\n\nYour Password Reset OTP is: `{otp}`\n\nValid for 10 minutes. Do not share!")
+            await temp.BOT.send_message(tg_id, f"🔐 **Fast Finder Password Reset**\n\nYour Password Reset OTP is: `{otp}`\n\nValid for 10 minutes. Do not share!")
             return web.HTTPFound('/forgot_password?msg=OTP sent to your Telegram!')
         except: return web.HTTPFound('/forgot_password?err=Error sending OTP. Have you started the bot?')
     return web.HTTPFound('/forgot_password?err=Telegram ID not registered!')
@@ -202,7 +265,6 @@ async def dash(req):
     role, tg_id = await get_auth(req)
     if not role: return web.HTTPFound('/login')
 
-    # Premium Gate सिर्फ Normal Users के लिए (एडमिन के लिए पास है)
     if role == 'user':
         mp = await user_db.get_plan(tg_id)
         if not mp.get("premium"):
@@ -214,7 +276,7 @@ async def dash(req):
 @admin_routes.get('/profile')
 async def profile_page(req):
     role, tg_id = await get_auth(req)
-    if not role: return web.HTTPFound('/login') # एडमिन भी प्रोफाइल चेंज कर सकता है
+    if not role: return web.HTTPFound('/login')
     
     user = await web_db.col.find_one({"tg_id": tg_id})
     email = user.get('email', '') if user else ''
@@ -246,7 +308,7 @@ async def premium_expired(req):
 @admin_routes.get('/stats')
 async def stats(req):
     role, _ = await get_auth(req)
-    if role != 'admin': return web.HTTPFound('/dashboard') # सिर्फ एडमिन को दिखेगा
+    if role != 'admin': return web.HTTPFound('/dashboard')
     
     try: s = await db_count_documents(); s = s if isinstance(s, dict) else {'total':s,'primary':s,'cloud':0,'archive':0}
     except: s = {'total':0,'primary':0,'cloud':0,'archive':0}
