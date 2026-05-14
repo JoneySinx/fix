@@ -1,9 +1,8 @@
-import logging, asyncio, re
-from datetime import datetime
+import logging, asyncio, re, time
+from datetime import datetime, timedelta
 from zoneinfo import ZoneInfo
 from hydrogram.errors import FloodWait
 from hydrogram import enums
-from hydrogram.types import InlineKeyboardButton
 
 from info import ADMINS, IS_PREMIUM, LOG_CHANNEL
 from database.users_chats_db import db
@@ -11,14 +10,28 @@ from database.users_chats_db import db
 logger = logging.getLogger(__name__)
 
 # ─────────────────────────────────────────────
-# 🧠 TEMP RUNTIME STORAGE
+# 🧠 TEMP RUNTIME STORAGE (Cleaned)
 # ─────────────────────────────────────────────
 class temp(object):
     START_TIME = 0
     BANNED_USERS, BANNED_CHATS = [], []
     ME, BOT, U_NAME, B_NAME = None, None, None, None
-    CANCEL, USERS_CANCEL, GROUPS_CANCEL = False, False, False
-    SETTINGS, ADMIN_TOKENS, ADMIN_SESSIONS, FILES, PREMIUM, PM_FILES = {}, {}, {}, {}, {}, {}
+    CANCEL = False # फालतू CANCEL वेरिएबल्स हटा दिए गए
+    ADMIN_TOKENS, ADMIN_SESSIONS, FILES, PM_FILES = {}, {}, {}, {}
+
+# ─────────────────────────────────────────────
+# 🛡️ RATE LIMITER UTILITY (Anti-Abuse)
+# ─────────────────────────────────────────────
+_rate_limits = {}
+
+def is_rate_limited(user_id, action, seconds):
+    """हैवी कमांड्स जैसे /ask, spell check, और /link पर स्पैम रोकता है।"""
+    key = f"{user_id}:{action}"
+    now = time.time()
+    if key in _rate_limits and now - _rate_limits[key] < seconds:
+        return True
+    _rate_limits[key] = now
+    return False
 
 # ─────────────────────────────────────────────
 # 👮 ADMIN CHECK
@@ -29,7 +42,7 @@ async def is_check_admin(bot, chat_id, user_id):
     except: return False
 
 # ─────────────────────────────────────────────
-# 💎 PREMIUM SYSTEM (Optimized)
+# 💎 PREMIUM SYSTEM (Centralized)
 # ─────────────────────────────────────────────
 async def is_premium(user_id, bot):
     if not IS_PREMIUM or user_id in ADMINS: return True
@@ -50,11 +63,8 @@ async def is_premium(user_id, bot):
             return False
     return True
 
-def get_premium_button():
-    return InlineKeyboardButton('💎 Buy Premium', url=f"https://t.me/{temp.U_NAME}?start=premium")
-
 # ─────────────────────────────────────────────
-# 📢 BROADCAST (Unified Logic)
+# 📢 BROADCAST
 # ─────────────────────────────────────────────
 async def broadcast_messages(chat_id, message, pin=False, is_group=False):
     try:
@@ -73,34 +83,36 @@ async def broadcast_messages(chat_id, message, pin=False, is_group=False):
                     {"id": int(chat_id)},
                     {"$set": {"chat_status": {"is_disabled": True, "reason": "Bot removed from group"}}}
                 )
-            except Exception as ex: logger.error(f"Failed to disable chat {chat_id}: {ex}")
+            except: pass
         else:
             await db.delete_user(int(chat_id))
         return "Error"
 
-async def groups_broadcast_messages(chat_id, message, pin=False):
-    return await broadcast_messages(chat_id, message, pin, is_group=True)
+# ─────────────────────────────────────────────
+# ⚙️ TTL CACHE FOR SETTINGS (High Performance)
+# ─────────────────────────────────────────────
+_settings_cache = {}
+_CACHE_TTL = 300 # 5 मिनट
 
-# ─────────────────────────────────────────────
-# ⚙️ GROUP SETTINGS (Fast Cache)
-# ─────────────────────────────────────────────
 async def get_settings(group_id):
-    if group_id not in temp.SETTINGS:
-        temp.SETTINGS[group_id] = await db.get_settings(group_id)
-    return temp.SETTINGS[group_id]
+    now = time.time()
+    if group_id in _settings_cache:
+        data, ts = _settings_cache[group_id]
+        if now - ts < _CACHE_TTL:
+            return data
+    
+    data = await db.get_settings(group_id)
+    _settings_cache[group_id] = (data, now)
+    return data
 
 async def save_group_settings(group_id, key, value):
-    temp.SETTINGS[group_id] = await get_settings(group_id)
-    temp.SETTINGS[group_id][key] = value
-    await db.update_settings(group_id, temp.SETTINGS[group_id])
+    data = await get_settings(group_id)
+    data[key] = value
+    _settings_cache[group_id] = (data, time.time())
+    await db.update_settings(group_id, data)
 
 # ─────────────────────────────────────────────
-# 🚫 COMPATIBILITY
-# ─────────────────────────────────────────────
-async def is_subscribed(bot, query): return []
-
-# ─────────────────────────────────────────────
-# 📦 UTILS (Fast Math & IST Time)
+# 📦 UTILS (Formatting & Time)
 # ─────────────────────────────────────────────
 def get_size(size):
     units = ["Bytes", "KB", "MB", "GB", "TB"]
@@ -118,7 +130,7 @@ def get_readable_time(seconds):
     return res or "0s"
 
 def get_wish():
-    # 🇮🇳 Always IST Time
+    # 🇮🇳 IST समय के अनुसार विश
     h = datetime.now(ZoneInfo("Asia/Kolkata")).hour
     return "ɢᴏᴏᴅ ᴍᴏʀɴɪɴɢ 🌞" if h < 12 else "ɢᴏᴏᴅ ᴀꜰᴛᴇʀɴᴏᴏɴ 🌗" if h < 18 else "ɢᴏᴏᴅ ᴇᴠᴇɴɪɴɢ 🌘"
 
@@ -129,3 +141,16 @@ async def get_seconds(time_string):
         "s": 1, "min": 60, "hour": 3600, "day": 86400,
         "month": 2592000, "year": 31536000
     }.get(match.group(2), 0)
+
+# 🛠️ Helpers for premium and cleanup
+def parse_expire_time(e):
+    if isinstance(e, datetime): return e
+    try: return datetime.strptime(e, "%Y-%m-%d %H:%M:%S") if e else None
+    except: return None
+
+def get_ist_str(dt):
+    return (dt + timedelta(hours=5, minutes=30)).strftime("%d %B %Y, %I:%M %p") if dt else "Unknown"
+
+async def safe_del(c, cid, mids):
+    try: await c.delete_messages(cid, mids)
+    except: pass
