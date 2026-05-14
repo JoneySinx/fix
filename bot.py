@@ -25,7 +25,6 @@ logging.basicConfig(
     handlers=[logging.StreamHandler()]
 )
 logging.getLogger('hydrogram').setLevel(logging.ERROR)
-# ✅ Suppress noisy logs from aiohttp & uptime probes (Perfect for Koyeb)
 logging.getLogger('aiohttp.access').setLevel(logging.WARNING)
 logging.getLogger('aiohttp.server').setLevel(logging.WARNING)
 
@@ -36,7 +35,8 @@ logger = logging.getLogger(__name__)
 # ==========================================================
 from aiohttp import web
 from hydrogram import Client, types
-from hydrogram.errors import FloodWait
+from hydrogram.errors import FloodWait, StopPropagation # ✅ Added StopPropagation
+from hydrogram.handlers import MessageHandler # ✅ Added MessageHandler
 from web import web_app
 from info import (
     API_ID, API_HASH, BOT_TOKEN, PORT, ADMINS, 
@@ -44,11 +44,7 @@ from info import (
 )
 from utils import temp
 from database.users_chats_db import db
-
-# ⚡ IMPORTANT: Import Database Indexer
 from database.ia_filterdb import ensure_indexes
-
-# -------------------- IMPORT PREMIUM MODULE --------------------
 from plugins.premium import check_premium_expired
 
 # ==========================================================
@@ -63,7 +59,6 @@ class Bot(Client):
             bot_token=BOT_TOKEN,
             plugins={"root": "plugins"}
         )
-        # ✅ Instance variables for safe cleanup
         self._runner = None 
         self._premium_task = None 
 
@@ -74,7 +69,7 @@ class Bot(Client):
 
         # 2. Initialize Database Indexes
         await ensure_indexes()
-        await db._ensure_indexes() # ✅ FIX: Added users_chats_db indexer here to prevent RuntimeError
+        await db._ensure_indexes() 
         logger.info("✅ Database Indexes Checked/Created")
 
         # 3. Load banned users & chats (Safe Loading)
@@ -82,81 +77,82 @@ class Bot(Client):
             b_users, b_chats = await db.get_banned()
             temp.BANNED_USERS = b_users
             temp.BANNED_CHATS = b_chats
+            logger.info(f"✅ Loaded {len(b_users)} banned users and {len(b_chats)} banned chats")
         except Exception as e:
             logger.error(f"Error loading banned list: {e}")
 
-        # 4. Restart Handler (Safe Context Manager)
+        # 4. Global Ban Middleware (The Security Guard)
+        # ✅ यह कोड बैन किए गए यूज़र्स को बॉट इस्तेमाल करने से रोकेगा
+        async def ban_check_middleware(client, message):
+            uid = message.from_user.id if message.from_user else None
+            cid = message.chat.id if message.chat else None
+            if (uid and uid in temp.BANNED_USERS) or (cid and cid in temp.BANNED_CHATS):
+                raise StopPropagation
+        
+        self.add_handler(MessageHandler(ban_check_middleware), group=-1)
+        logger.info("🛡️ Global Ban Middleware Activated")
+
+        # 5. Restart Handler
         if os.path.exists("restart.txt"):
             try:
                 with open("restart.txt", "r") as f:
                     content = f.read().strip().split()
                     if len(content) == 2:
                         chat_id, msg_id = map(int, content)
-                        await self.edit_message_text(
-                            chat_id=chat_id,
-                            message_id=msg_id,
-                            text="✅ Restarted Successfully!"
-                        )
+                        await self.edit_message_text(chat_id=chat_id, message_id=msg_id, text="✅ Restarted Successfully!")
             except Exception as e:
                 logger.error(f"Restart message error: {e}")
             finally:
                 os.remove("restart.txt")
 
-        # 5. Set Bot Identity
+        # 6. Set Bot Identity
         temp.BOT = self
         me = await self.get_me()
         temp.ME = me.id
         temp.U_NAME = me.username
         temp.B_NAME = me.first_name
 
-        # 6. Start Web Server (Essential for Koyeb Health Checks)
+        # 7. Start Web Server
         self._runner = web.AppRunner(web_app, access_log=None)
         await self._runner.setup()
         await web.TCPSite(self._runner, "0.0.0.0", PORT).start()
         logger.info(f"✅ Web Server Started on Port {PORT}")
 
-        # 7. Start Premium Checker Task (Saved reference avoids GC)
+        # 8. Start Premium Checker Task
         self._premium_task = asyncio.create_task(check_premium_expired(self))
 
-        # 8. Send Startup Logs
+        # 9. Send Startup Logs
         ist = pytz.timezone("Asia/Kolkata")
         now = datetime.now(ist)
-        
         startup_msg = (
             f"🤖 <b>Bot Started Successfully!</b>\n\n"
             f"📅 <b>Date:</b> {now.strftime('%d %B %Y')}\n"
             f"🕐 <b>Time:</b> {now.strftime('%I:%M:%S %p')}\n"
             f"🌏 <b>Timezone:</b> IST (Asia/Kolkata)\n"
-            f"🚀 <b>Speed:</b> Koyeb Optimized (Async/Motor)\n"
+            f"🚀 <b>Speed:</b> Koyeb Optimized\n"
             f"✅ <b>Status:</b> Online"
         )
 
-        # ✅ Parallel Admin Notify with FloodWait protection
         async def _safe_send(admin_id):
             try:
                 await self.send_message(admin_id, startup_msg)
             except FloodWait as e:
-                await asyncio.sleep(e.value) # Handle rate limits
+                await asyncio.sleep(e.value)
                 await self.send_message(admin_id, startup_msg)
             except Exception:
                 pass
 
         await asyncio.gather(*[_safe_send(aid) for aid in ADMINS])
 
-        # Log Channel Notify
         if LOG_CHANNEL:
             try:
-                await self.send_message(
-                    LOG_CHANNEL,
-                    f"<b>{me.mention} restarted successfully 🤖</b>"
-                )
+                await self.send_message(LOG_CHANNEL, f"<b>{me.mention} restarted successfully 🤖</b>")
             except Exception as e:
                 logger.warning(f"Failed to send log to LOG_CHANNEL: {e}")
 
         logger.info(f"@{me.username} is Online & Ready!")
 
     async def stop(self, *args):
-        # ✅ Clean up Web Server & Background Tasks
         if getattr(self, '_runner', None):
             await self._runner.cleanup()
             logger.info("✅ Web Server Cleanup Complete")
@@ -168,23 +164,13 @@ class Bot(Client):
         await super().stop()
         logger.info("Bot stopped Gracefully. Bye 👋")
 
-    # ✅ Correct Return Type Annotation & NoneType handling
-    async def iter_messages(
-        self: Client,
-        chat_id: Union[int, str],
-        limit: int,
-        offset: int = 0
-    ) -> AsyncGenerator["types.Message", None]:
+    async def iter_messages(self, chat_id: Union[int, str], limit: int, offset: int = 0) -> AsyncGenerator["types.Message", None]:
         current = offset
         while current < limit:
             diff = min(200, limit - current)
             try:
-                messages = await self.get_messages(
-                    chat_id,
-                    list(range(current, current + diff))
-                )
+                messages = await self.get_messages(chat_id, list(range(current, current + diff)))
                 for message in messages:
-                    # Skip deleted/empty messages to prevent indexer crash
                     if message and not message.empty: 
                         yield message
                 current += diff
@@ -193,21 +179,19 @@ class Bot(Client):
                 return
 
 # ==========================================================
-# MAIN EXECUTION (Graceful Shutdown Added)
+# MAIN EXECUTION
 # ==========================================================
 async def main():
     bot = Bot()
     await bot.start()
     
-    # ✅ Catch Koyeb's Stop Signals for safe shutdown
     loop = asyncio.get_running_loop()
     stop_event = asyncio.Event()
-
     for sig in (signal.SIGINT, signal.SIGTERM):
         try:
             loop.add_signal_handler(sig, stop_event.set)
         except NotImplementedError:
-            pass # Fallback if running on Windows locally
+            pass 
 
     await stop_event.wait()
     await bot.stop()
@@ -216,4 +200,4 @@ if __name__ == "__main__":
     try:
         asyncio.run(main())
     except KeyboardInterrupt:
-        pass # Prevents ugly traceback on Ctrl+C
+        pass
