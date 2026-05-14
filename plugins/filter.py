@@ -49,7 +49,7 @@ async def get_spell_suggestion(query):
     return None
 
 # ─────────────────────────────────────────────
-# 🎨 UI HELPER FUNCTION (Simple Mode Added)
+# 🎨 UI HELPER FUNCTION (Ultra Clean UI)
 # ─────────────────────────────────────────────
 def get_filter_ui(search, files, total, act_src, offset, chat_id, req_id, key, next_off, simple_mode=True):
     list_items = [
@@ -63,36 +63,31 @@ def get_filter_ui(search, files, total, act_src, offset, chat_id, req_id, key, n
     cap = (f"<b>👑 Search: {search}\n🎬 Total: {total}\n📚 Source: {act_src.upper()}\n"
            f"📄 Page: {curr_page}/{total_pages}</b>\n\n{files_text}")
 
-    btn = []
-    act_src_short = SRC_TO_SHORT.get(act_src, "pri")
-
     # 1. अगर रिज़ल्ट 1 पेज के ही हैं, तो कोई बटन नहीं
     if total <= MAX_BTN:
         return cap, None
 
-    # 2. पेजिनेशन (Next/Prev)
+    btn = []
+    act_src_short = SRC_TO_SHORT.get(act_src, "pri")
+
+    # 2. पेजिनेशन (Next/Prev) - NO PAGE NUMBER BUTTON
     nav = []
     prev_off = int(offset) - MAX_BTN
     if prev_off >= 0: 
         nav.append(InlineKeyboardButton("◀️ Prev", callback_data=f"nav_{req_id}_{key}_{prev_off}_{act_src_short}"))
-    
-    if not simple_mode:
-        nav.append(InlineKeyboardButton(f"📄 {curr_page}/{total_pages}", callback_data="pages"))
         
     if next_off: 
         nav.append(InlineKeyboardButton("Next ▶️", callback_data=f"nav_{req_id}_{key}_{next_off}_{act_src_short}"))
     
     if nav: btn.append(nav)
 
-    # 3. फुल मोड है तो बाकी बटन्स भी लगाओ
+    # 3. फुल मोड है तो सिर्फ सोर्स (Primary/Cloud/Archive) बटन्स लगाओ (Send All / Close हटाया गया)
     if not simple_mode:
-        btn.append([InlineKeyboardButton("📤 Send All", callback_data=f"sendall_{req_id}_{key}_{act_src_short}")])
         col_btn = []
         for c in ["primary", "cloud", "archive"]:
             tick = "✅" if c == act_src else "📂"
             col_btn.append(InlineKeyboardButton(f"{tick} {c.title()}", callback_data=f"coll_{req_id}_{key}_{SRC_TO_SHORT[c]}"))
         btn.append(col_btn)
-        btn.append([InlineKeyboardButton("❌ Close", callback_data=f"close_{req_id}")])
     
     return cap, InlineKeyboardMarkup(btn)
 
@@ -117,19 +112,16 @@ async def smart_delete_msg(bot_msg, user_msg=None, delay=300): # 300 sec = 5 min
 @Client.on_message(filters.command("button_style"))
 async def button_style_toggle(client, message):
     """एडमिन (ग्रुप में) या यूज़र (PM में) द्वारा सिंपल/फुल बटन मोड सेट करने के लिए"""
-    # अगर ग्रुप है, तो सिर्फ एडमिन कर सकता है
     if message.chat.type in [enums.ChatType.GROUP, enums.ChatType.SUPERGROUP]:
         if not await is_check_admin(client, message.chat.id, message.from_user.id): return
         
     settings = await get_settings(message.chat.id)
-    # ✅ डिफ़ॉल्ट अब True है
     current_mode = settings.get("simple_mode", True)
     
-    # टॉगल मोड
     new_mode_val = not current_mode
     await save_group_settings(message.chat.id, "simple_mode", new_mode_val)
     
-    new_mode_str = "SIMPLE (Only Next/Prev)" if new_mode_val else "FULL (All Buttons)"
+    new_mode_str = "SIMPLE (Only Next/Prev)" if new_mode_val else "FULL (With Source Buttons)"
     await message.reply(f"✅ Button style changed to: **{new_mode_str}**")
 
 @Client.on_message(filters.command("search") & filters.group)
@@ -146,7 +138,6 @@ async def pm_search(client, message):
     if IS_PREMIUM and message.from_user.id not in ADMINS and not await is_premium(message.from_user.id, client):
         return await message.reply_photo(random.choice(PICS), caption="🔒 **Premium Required**\n\nOnly Premium users can use this bot in DM.", reply_markup=InlineKeyboardMarkup([[InlineKeyboardButton("💎 Buy Premium", callback_data="activate_plan"), InlineKeyboardButton("📊 My Plan", callback_data="myplan")]]))
     
-    # PM में भी सेटिंग्स पास करना ताकि button_style काम करे
     settings = await get_settings(message.chat.id)
     await auto_filter(client, message, collection_type="all", settings=settings)
 
@@ -185,7 +176,6 @@ async def auto_filter(client, msg, collection_type="all", settings=None):
     files, next_offset, total, act_src = await get_search_results(search, MAX_BTN, 0, collection_type=collection_type)
 
     if not settings: settings = await get_settings(msg.chat.id)
-    # ✅ डिफ़ॉल्ट अब True है
     is_simple_mode = settings.get("simple_mode", True)
 
     if not files:
@@ -240,7 +230,6 @@ async def spell_check_handler(client, query):
         BUTTONS[key] = suggestion
         
         settings = await get_settings(query.message.chat.id)
-        # ✅ डिफ़ॉल्ट अब True है
         is_simple_mode = settings.get("simple_mode", True)
         
         cap, markup = get_filter_ui(suggestion, files, total, act_src, 0, query.message.chat.id, query.from_user.id, key, next_offset, is_simple_mode)
@@ -254,34 +243,6 @@ async def spell_check_handler(client, query):
     except Exception as e:
         print(f"Spellcheck Callback Error: {e}")
         await query.answer("❌ Error during search!", show_alert=True)
-
-@Client.on_callback_query(filters.regex(r"^sendall_"))
-async def send_all_handler(client, query):
-    try:
-        _, req, key, _ = query.data.split("_", 3)
-        if int(req) != query.from_user.id: return await query.answer("❌ This is not your search!", show_alert=True)
-    except: return await query.answer("❌ Error!", show_alert=True)
-
-    if IS_PREMIUM and query.from_user.id not in ADMINS and not await is_premium(query.from_user.id, client):
-        return await query.answer("❌ Premium Expired!", show_alert=True)
-
-    files = temp.FILES.get(key)
-    if not files: return await query.answer("❌ Search Expired! Search again.", show_alert=True)
-
-    await query.answer("📤 Sending files to your PM...", show_alert=False)
-    try:
-        await client.send_message(query.from_user.id, f"<b>📥 All files for your search:</b>")
-        for file in files:
-            target_id = file.get("file_ref") or file.get("file_id")
-            if not target_id or str(target_id).strip() == 'None': continue
-            cap = script.FILE_CAPTION.format(file_name=str(file.get('file_name', 'File')), file_size=get_size(file.get('file_size', 0)))
-            btn = [[InlineKeyboardButton('❌ Close', callback_data=f'close_{query.from_user.id}')]]
-            if IS_STREAM: btn.insert(0, [InlineKeyboardButton("▶️ Watch / Download", callback_data=f"stream#{target_id}")])
-            await client.send_cached_media(query.from_user.id, target_id, caption=cap, reply_markup=InlineKeyboardMarkup(btn))
-            await asyncio.sleep(0.5) 
-    except Exception as e:
-        if "USER_IS_BLOCKED" in str(e) or "PEER_ID_INVALID" in str(e):
-            await query.message.reply(f"❌ <a href='tg://user?id={query.from_user.id}'>User</a>, please start me in PM first!", disable_web_page_preview=True)
 
 @Client.on_callback_query(filters.regex(r"^(nav_|coll_)"))
 async def pagination_handler(client, query):
@@ -309,7 +270,6 @@ async def pagination_handler(client, query):
     temp.FILES[key] = files
     
     settings = await get_settings(query.message.chat.id)
-    # ✅ डिफ़ॉल्ट अब True है
     is_simple_mode = settings.get("simple_mode", True)
     
     cap, markup = get_filter_ui(search, files, total, act_src, offset, query.message.chat.id, req, key, next_off, is_simple_mode)
@@ -318,10 +278,10 @@ async def pagination_handler(client, query):
     except: pass
     await query.answer()
 
-    # ⏱️ Reset Smart Inactivity Timer (The Pro Level Magic)
+    # ⏱️ Reset Smart Inactivity Timer 
     if settings.get("auto_delete") and query.message.id in SMART_TASKS:
-        SMART_TASKS[query.message.id].cancel() # पुरानी उलटी गिनती बंद
-        SMART_TASKS[query.message.id] = asyncio.create_task(smart_delete_msg(query.message, delay=300)) # नई उलटी गिनती शुरू
+        SMART_TASKS[query.message.id].cancel()
+        SMART_TASKS[query.message.id] = asyncio.create_task(smart_delete_msg(query.message, delay=300))
 
 @Client.on_callback_query(filters.regex(r"^close_"))
 async def close_cb(c, q):
@@ -329,7 +289,3 @@ async def close_cb(c, q):
         if int(q.data.split("_")[1]) != q.from_user.id: return await q.answer("❌ This is not your search!", show_alert=True)
         await q.message.delete()
     except Exception: pass
-
-@Client.on_callback_query(filters.regex("^pages$"))
-async def pages_cb(c, q):
-    await q.answer()
