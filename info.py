@@ -18,7 +18,6 @@ def is_enabled(key, default=False):
     logger.error(f"{key} has invalid value")
     exit(1)
 
-
 def is_valid_ip(ip):
     ip_pattern = (
         r'\b(?:25[0-5]|2[0-4][0-9]|[01]?[0-9][0-9]?)\.'
@@ -28,6 +27,12 @@ def is_valid_ip(ip):
     )
     return re.match(ip_pattern, ip) is not None
 
+# 🛠 Smart List Parser: मल्टीपल IDs को स्पेस या कॉमा से अलग करके लिस्ट बना देगा
+def get_channels(env_var):
+    val = environ.get(env_var, "").replace(",", " ").strip()
+    if not val:
+        return []
+    return [int(x) for x in val.split() if x.replace("-", "").isdigit()]
 
 # ─────────────────────────────────────────────
 # 🤖 BOT CREDENTIALS
@@ -43,11 +48,9 @@ if not API_ID or not API_HASH or not BOT_TOKEN:
 BOT_ID = int(BOT_TOKEN.split(":")[0])
 PORT = int(environ.get("PORT", 80))
 
-# वेब पैनल के लिए (info.py में जोड़ें)
-ADMIN_USERNAME = os.environ.get("ADMIN_USERNAME", "yourx")
-ADMIN_PASSWORD = os.environ.get("ADMIN_PASSWORD", "admin143")
-
-
+# Web Panel Credentials
+ADMIN_USERNAME = environ.get("ADMIN_USERNAME", "yourx")
+ADMIN_PASSWORD = environ.get("ADMIN_PASSWORD", "admin143")
 
 # ─────────────────────────────────────────────
 # 👑 ADMINS
@@ -58,7 +61,6 @@ if not ADMINS:
     exit(1)
 ADMINS = [int(x) for x in ADMINS.split()]
 
-
 # ─────────────────────────────────────────────
 # 🖼️ IMAGES
 # ─────────────────────────────────────────────
@@ -67,10 +69,15 @@ PICS = environ.get(
     "https://i.postimg.cc/8C15CQ5y/1.png"
 ).split()
 
-
 # ─────────────────────────────────────────────
 # 📢 CHANNELS
 # ─────────────────────────────────────────────
+# 🌟 Auto Indexing Channels (मल्टीपल चैनल्स के लिए स्पेस या कॉमा दें, नहीं देना तो खाली छोड़ें)
+PRIMARY_CHANNEL = get_channels("PRIMARY_CHANNEL")
+CLOUD_CHANNEL = get_channels("CLOUD_CHANNEL")
+ARCHIVE_CHANNEL = get_channels("ARCHIVE_CHANNEL")
+
+# (पुराना वाला INDEX_CHANNELS भी सुरक्षित रखा है ताकि कोई पुराना कोड ब्रेक न हो)
 INDEX_CHANNELS = [
     int(x) if x.startswith("-") else x
     for x in environ.get("INDEX_CHANNELS", "").split()
@@ -86,7 +93,6 @@ if not SUPPORT_GROUP:
     logger.error("SUPPORT_GROUP missing")
     exit(1)
 
-
 # ─────────────────────────────────────────────
 # 🗄️ DATABASE (SINGLE DB – FINAL)
 # ─────────────────────────────────────────────
@@ -97,7 +103,6 @@ if not DATABASE_URL:
     logger.error("DATABASE_URL missing")
     exit(1)
 
-
 # ─────────────────────────────────────────────
 # ⚙️ BOT SETTINGS
 # ─────────────────────────────────────────────
@@ -105,21 +110,12 @@ TIME_ZONE = environ.get("TIME_ZONE", "Asia/Kolkata")
 DELETE_TIME = int(environ.get("DELETE_TIME", 3600))
 CACHE_TIME = int(environ.get("CACHE_TIME", 300))
 MAX_BTN = int(environ.get("MAX_BTN", 12))
-
-LANGUAGES = environ.get(
-    "LANGUAGES", "hindi english"
-).lower().split()
-
-QUALITY = environ.get(
-    "QUALITY", "360p 480p 720p 1080p"
-).lower().split()
-
-# info.py के अंदर कहीं भी पेस्ट करें
-GEMINI_API_KEY = environ.get("GEMINI_API_KEY", "Yaha_Apni_API_Key_Dalein")
-
-
 PM_FILE_DELETE_TIME = int(environ.get("PM_FILE_DELETE_TIME", 3600))
 
+LANGUAGES = environ.get("LANGUAGES", "hindi english").lower().split()
+QUALITY = environ.get("QUALITY", "360p 480p 720p 1080p").lower().split()
+
+GEMINI_API_KEY = environ.get("GEMINI_API_KEY", "Yaha_Apni_API_Key_Dalein")
 
 # ─────────────────────────────────────────────
 # 🧩 FEATURE FLAGS (CLEAN)
@@ -132,13 +128,11 @@ SPELL_CHECK = is_enabled("SPELL_CHECK", True)
 IS_STREAM = is_enabled("IS_STREAM", True)
 IS_PREMIUM = is_enabled("IS_PREMIUM", True)
 
-
 # ─────────────────────────────────────────────
 # 📝 TEXT / CAPTION
 # ─────────────────────────────────────────────
 WELCOME_TEXT = environ.get("WELCOME_TEXT", script.WELCOME_TEXT)
 FILE_CAPTION = environ.get("FILE_CAPTION", script.FILE_CAPTION)
-
 
 # ─────────────────────────────────────────────
 # 🎥 STREAM CONFIG
@@ -162,19 +156,11 @@ else:
     logger.error("Invalid URL")
     exit(1)
 
-
 # ─────────────────────────────────────────────
 # 🎭 REACTIONS / STICKERS
 # ─────────────────────────────────────────────
-REACTIONS = environ.get(
-    "REACTIONS",
-    "👍 ❤️ 🔥 😍 🤝"
-).split()
-
-STICKERS = environ.get(
-    "STICKERS", ""
-).split()
-
+REACTIONS = environ.get("REACTIONS", "👍 ❤️ 🔥 😍 🤝").split()
+STICKERS = environ.get("STICKERS", "").split()
 
 # ─────────────────────────────────────────────
 # 💎 PREMIUM
@@ -182,9 +168,7 @@ STICKERS = environ.get(
 PRE_DAY_AMOUNT = int(environ.get("PRE_DAY_AMOUNT", 10))
 UPI_ID = environ.get("UPI_ID", "")
 UPI_NAME = environ.get("UPI_NAME", "")
-RECEIPT_SEND_USERNAME = environ.get(
-    "RECEIPT_SEND_USERNAME", ""
-)
+RECEIPT_SEND_USERNAME = environ.get("RECEIPT_SEND_USERNAME", "")
 
 if not UPI_ID or not UPI_NAME:
     IS_PREMIUM = False
