@@ -88,7 +88,8 @@ async def export_db(c, m):
     msg = await m.reply(f'🔄 Generating {typ} List...')
     cnt = 0
     with open(fn, 'w') as f:
-        cursor = db.users.find({}) if is_user else db.groups.find({})
+        # ✅ Optimized Database Calls 
+        cursor = await db.get_all_users() if is_user else await db.get_all_chats()
         async for x in cursor:
             f.write(f"ID: {x['id']} | Name/Title: {x.get('name' if is_user else 'title', 'N/A')}\n")
             cnt += 1
@@ -104,6 +105,7 @@ async def export_db(c, m):
 @Client.on_message(filters.command('stats') & filters.user(ADMINS))
 async def quick_stats(c, m):
     msg = await m.reply('🔄 Fetching stats...')
-    u_count = await db.users.count_documents({})
-    c_count = await db.groups.count_documents({})
+    # ✅ Optimized Database Calls
+    u_count = await db.total_users_count()
+    c_count = await db.total_chat_count()
     await msg.edit(f"📊 **BOT DATABASE STATS**\n\n👤 **Total Users:** `{u_count}`\n👥 **Total Groups:** `{c_count}`")
