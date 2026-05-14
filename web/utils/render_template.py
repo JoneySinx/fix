@@ -8,10 +8,10 @@ logger = logging.getLogger(__name__)
 # 🎬 FAST FINDER OPTIMIZED STREAM TEMPLATE
 # ─────────────────────────────────────────────
 watch_tmplt = """<!DOCTYPE html>
-<html lang="en" data-theme="dark">
+<html lang="en">
 <head>
 <meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1.0"><title>{heading}</title>
-<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Montserrat:ital,wght@0,400;0,600;0,800;0,900;1,600&display=swap">
+<link href="https://fonts.googleapis.com/css2?family=DM+Sans:wght@400;500;700;900&display=swap" rel="stylesheet">
 <link rel="stylesheet" href="https://cdn.plyr.io/3.7.8/plyr.css"/>
 <style>
 :root{{
@@ -20,49 +20,53 @@ watch_tmplt = """<!DOCTYPE html>
 --box:#000; --box-bd:rgba(255,255,255,.08); 
 --btn-c:rgba(255,255,255,.08); --btn-bd:rgba(255,255,255,.1); --txt-muted:#b3b3b3;
 }}
-[data-theme="light"]{{
+/* ✅ थीम को वेब पैनल के साथ मैच किया गया है (.light) */
+html.light{{
 --bg1:#f8f9fa; --bg2:#e9ecef; --txt:#121212; 
 --nav1:rgba(255,255,255,.95); --nav2:rgba(255,255,255,.4); 
 --box:#fff; --box-bd:rgba(0,0,0,.15); 
 --btn-c:rgba(0,0,0,.06); --btn-bd:rgba(0,0,0,.15); --txt-muted:#555;
 }}
 *{{margin:0;padding:0;box-sizing:border-box;}}
-body{{background:linear-gradient(to bottom,var(--bg1),var(--bg2));font-family:'Montserrat',sans-serif;color:var(--txt);min-height:100vh;transition:background .3s,color .3s;}}
+body{{background:linear-gradient(to bottom,var(--bg1),var(--bg2));font-family:'DM Sans',sans-serif;color:var(--txt);min-height:100vh;transition:background .3s,color .3s;}}
 .navbar{{width:100%;padding:16px 4%;display:flex;align-items:center;justify-content:space-between;position:fixed;top:0;z-index:999;background:linear-gradient(to bottom,var(--nav1),var(--nav2),transparent);backdrop-filter:blur(6px);transition:background .3s;}}
-.ff-logo{{display:flex;align-items:center;gap:10px;cursor:pointer;transition:.3s;}} .ff-logo:hover{{transform:scale(1.03);}}
-.ff-icon{{background:var(--red);color:#fff;font-size:26px;font-weight:800;width:42px;height:42px;display:flex;align-items:center;justify-content:center;border-radius:8px;}}
-.ff-text{{color:var(--red);font-size:28px;font-weight:900;letter-spacing:1px;text-shadow:0 0 15px rgba(229,9,20,.4);}}
-.theme-btn{{background:transparent;border:1px solid var(--box-bd);color:var(--txt);padding:7px 16px;border-radius:6px;font-family:'Montserrat',sans-serif;font-weight:600;font-style:italic;font-size:15px;cursor:pointer;transition:.3s;}}
+
+/* ✅ लोगो को वेब पैनल के लोगो से मैच किया गया है */
+.logo{{font-size:24px;font-weight:900;letter-spacing:1px;color:var(--red);display:flex;align-items:center;gap:8px;text-decoration:none;transition:.3s;}}
+.logo:hover{{transform:scale(1.02);}}
+.nf-icon{{background:var(--red);color:#fff;padding:2px 7px;border-radius:3px;font-size:24px;line-height:1;}}
+
+.theme-btn{{background:transparent;border:1px solid var(--box-bd);color:var(--txt);padding:7px 16px;border-radius:4px;font-family:'DM Sans',sans-serif;font-weight:700;font-size:13px;cursor:pointer;transition:.3s;}}
 .theme-btn:hover{{background:var(--btn-c);}}
 .hero-container{{width:100%;max-width:1350px;margin:auto;padding:110px 20px 40px;}}
-.player-box{{width:100%;border-radius:18px;background:var(--box);border:1px solid var(--box-bd);position:relative;box-shadow:0 0 20px rgba(255,0,0,.1),0 20px 60px rgba(0,0,0,.5);overflow:hidden;transition:background .3s,border-color .3s;}}
+.player-box{{width:100%;border-radius:12px;background:var(--box);border:1px solid var(--box-bd);position:relative;box-shadow:0 0 20px rgba(255,0,0,.1),0 20px 60px rgba(0,0,0,.5);overflow:hidden;transition:background .3s,border-color .3s;}}
 video{{width:100%;height:auto;display:block;}}
 .skip-zone{{position:absolute;top:0;bottom:25%;width:40%;z-index:20;display:flex;align-items:center;justify-content:center;cursor:pointer;-webkit-tap-highlight-color:transparent;touch-action:manipulation;}}
 .skip-zone.left{{left:0;}} .skip-zone.right{{right:0;}}
 .skip-ripple{{position:absolute;inset:0;background:rgba(255,255,255,.12);opacity:0;transition:opacity .3s;display:flex;flex-direction:column;align-items:center;justify-content:center;pointer-events:none;}}
-[data-theme="light"] .skip-ripple{{background:rgba(0,0,0,.1);}}
+html.light .skip-ripple{{background:rgba(0,0,0,.1);}}
 .skip-zone.left .skip-ripple{{border-radius:0 50% 50% 0/0 100% 100% 0;transform-origin:left center;}}
 .skip-zone.right .skip-ripple{{border-radius:50% 0 0 50%/100% 0 0 100%;transform-origin:right center;}}
 .skip-zone.active .skip-ripple{{opacity:1;animation:pop .3s cubic-bezier(.25,1,.5,1) forwards;}}
 @keyframes pop{{0%{{transform:scaleX(.85);}} 100%{{transform:scaleX(1);}}}}
 .skip-text{{color:#fff;font-weight:800;font-size:14px;margin-top:6px;text-shadow:0 2px 8px rgba(0,0,0,.6);letter-spacing:.5px;}}
 .skip-arrows svg{{width:28px;height:28px;fill:#fff;filter:drop-shadow(0 2px 6px rgba(0,0,0,.5));}}
-.info-section{{margin-top:24px;}} .title{{font-size:2rem;font-weight:700;line-height:1.4;margin-bottom:22px;word-break:break-word;}}
+.info-section{{margin-top:24px;}} .title{{font-size:1.8rem;font-weight:700;line-height:1.4;margin-bottom:22px;word-break:break-word;}}
 .controls-row{{display:flex;flex-wrap:wrap;gap:14px;}}
-.btn{{display:inline-flex;align-items:center;gap:10px;padding:13px 26px;border-radius:10px;text-decoration:none;font-size:1rem;font-weight:600;cursor:pointer;transition:.25s;border:none;}} .btn svg{{width:20px;height:20px;}}
+.btn{{display:inline-flex;align-items:center;gap:10px;padding:12px 24px;border-radius:6px;text-decoration:none;font-size:1rem;font-weight:700;cursor:pointer;transition:.25s;border:none;}} .btn svg{{width:20px;height:20px;}}
 .btn-download{{background:var(--red);color:#fff;box-shadow:0 0 18px rgba(229,9,20,.35);}} .btn-download:hover{{transform:translateY(-2px);background:#ff1a1a;}}
-.btn-copy{{background:var(--btn-c);color:var(--txt);border:1px solid var(--btn-bd);transition:background .3s,color .3s;}} .btn-copy:hover{{background:var(--box-bd);}}
+.btn-copy{{background:var(--btn-c);color:var(--txt);border:1px solid var(--box-bd);transition:background .3s,color .3s;}} .btn-copy:hover{{background:var(--box-bd);}}
 .plyr--video{{--plyr-color-main:#e50914;--plyr-video-background:#000;}}
 .plyr__control--overlaid,.plyr__control:hover{{background:rgba(229,9,20,.9)!important;}} .plyr__controls{{z-index:30!important;}}
-#toast{{visibility:hidden;min-width:220px;background:var(--red);color:#fff;text-align:center;border-radius:10px;padding:15px;position:fixed;right:30px;bottom:30px;z-index:9999;font-weight:600;box-shadow:0 10px 30px rgba(0,0,0,.45);}}
+#toast{{visibility:hidden;min-width:220px;background:var(--red);color:#fff;text-align:center;border-radius:6px;padding:15px;position:fixed;right:30px;bottom:30px;z-index:9999;font-weight:700;box-shadow:0 10px 30px rgba(0,0,0,.45);}}
 #toast.show{{visibility:visible;animation:fi .4s,fo .4s 2.6s;}}
 @keyframes fi{{from{{opacity:0;bottom:0;}}to{{opacity:1;bottom:30px;}}}} @keyframes fo{{from{{opacity:1;bottom:30px;}}to{{opacity:0;bottom:0;}}}}
-@media(max-width:768px){{.hero-container{{padding-top:95px;}} .ff-icon{{width:36px;height:36px;font-size:22px;}} .ff-text{{font-size:22px;}} .theme-btn{{font-size:13px;padding:6px 12px;}} .title{{font-size:1.3rem;}} .controls-row{{flex-direction:column;}} .btn{{width:100%;justify-content:center;}}}}
+@media(max-width:768px){{.hero-container{{padding-top:95px;}} .logo{{font-size:20px;}} .nf-icon{{font-size:20px;padding:2px 6px;}} .title{{font-size:1.3rem;}} .controls-row{{flex-direction:column;}} .btn{{width:100%;justify-content:center;}}}}
 </style>
 </head>
 <body>
 <div class="navbar">
-    <div class="ff-logo"><div class="ff-icon">F</div><div class="ff-text">FAST FINDER</div></div>
+    <a href="/" class="logo"><span class="nf-icon">F</span> FAST FINDER</a>
     <button class="theme-btn" id="theme-btn">Theme</button>
 </div>
 <div class="hero-container">
@@ -76,13 +80,12 @@ video{{width:100%;height:auto;display:block;}}
 
 <script src="https://cdn.plyr.io/3.7.8/plyr.js"></script>
 <script>
-// THEME TOGGLE LOGIC
+// ✅ THEME TOGGLE LOGIC (Synced with Main Web Panel)
 const docEl=document.documentElement, themeBtn=document.getElementById('theme-btn');
-if(localStorage.getItem('ff-theme')==='light') docEl.setAttribute('data-theme','light');
+if(localStorage.getItem('theme')==='light') docEl.classList.add('light');
 themeBtn.addEventListener('click',()=>{{
-    let newT = docEl.getAttribute('data-theme')==='light'?'dark':'light';
-    docEl.setAttribute('data-theme', newT);
-    localStorage.setItem('ff-theme', newT);
+    let isLight = docEl.classList.toggle('light');
+    localStorage.setItem('theme', isLight ? 'light' : 'dark');
 }});
 
 // PLAYER INITIALIZATION
@@ -115,10 +118,8 @@ player.on('ready',()=>{{
         if(cur!==side){{tc=0; cur=side;}}
         tc++; clearTimeout(tmr);
         if(tc===1){{
-            // सिंगल टैप होने पर वीडियो Pause नहीं होगा, सिर्फ 250ms का इंतज़ार करेगा
             tmr=setTimeout(()=>{{tc=0; cur=null;}},250);
         }}else{{
-            // डबल या मल्टीपल टैप पर स्किप होगा
             let t=tc*5; z.querySelector('.skip-text').innerText=t+'s';
             z.classList.remove('active'); void z.offsetWidth; z.classList.add('active');
             tmr=setTimeout(()=>{{player.currentTime+=side==='l'?-t:t; z.classList.remove('active'); tc=0; cur=null;}},600);
@@ -152,7 +153,7 @@ async def media_watch(message_id):
             return watch_tmplt.format(heading=f"Watch {fn}", file_name=fn, src=src, mime_type=mime)
         
         # Minified HTML string for non-video files
-        return f'<body style="background:#000;color:#fff;display:flex;align-items:center;justify-content:center;height:100vh;font-family:sans-serif;"><div style="text-align:center;background:#141414;padding:40px;border-radius:18px;border:1px solid rgba(255,255,255,.08);"><h2>⚠️ Unsupported File</h2><br><a href="{src}" style="background:#e50914;color:#fff;padding:12px 24px;border-radius:8px;text-decoration:none;font-weight:bold;">Download Direct</a></div></body>'
+        return f'<body style="background:#000;color:#fff;display:flex;align-items:center;justify-content:center;height:100vh;font-family:\'DM Sans\',sans-serif;"><div style="text-align:center;background:#141414;padding:40px;border-radius:12px;border:1px solid rgba(255,255,255,.08);"><h2>⚠️ Unsupported File</h2><br><a href="{src}" style="background:#e50914;color:#fff;padding:12px 24px;border-radius:6px;text-decoration:none;font-weight:bold;">Download Direct</a></div></body>'
 
     except Exception as e:
         logger.error(f"Watch Error: {e}")
