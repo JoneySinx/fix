@@ -1,7 +1,7 @@
 import logging
 from motor.motor_asyncio import AsyncIOMotorClient
-from info import (BOT_ID, DATABASE_URL, DATABASE_NAME, FILE_CAPTION, WELCOME, 
-                  WELCOME_TEXT, SPELL_CHECK, PROTECT_CONTENT, AUTO_DELETE)
+from info import (BOT_ID, DATABASE_URL, DATABASE_NAME, FILE_CAPTION, 
+                  SPELL_CHECK, PROTECT_CONTENT, AUTO_DELETE)
 
 logger = logging.getLogger(__name__)
 
@@ -20,7 +20,16 @@ class Database:
             except Exception as e: logger.warning(f"Index warn: {e}")
 
     # ⚙️ Default Values (Memory Efficient)
-    df_set = {"file_secure": PROTECT_CONTENT, "spell_check": SPELL_CHECK, "auto_delete": AUTO_DELETE, "welcome": WELCOME, "welcome_text": WELCOME_TEXT, "caption": FILE_CAPTION, "search_enabled": True, "blacklist": [], "dlink": {}, "notes": {}}
+    df_set = {
+        "file_secure": PROTECT_CONTENT, 
+        "spell_check": SPELL_CHECK, 
+        "auto_delete": AUTO_DELETE, 
+        "caption": FILE_CAPTION, 
+        "search_enabled": True, 
+        "blacklist": [], 
+        "dlink": {}, 
+        "notes": {}
+    }
     df_prm = {"expire": "", "trial": False, "plan": "", "premium": False, "reminded_24h": False, "reminded_6h": False, "reminded_1h": False}
     df_ban = {"is_banned": False, "ban_reason": ""}
     df_chat = {"is_disabled": False, "reason": ""}
