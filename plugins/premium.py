@@ -5,6 +5,8 @@ from hydrogram.types import InlineKeyboardButton, InlineKeyboardMarkup
 from database.users_chats_db import db
 from info import IS_PREMIUM, PRE_DAY_AMOUNT, RECEIPT_SEND_USERNAME, UPI_ID, UPI_NAME, ADMINS, LOG_CHANNEL
 from Script import script
+# ✅ utils.py से ज़रूरी टूल्स इम्पोर्ट किए
+from utils import is_premium, temp, get_readable_time, get_wish 
 
 VERIFY_CACHE = {}
 
@@ -27,22 +29,6 @@ def get_ist_str(dt):
 async def safe_del(c, cid, mids):
     try: await c.delete_messages(cid, mids)
     except: pass
-
-# =========================
-# 💎 PREMIUM CHECKER
-# =========================
-async def is_premium(uid, bot):
-    if not IS_PREMIUM or uid in ADMINS: return True
-    mp = await db.get_plan(uid)
-    if mp.get("premium"):
-        exp = parse_expire_time(mp.get("expire"))
-        if exp and exp < datetime.now():
-            try: await bot.send_message(uid, "❌ **Plan Expired!**\nRenew with /plan", reply_markup=InlineKeyboardMarkup([[InlineKeyboardButton("💎 Buy Premium", callback_data="buy_prem")]]))
-            except: pass
-            await db.update_plan(uid, {"expire": "", "plan": "", "premium": False})
-            return False
-        return True
-    return False
 
 # =========================
 # ⏰ REMINDER SYSTEM
@@ -188,7 +174,10 @@ async def buy_callback(c, q):
         
         await receipt.copy(RECEIPT_SEND_USERNAME, caption=f"#Payment\n👤: {q.from_user.mention} (`{q.from_user.id}`)\n💰: ₹{amount} ({days} days)", reply_markup=InlineKeyboardMarkup([[InlineKeyboardButton("✅ Approve", callback_data=f"pay_confirm_{q.from_user.id}_{days}"), InlineKeyboardButton("❌ Reject", callback_data=f"pay_reject_{q.from_user.id}")]]))
     except ValueError: await q.message.reply("❌ Invalid Number!")
-    except asyncio.TimeoutError: await q.message.reply("⏳ **Timeout!** Process cancelled.")
+    except asyncio.TimeoutError:
+        # ✅ पेमेंट टाइमआउट होने पर VERIFY_CACHE क्लीनअप फिक्स
+        VERIFY_CACHE.pop(q.from_user.id, None)
+        await q.message.reply("⏳ **Timeout!** Process cancelled.")
     except Exception as e: await q.message.reply(f"❌ **Error:** `{e}`")
 
 @Client.on_callback_query(filters.regex(r"^pay_(confirm|reject)_"))
