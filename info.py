@@ -1,7 +1,7 @@
 import re
+import os
 from os import environ
 import logging
-import os
 from Script import script
 
 logger = logging.getLogger(__name__)
@@ -11,10 +11,8 @@ logger = logging.getLogger(__name__)
 # ─────────────────────────────────────────────
 def is_enabled(key, default=False):
     val = environ.get(key, str(default)).lower()
-    if val in ("true", "1", "yes", "y", "enable"):
-        return True
-    if val in ("false", "0", "no", "n", "disable"):
-        return False
+    if val in ("true", "1", "yes", "y", "enable"): return True
+    if val in ("false", "0", "no", "n", "disable"): return False
     logger.error(f"{key} has invalid value")
     exit(1)
 
@@ -30,8 +28,7 @@ def is_valid_ip(ip):
 # 🛠 Smart List Parser: मल्टीपल IDs को स्पेस या कॉमा से अलग करके लिस्ट बना देगा
 def get_channels(env_var):
     val = environ.get(env_var, "").replace(",", " ").strip()
-    if not val:
-        return []
+    if not val: return []
     return [int(x) for x in val.split() if x.replace("-", "").isdigit()]
 
 # ─────────────────────────────────────────────
@@ -64,37 +61,23 @@ ADMINS = [int(x) for x in ADMINS.split()]
 # ─────────────────────────────────────────────
 # 🖼️ IMAGES
 # ─────────────────────────────────────────────
-PICS = environ.get(
-    "PICS",
-    "https://i.postimg.cc/8C15CQ5y/1.png"
-).split()
+PICS = environ.get("PICS", "https://i.postimg.cc/8C15CQ5y/1.png").split()
 
 # ─────────────────────────────────────────────
-# 📢 CHANNELS
+# 📢 CHANNELS (AUTO INDEXING & LOGS)
 # ─────────────────────────────────────────────
 # 🌟 Auto Indexing Channels (मल्टीपल चैनल्स के लिए स्पेस या कॉमा दें, नहीं देना तो खाली छोड़ें)
 PRIMARY_CHANNEL = get_channels("PRIMARY_CHANNEL")
 CLOUD_CHANNEL = get_channels("CLOUD_CHANNEL")
 ARCHIVE_CHANNEL = get_channels("ARCHIVE_CHANNEL")
 
-# (पुराना वाला INDEX_CHANNELS भी सुरक्षित रखा है ताकि कोई पुराना कोड ब्रेक न हो)
-INDEX_CHANNELS = [
-    int(x) if x.startswith("-") else x
-    for x in environ.get("INDEX_CHANNELS", "").split()
-]
-
 LOG_CHANNEL = int(environ.get("LOG_CHANNEL", "0"))
 if not LOG_CHANNEL:
     logger.error("LOG_CHANNEL missing")
     exit(1)
 
-SUPPORT_GROUP = int(environ.get("SUPPORT_GROUP", "0"))
-if not SUPPORT_GROUP:
-    logger.error("SUPPORT_GROUP missing")
-    exit(1)
-
 # ─────────────────────────────────────────────
-# 🗄️ DATABASE (SINGLE DB – FINAL)
+# 🗄️ DATABASE
 # ─────────────────────────────────────────────
 DATABASE_URL = environ.get("DATABASE_URL", "")
 DATABASE_NAME = environ.get("DATABASE_NAME", "Cluster0")
@@ -112,17 +95,13 @@ CACHE_TIME = int(environ.get("CACHE_TIME", 300))
 MAX_BTN = int(environ.get("MAX_BTN", 12))
 PM_FILE_DELETE_TIME = int(environ.get("PM_FILE_DELETE_TIME", 3600))
 
-LANGUAGES = environ.get("LANGUAGES", "hindi english").lower().split()
-QUALITY = environ.get("QUALITY", "360p 480p 720p 1080p").lower().split()
-
 GEMINI_API_KEY = environ.get("GEMINI_API_KEY", "Yaha_Apni_API_Key_Dalein")
 
 # ─────────────────────────────────────────────
-# 🧩 FEATURE FLAGS (CLEAN)
+# 🧩 FEATURE FLAGS
 # ─────────────────────────────────────────────
 USE_CAPTION_FILTER = is_enabled("USE_CAPTION_FILTER", True)
 AUTO_DELETE = is_enabled("AUTO_DELETE", False)
-WELCOME = is_enabled("WELCOME", False)
 PROTECT_CONTENT = is_enabled("PROTECT_CONTENT", False)
 SPELL_CHECK = is_enabled("SPELL_CHECK", True)
 IS_STREAM = is_enabled("IS_STREAM", True)
@@ -131,7 +110,6 @@ IS_PREMIUM = is_enabled("IS_PREMIUM", True)
 # ─────────────────────────────────────────────
 # 📝 TEXT / CAPTION
 # ─────────────────────────────────────────────
-WELCOME_TEXT = environ.get("WELCOME_TEXT", script.WELCOME_TEXT)
 FILE_CAPTION = environ.get("FILE_CAPTION", script.FILE_CAPTION)
 
 # ─────────────────────────────────────────────
@@ -148,8 +126,7 @@ if not URL:
     exit(1)
 
 if URL.startswith(("http://", "https://")):
-    if not URL.endswith("/"):
-        URL += "/"
+    if not URL.endswith("/"): URL += "/"
 elif is_valid_ip(URL):
     URL = f"http://{URL}/"
 else:
@@ -157,10 +134,9 @@ else:
     exit(1)
 
 # ─────────────────────────────────────────────
-# 🎭 REACTIONS / STICKERS
+# 🎭 REACTIONS
 # ─────────────────────────────────────────────
 REACTIONS = environ.get("REACTIONS", "👍 ❤️ 🔥 😍 🤝").split()
-STICKERS = environ.get("STICKERS", "").split()
 
 # ─────────────────────────────────────────────
 # 💎 PREMIUM
