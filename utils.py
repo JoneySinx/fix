@@ -42,9 +42,10 @@ async def is_check_admin(bot, chat_id, user_id):
     except: return False
 
 # ─────────────────────────────────────────────
-# 💎 PREMIUM SYSTEM (Centralized)
+# 💎 PREMIUM SYSTEM (Centralized & Crash-Proof)
 # ─────────────────────────────────────────────
-async def is_premium(user_id, bot):
+# ✅ FIX: bot पैरामीटर को डिफ़ॉल्ट रूप से None कर दिया गया है
+async def is_premium(user_id, bot=None):
     if not IS_PREMIUM or user_id in ADMINS: return True
     mp = await db.get_plan(user_id)
     if not mp.get("premium"): return False
@@ -56,9 +57,12 @@ async def is_premium(user_id, bot):
             except: expire = None
         
         if not expire or expire < datetime.now():
-            try: 
-                await bot.send_message(user_id, f"❌ Your premium {mp.get('plan')} plan has expired.\n\nUse /plan to renew.")
-            except: pass
+            # ✅ CRITICAL FIX: अगर bot None हुआ (जैसे बैकग्राउंड टास्क में) तो यहाँ क्रैश नहीं होगा
+            if bot:
+                try: 
+                    await bot.send_message(user_id, f"❌ Your premium {mp.get('plan')} plan has expired.\n\nUse /plan to renew.")
+                except: pass
+            
             await db.update_plan(user_id, {"expire": "", "plan": "", "premium": False})
             return False
     return True
