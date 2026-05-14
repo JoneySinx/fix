@@ -2,7 +2,7 @@ import time, sys, platform, asyncio
 from hydrogram import Client, filters, enums
 from hydrogram.types import InlineKeyboardMarkup as IKM, InlineKeyboardButton as IKB
 from hydrogram.errors import FloodWait
-from utils import temp
+from utils import temp, get_readable_time
 from info import IS_PREMIUM
 
 # ======================================================
@@ -16,7 +16,8 @@ async def get_id(c, m):
     b = "👤 Member"
     if m.chat.type in (enums.ChatType.GROUP, enums.ChatType.SUPERGROUP):
         try:
-            st = (await m.chat.get_member(m.chat.id, u.id)).status
+            # ✅ BUG FIX: Corrected get_chat_member syntax
+            st = (await c.get_chat_member(m.chat.id, u.id)).status
             b = "👑 Owner" if st == enums.ChatMemberStatus.OWNER else "🛡 Admin" if st in (enums.ChatMemberStatus.ADMINISTRATOR, enums.ChatMemberStatus.ADMIN) else b
         except: pass
 
@@ -49,19 +50,21 @@ async def report_user(c, m):
     txt_data = r.text or r.caption or "Media/File"
     prev = txt_data[:100] + ("..." if len(txt_data) > 100 else "")
 
-    txt = (f"🚨 **NEW REPORT**\n\n📂 **Group:** {m.chat.title} (`{m.chat.id}`)\n🔗 **Link:** [Click Here]({r.link})\n\n"
-           f"👤 **Reporter:** {m.from_user.mention} (`{m.from_user.id}`)\n💀 **Reported:** {tgt.mention} (`{tgt.id}`)\n\n📝 **Message:** `{prev}`")
+    txt = (f"🚨 **NEW REPORT**\n\n📂 **Group:** {m.chat.title} (`{m.chat.id}`)\n🔗 **Link:** <a href='{r.link}'>Click Here</a>\n\n"
+           f"👤 **Reporter:** {m.from_user.mention} (`{m.from_user.id}`)\n💀 **Reported:** {tgt.mention} (`{tgt.id}`)\n\n📝 **Message:** <code>{prev}</code>")
     
     btn = IKM([[IKB("🔗 View", url=r.link)], [IKB("🗑 Delete", callback_data=f"del_{m.chat.id}_{r.id}")]])
     
     sent = 0
-    for adm in [x.user.id async for x in m.chat.get_members(filter=enums.ChatMembersFilter.ADMINISTRATORS) if not x.user.is_bot]:
-        try:
-            await c.send_message(adm, txt, reply_markup=btn, disable_web_page_preview=True)
-            sent += 1
-            await asyncio.sleep(0.3)
-        except FloodWait as e: await asyncio.sleep(e.value)
-        except: pass
+    # ✅ BUG FIX: Corrected get_chat_members async loop syntax
+    async for x in c.get_chat_members(m.chat.id, filter=enums.ChatMembersFilter.ADMINISTRATORS):
+        if not x.user.is_bot:
+            try:
+                await c.send_message(x.user.id, txt, reply_markup=btn, disable_web_page_preview=True)
+                sent += 1
+                await asyncio.sleep(0.3)
+            except FloodWait as e: await asyncio.sleep(e.value)
+            except: pass
 
     await m.reply(f"✅ **Report Sent!**\nAlert sent to {sent} admins.")
 
@@ -92,7 +95,8 @@ async def ping_cmd(c, m):
 
 @Client.on_message(filters.command("botinfo"))
 async def bot_info(c, m):
-    h, rem = divmod(int(time.time() - temp.START_TIME), 3600)
-    t = (f"🤖 <b>BOT STATUS</b>\n\n⏱️ <b>Uptime:</b> <code>{h}h {rem // 60}m</code>\n🐍 <b>Python:</b> <code>{sys.version.split()[0]}</code>\n"
+    # ✅ OPTIMIZED: utils.py से get_readable_time का इस्तेमाल किया गया
+    uptime = get_readable_time(time.time() - temp.START_TIME)
+    t = (f"🤖 <b>BOT STATUS</b>\n\n⏱️ <b>Uptime:</b> <code>{uptime}</code>\n🐍 <b>Python:</b> <code>{sys.version.split()[0]}</code>\n"
          f"⚙️ <b>OS:</b> <code>{platform.system()}</code>\n📦 <b>Lib:</b> <code>Hydrogram</code>\n💎 <b>Premium:</b> <code>{'Yes' if IS_PREMIUM else 'No'}</code>")
     await m.reply_text(t, parse_mode=enums.ParseMode.HTML)
