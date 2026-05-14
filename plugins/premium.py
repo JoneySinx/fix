@@ -2,7 +2,10 @@ import os, io, qrcode, asyncio, traceback
 from datetime import datetime, timedelta
 from hydrogram import Client, filters, enums
 from hydrogram.types import InlineKeyboardButton, InlineKeyboardMarkup
-from database.users_chats_db import db
+
+# ✅ यहाँ db के साथ web_db को भी इम्पोर्ट किया है
+from database.users_chats_db import db, web_db 
+
 from info import IS_PREMIUM, PRE_DAY_AMOUNT, RECEIPT_SEND_USERNAME, UPI_ID, UPI_NAME, ADMINS, LOG_CHANNEL
 from Script import script
 # ✅ utils.py से ज़रूरी टूल्स इम्पोर्ट किए
@@ -128,6 +131,25 @@ async def prm_list(c, m):
             count += 1
             text += f"👤 `{u['id']}` | 🗓 {u['status'].get('plan')}\n"
     await msg.edit(text + (f"\n**Total:** {count}" if count > 0 else "📭 No premium users."))
+
+# ✅ NAYA COMMAND: वेब यूज़र्स की लिस्ट देखने के लिए
+@Client.on_message(filters.command("web_users") & filters.user(ADMINS))
+async def list_web_users(c, m):
+    msg = await m.reply("🔄 Fetching Web Users...")
+    count = 0
+    text = "🌐 **Fast Finder Web Users**\n\n"
+    
+    async for u in web_db.col.find():
+        count += 1
+        joined = u.get('joined_date')
+        joined_str = joined.strftime("%d %b %Y") if joined else "Unknown"
+        text += f"👤 **TG ID:** `{u['tg_id']}`\n📧 **Email:** `{u['email']}`\n📅 **Joined:** {joined_str}\n\n"
+        
+    if count == 0:
+        await msg.edit("📭 अभी तक किसी ने वेब पर रजिस्टर नहीं किया है।")
+    else:
+        text += f"**Total Web Users:** {count}"
+        await msg.edit(text)
 
 # =========================
 # 🔘 CALLBACKS
