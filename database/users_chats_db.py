@@ -1,16 +1,75 @@
 import logging
+import hashlib
+import random
+from datetime import datetime, timedelta
 from motor.motor_asyncio import AsyncIOMotorClient
 from info import (BOT_ID, DATABASE_URL, DATABASE_NAME, FILE_CAPTION, 
                   SPELL_CHECK, PROTECT_CONTENT, AUTO_DELETE)
 
 logger = logging.getLogger(__name__)
 
+# =========================================
+# 🌐 WEB AUTHENTICATION DATABASE
+# =========================================
+def hash_password(password):
+    return hashlib.sha256(password.encode()).hexdigest()
+
+class WebAuthDB:
+    def __init__(self, db):
+        self.col = db["web_users"] # वेब यूज़र्स के लिए नया कलेक्शन
+        
+    async def create_user(self, tg_id, email, password):
+        # चेक करें कि यूजर पहले से तो नहीं है
+        if await self.col.find_one({"$or": [{"tg_id": tg_id}, {"email": email}]}):
+            return False, "Telegram ID or Email already registered!"
+            
+        user_data = {
+            "tg_id": tg_id,
+            "email": email,
+            "password": hash_password(password),
+            "joined_date": datetime.now()
+        }
+        await self.col.insert_one(user_data)
+        return True, "Account Created Successfully!"
+
+    async def verify_login(self, email, password):
+        return await self.col.find_one({"email": email, "password": hash_password(password)})
+
+    async def update_profile(self, tg_id, new_email, new_password=None):
+        update_data = {"email": new_email}
+        if new_password:
+            update_data["password"] = hash_password(new_password)
+        await self.col.update_one({"tg_id": tg_id}, {"$set": update_data})
+
+    async def generate_otp(self, tg_id):
+        user = await self.col.find_one({"tg_id": tg_id})
+        if not user: return None
+        
+        otp = str(random.randint(100000, 999999))
+        expiry = datetime.now() + timedelta(minutes=10)
+        await self.col.update_one({"tg_id": tg_id}, {"$set": {"otp": otp, "otp_expiry": expiry}})
+        return otp
+
+    async def verify_otp_and_reset(self, tg_id, otp, new_password):
+        user = await self.col.find_one({"tg_id": tg_id, "otp": otp})
+        if user and user.get("otp_expiry", datetime.now()) > datetime.now():
+            await self.col.update_one(
+                {"tg_id": tg_id}, 
+                {"$set": {"password": hash_password(new_password)}, "$unset": {"otp": "", "otp_expiry": ""}}
+            )
+            return True
+        return False
+
+
+# =========================================
+# 🤖 BOT & MAIN DATABASE
+# =========================================
 class Database:
     def __init__(self):
         self.client = AsyncIOMotorClient(DATABASE_URL, minPoolSize=10, maxPoolSize=50, maxIdleTimeMS=45000, serverSelectionTimeoutMS=5000)
         self.db = self.client[DATABASE_NAME]
         
-        # 🎯 Collections (Dead "connections" हटा दिया गया है)
+        # 🎯 Collections 
         self.users, self.groups, self.premium = self.db.Users, self.db.Groups, self.db.Premiums
         self.settings, self.warns = self.db.Settings, self.db.Warns
 
@@ -67,4 +126,8 @@ class Database:
         return ([u["id"] async for u in self.users.find({"ban_status.is_banned": True})], 
                 [g["id"] async for g in self.groups.find({"chat_status.is_disabled": True})])
 
+# =========================================
+# 🚀 INITIALIZE DATABASES
+# =========================================
 db = Database()
+web_db = WebAuthDB(db.db)  # वेब डेटाबेस को मेन DB के साथ इनिशियलाइज़ कर दिया गया है
