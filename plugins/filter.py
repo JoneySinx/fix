@@ -32,18 +32,27 @@ async def is_valid_search(message):
     return True
 
 # ─────────────────────────────────────────────
-# 🧠 SPELL CHECKER (Google Suggest API)
+# 🧠 SPELL CHECKER (Google Suggest API - High Performance)
 # ─────────────────────────────────────────────
+# ✅ FIX: Global Session for extreme speed & memory saving
+_http_session = None
+
+async def get_http_session():
+    global _http_session
+    if _http_session is None or _http_session.closed:
+        _http_session = aiohttp.ClientSession()
+    return _http_session
+
 async def get_spell_suggestion(query):
     try:
-        async with aiohttp.ClientSession() as session:
-            url = f"http://suggestqueries.google.com/complete/search?client=firefox&q={query} movie"
-            async with session.get(url) as resp:
-                data = await resp.json()
-                if data and len(data) > 1 and data[1]:
-                    suggestion = data[1][0].replace(" movie", "").replace(" series", "").strip()
-                    if suggestion.lower() != query.lower():
-                        return suggestion.title()
+        session = await get_http_session()
+        url = f"http://suggestqueries.google.com/complete/search?client=firefox&q={query} movie"
+        async with session.get(url) as resp:
+            data = await resp.json()
+            if data and len(data) > 1 and data[1]:
+                suggestion = data[1][0].replace(" movie", "").replace(" series", "").strip()
+                if suggestion.lower() != query.lower():
+                    return suggestion.title()
     except Exception:
         pass
     return None
