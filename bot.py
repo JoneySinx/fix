@@ -34,9 +34,9 @@ logger = logging.getLogger(__name__)
 # IMPORTS
 # ==========================================================
 from aiohttp import web
-from hydrogram import Client, types
-from hydrogram.errors import FloodWait, StopPropagation # ✅ Added StopPropagation
-from hydrogram.handlers import MessageHandler # ✅ Added MessageHandler
+from hydrogram import Client, types, StopPropagation # ✅ Corrected: StopPropagation is here
+from hydrogram.errors import FloodWait # ✅ FloodWait is correctly imported from errors
+from hydrogram.handlers import MessageHandler 
 from web import web_app
 from info import (
     API_ID, API_HASH, BOT_TOKEN, PORT, ADMINS, 
@@ -82,7 +82,6 @@ class Bot(Client):
             logger.error(f"Error loading banned list: {e}")
 
         # 4. Global Ban Middleware (The Security Guard)
-        # ✅ यह कोड बैन किए गए यूज़र्स को बॉट इस्तेमाल करने से रोकेगा
         async def ban_check_middleware(client, message):
             uid = message.from_user.id if message.from_user else None
             cid = message.chat.id if message.chat else None
