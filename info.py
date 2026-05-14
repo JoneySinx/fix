@@ -45,9 +45,7 @@ if not API_ID or not API_HASH or not BOT_TOKEN:
 BOT_ID = int(BOT_TOKEN.split(":")[0])
 PORT = int(environ.get("PORT", 80))
 
-# Web Panel Credentials
-ADMIN_USERNAME = environ.get("ADMIN_USERNAME", "yourx")
-ADMIN_PASSWORD = environ.get("ADMIN_PASSWORD", "admin143")
+# ✅ NOTE: ADMIN_USERNAME और ADMIN_PASSWORD को हटा दिया गया है क्योंकि अब लॉगिन Telegram ID से होता है।
 
 # ─────────────────────────────────────────────
 # 👑 ADMINS
