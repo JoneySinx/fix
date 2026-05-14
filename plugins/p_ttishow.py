@@ -101,11 +101,3 @@ async def export_db(c, m):
     await m.reply_document(fn, caption=f"👥 Total {typ}s: {cnt}")
     await msg.delete()
     os.remove(fn)
-
-@Client.on_message(filters.command('stats') & filters.user(ADMINS))
-async def quick_stats(c, m):
-    msg = await m.reply('🔄 Fetching stats...')
-    # ✅ Optimized Database Calls
-    u_count = await db.total_users_count()
-    c_count = await db.total_chat_count()
-    await msg.edit(f"📊 **BOT DATABASE STATS**\n\n👤 **Total Users:** `{u_count}`\n👥 **Total Groups:** `{c_count}`")
