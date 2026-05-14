@@ -240,31 +240,6 @@ async def stream_cb(client, query):
         await query.message.edit_reply_markup(InlineKeyboardMarkup(btn))
     except Exception as e: await query.answer(f"Error: {e}", show_alert=True)
 
-@Client.on_callback_query(filters.regex(r"^logout_"))
-async def web_logout_callback(client, query):
-    # 🔒 Security Check: कोई और यूज़र एडमिन का वेब सेशन बंद नहीं कर सकता
-    if query.from_user.id not in ADMINS: 
-        return await query.answer("❌ You are not authorized!", show_alert=True)
-
-    session_id = query.data.split("_")[1]
-    if hasattr(temp, 'ADMIN_SESSIONS') and session_id in temp.ADMIN_SESSIONS:
-        del temp.ADMIN_SESSIONS[session_id]
-        await query.answer("✅ Web Session Terminated!", show_alert=True)
-        try:
-            await query.message.edit("🛑 **Web Access Disconnected.**\n\nThe dashboard session has been killed.")
-        except Exception:
-            pass
-    else:
-        await query.answer("⚠️ Session expired or invalid.", show_alert=True)
-        # ✅ BUG FIX: Delete एरर को हैंडल किया गया है
-        try:
-            await query.message.delete()
-        except Exception:
-            try:
-                await query.message.edit("⚠️ **Session already expired.**")
-            except Exception:
-                pass
-
 @Client.on_callback_query(filters.regex(r"^close_"))
 async def close_cb(c, q):
     try:
