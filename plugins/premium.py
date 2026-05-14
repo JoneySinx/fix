@@ -1,4 +1,5 @@
-import io, qrcode, asyncio
+import os, io, qrcode, asyncio, traceback
+import pyromod.listen # ✅ FIX: c.listen() क्रैश को रोकने के लिए इसे जोड़ा गया है
 from datetime import datetime, timedelta
 from hydrogram import Client, filters, enums
 from hydrogram.types import InlineKeyboardButton, InlineKeyboardMarkup
@@ -8,7 +9,7 @@ from database.users_chats_db import db, web_db
 
 from info import IS_PREMIUM, PRE_DAY_AMOUNT, RECEIPT_SEND_USERNAME, UPI_ID, UPI_NAME, ADMINS, LOG_CHANNEL
 from Script import script
-# ✅ utils.py से ज़रूरी टूल्स (और सही is_premium) इम्पोर्ट किए
+# ✅ utils.py से ज़रूरी टूल्स इम्पोर्ट किए
 from utils import is_premium, temp, get_readable_time, get_wish 
 
 VERIFY_CACHE = {}
@@ -34,7 +35,23 @@ async def safe_del(c, cid, mids):
     except: pass
 
 # =========================
-# ⏰ REMINDER SYSTEM (🔥 Highly Optimized)
+# 💎 PREMIUM CHECKER
+# =========================
+async def is_premium(uid, bot):
+    if not IS_PREMIUM or uid in ADMINS: return True
+    mp = await db.get_plan(uid)
+    if mp.get("premium"):
+        exp = parse_expire_time(mp.get("expire"))
+        if exp and exp < datetime.now():
+            try: await bot.send_message(uid, "❌ **Plan Expired!**\nRenew with /plan", reply_markup=InlineKeyboardMarkup([[InlineKeyboardButton("💎 Buy Premium", callback_data="buy_prem")]]))
+            except: pass
+            await db.update_plan(uid, {"expire": "", "plan": "", "premium": False})
+            return False
+        return True
+    return False
+
+# =========================
+# ⏰ REMINDER SYSTEM
 # =========================
 async def check_premium_expired(bot):
     intervals = [
@@ -133,7 +150,8 @@ async def manage_premium(c, m):
 async def prm_list(c, m):
     if not IS_PREMIUM: return
     msg, count, text = await m.reply("🔄 Fetching..."), 0, "💎 **Premium Users**\n\n"
-    async for u in await db.get_premium_users():
+    # ✅ FIX: यहाँ से double await हटा दिया गया है
+    async for u in db.get_premium_users():
         if u.get("status", {}).get("premium"):
             count += 1
             text += f"👤 `{u['id']}` | 🗓 {u['status'].get('plan')}\n"
