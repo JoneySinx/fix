@@ -1,6 +1,6 @@
 from aiohttp import web
 import time, re, asyncio
-from utils import temp, get_size
+from utils import temp, get_size, is_rate_limited
 from info import BIN_CHANNEL, ADMINS
 from database.ia_filterdb import COLLECTIONS
 
@@ -14,23 +14,30 @@ async def get_user_role(req):
         
         # 1. Admin चेक
         if tg_id in ADMINS:
-            return 'admin'
+            return 'admin', tg_id
             
         # 2. Premium User चेक
         from database.users_chats_db import db
         mp = await db.get_plan(tg_id)
         if mp.get("premium"):
-            return 'user'
+            return 'user', tg_id
             
-    return None
+    return None, None
 
 @search_routes.get('/api/search')
 async def api_search(req):
-    role = await get_user_role(req)
+    role, tg_id = await get_user_role(req)
     if not role: 
         return web.json_response({"error": "Unauthorized Access or Premium Expired"}, status=403)
 
-    q, off, col = req.query.get('q', '').strip(), req.query.get('offset', '0'), req.query.get('col', 'all').lower()
+    # 🛡️ RATE LIMIT FIX: वेब API पर स्पैम (DDoS) रोकने के लिए (1 सेकंड का डिले)
+    if is_rate_limited(tg_id, "web_search", 1):
+        return web.json_response({"error": "Searching too fast! Please slow down."}, status=429)
+
+    q = req.query.get('q', '').strip()
+    off = req.query.get('offset', '0')
+    col = req.query.get('col', 'all').lower()
+    
     if not q: return web.json_response({"results": [], "total": 0, "next_offset": ""})
     
     off = int(off) if off.isdigit() else 0
@@ -39,15 +46,39 @@ async def api_search(req):
     res, all_m, tot, lim = [], [], 0, 20
     tgt_cols = {col: COLLECTIONS[col]} if col in COLLECTIONS else COLLECTIONS
 
+    # 🚀 SPEED FIX 1: Save counts to avoid double DB hits
+    col_counts = {}
     for n, c in tgt_cols.items():
-        tot += await c.count_documents(flt)
-        # 🚀 FIX: Motor's .to_list() is 10x faster than async for loop
-        if len(all_m) < off + lim:
-            docs = await c.find(flt).sort('_id', -1).limit(off + lim).to_list(off + lim)
-            for d in docs: d['source_col'] = n.lower()
-            all_m.extend(docs)
+        count = await c.count_documents(flt)
+        col_counts[n] = count
+        tot += count
 
-    for d in all_m[off : off + lim]:
+    # 🚀 SPEED FIX 2: Smart Skip Pagination (No more memory leaks!)
+    remaining_skip = off
+    for n, c in tgt_cols.items():
+        if len(all_m) >= lim:
+            break
+            
+        count = col_counts[n]
+        if count == 0: continue
+            
+        # अगर इस कलेक्शन में रिज़ल्ट स्किप से कम हैं, तो पूरा कलेक्शन स्किप करें
+        if remaining_skip >= count:
+            remaining_skip -= count
+            continue
+            
+        # सिर्फ ज़रूरी डेटाबेस को ही फेच करें (skip & limit)
+        local_limit = lim - len(all_m)
+        docs = await c.find(flt).sort('_id', -1).skip(remaining_skip).limit(local_limit).to_list(length=local_limit)
+        
+        for d in docs: 
+            d['source_col'] = n.lower()
+        all_m.extend(docs)
+        
+        remaining_skip = 0 # एक बार स्किप पूरा होने के बाद 0 कर दें
+
+    # रिज़ल्ट्स को फॉर्मेट करना
+    for d in all_m:
         fid = d.get("file_ref", d.get("file_id"))
         res.append({
             "file_id": fid,
@@ -77,7 +108,7 @@ async def _auto_del_msg(msg, delay):
 
 @search_routes.get('/setup_stream')
 async def setup_stream(req):
-    role = await get_user_role(req)
+    role, _ = await get_user_role(req)
     if not role: return web.Response(text="❌ Unauthorized Access!", status=403)
     
     fid, mode = req.query.get('file_id'), req.query.get('mode', 'watch')
@@ -97,7 +128,7 @@ async def setup_stream(req):
 # ✅ File Delete API (सिर्फ एडमिन के लिए)
 @search_routes.post('/api/delete')
 async def api_delete(req):
-    role = await get_user_role(req)
+    role, _ = await get_user_role(req)
     
     if role != 'admin': 
         return web.json_response({"error": "Only Admins can delete files!"}, status=403)
@@ -119,7 +150,7 @@ async def api_delete(req):
 # ✅ File Edit API (सिर्फ एडमिन के लिए)
 @search_routes.post('/api/edit')
 async def api_edit(req):
-    role = await get_user_role(req)
+    role, _ = await get_user_role(req)
     
     if role != 'admin': 
         return web.json_response({"error": "Unauthorized! Admin only."}, status=403)
