@@ -1,7 +1,6 @@
 import os
 import random
 import asyncio
-import uuid
 from datetime import datetime
 from time import time as time_now
 from hydrogram import Client, filters, enums
@@ -114,7 +113,7 @@ async def stats(_, message):
     await msg.edit(script.STATUS_TXT.format(users, chats, premium, files['total'], files['primary'], files['cloud'], files['archive'], get_readable_time(time_now() - temp.START_TIME)))
 
 # ─────────────────────────
-# ADMIN COMMANDS (/delete, /delete_all, /web)
+# ADMIN COMMANDS (/delete, /delete_all)
 # ─────────────────────────
 @Client.on_message(filters.command("delete") & filters.user(ADMINS))
 async def delete_file_cmd(client, message):
@@ -136,15 +135,6 @@ async def delete_all_cmd(client, message):
         f"⚠️ <b>WARNING!</b>\n\nDeleting ALL files from `{storage}`.\nConfirm?",
         reply_markup=InlineKeyboardMarkup([[InlineKeyboardButton("✅ CONFIRM DELETE", callback_data=f"confirm_del#{storage}"), InlineKeyboardButton("❌ CANCEL", callback_data=f"close_{message.from_user.id}")]])
     )
-
-@Client.on_message(filters.command("web") & filters.user(ADMINS))
-async def web_admin_link(client, message):
-    minutes = int(message.command[1]) if len(message.command) > 1 and message.command[1].isdigit() else 15
-    token = str(uuid.uuid4())
-    if not hasattr(temp, 'ADMIN_TOKENS'): temp.ADMIN_TOKENS = {}
-    temp.ADMIN_TOKENS[token] = time_now() + (minutes * 60)
-    
-    await message.reply(f"🔐 **Admin Web Panel Link Generated!**\n\n🔗 **Link:** {URL}admin?token={token}\n⏳ **Expires in:** {minutes} minutes\n\n⚠️ *Do not share this link with anyone!*", disable_web_page_preview=True)
 
 # ─────────────────────────
 # /link COMMAND
