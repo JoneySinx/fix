@@ -4,7 +4,7 @@ import asyncio
 from datetime import datetime
 from time import time as time_now
 from hydrogram import Client, filters, enums
-from hydrogram.types import InlineKeyboardButton, InlineKeyboardMarkup, WebAppInfo # ✅ FIX: WebAppInfo को इम्पोर्ट किया
+from hydrogram.types import InlineKeyboardButton, InlineKeyboardMarkup, WebAppInfo
 
 from Script import script
 from database.ia_filterdb import db_count_documents, get_file_details, delete_files
@@ -18,6 +18,14 @@ from utils import (
     is_premium, get_settings, get_size, temp, 
     get_readable_time, get_wish
 )
+
+# 🚀 URL AUTO-FIX LOGIC FOR MINI APP (ताकि बॉट कभी क्रैश न हो)
+SAFE_URL = URL.strip() if URL else "https://your-default-app.koyeb.app"
+if not SAFE_URL.startswith("http"):
+    SAFE_URL = f"https://{SAFE_URL}"
+SAFE_URL = SAFE_URL.replace("http://", "https://") # Telegram WebApp strictly requires HTTPS
+MINI_APP_URL = f"{SAFE_URL.rstrip('/')}/miniapp"
+
 
 # ─────────────────────────
 # HELPERS
@@ -70,7 +78,6 @@ async def start(client, message):
                 if not file: return await message.reply("❌ File Not Found!")
                 
                 settings = await get_settings(grp_id)
-                # ✅ प्रोफेशनल तरीका: Script.py से FILE_CAPTION ले रहा है
                 cap_template = settings.get('caption', script.FILE_CAPTION)
                 caption = cap_template.format(file_name=str(file.get('file_name', 'File')), file_size=get_size(file.get('file_size', 0)))
                 
@@ -89,12 +96,11 @@ async def start(client, message):
 
     # 4. DEFAULT START MESSAGE
     btn = [
-        # 🌟 NAYA FEATURE: Telegram Mini App Button
-        [InlineKeyboardButton("🍿 Open Mini App", web_app=WebAppInfo(url=f"{URL}miniapp"))],
+        # ✅ NAYA FEATURE FIX: अब यहाँ ऑटो-फिक्स किया हुआ URL जाएगा
+        [InlineKeyboardButton("🍿 Open Mini App", web_app=WebAppInfo(url=MINI_APP_URL))],
         [InlineKeyboardButton("+ Add to Group +", url=f"https://t.me/{temp.U_NAME}?startgroup=start")],
         [InlineKeyboardButton("👨‍🚒 Help", callback_data="help"), InlineKeyboardButton("📊 Stats", callback_data="stats")]
     ]
-    # ✅ FIX: एडमिन को Premium Status बटन नहीं दिखेगा
     if message.from_user.id not in ADMINS:
         btn.append([InlineKeyboardButton("💎 Premium Status", callback_data="myplan")])
 
@@ -166,12 +172,11 @@ async def ui_cb(client, query):
     if data == "back_start":
         text = script.START_TXT.format(query.from_user.mention, get_wish())
         btn = [
-            # 🌟 NAYA FEATURE: Back बटन दबाने पर भी Mini App का बटन दिखेगा
-            [InlineKeyboardButton("🍿 Open Mini App", web_app=WebAppInfo(url=f"{URL}miniapp"))],
+            # ✅ NAYA FEATURE FIX
+            [InlineKeyboardButton("🍿 Open Mini App", web_app=WebAppInfo(url=MINI_APP_URL))],
             [InlineKeyboardButton("+ Add to Group +", url=f"https://t.me/{temp.U_NAME}?startgroup=start")],
             [InlineKeyboardButton("👨‍🚒 Help", callback_data="help"), InlineKeyboardButton("📊 Stats", callback_data="stats")]
         ]
-        # ✅ FIX: एडमिन को Premium Status नहीं दिखेगा
         if query.from_user.id not in ADMINS:
             btn.append([InlineKeyboardButton("💎 Premium Status", callback_data="myplan")])
 
@@ -186,7 +191,6 @@ async def ui_cb(client, query):
         btn = [[InlineKeyboardButton("⬅️ Back", callback_data="help")]]
         
     elif data == "admin_cmds":
-        # 🔒 Security Check
         if query.from_user.id not in ADMINS: return await query.answer("❌ You are not an Admin!", show_alert=True)
         text = script.ADMIN_COMMAND_TXT
         btn = [[InlineKeyboardButton("⬅️ Back", callback_data="help")]]
@@ -195,7 +199,6 @@ async def ui_cb(client, query):
         files = await db_count_documents()
         uptime = get_readable_time(time_now() - temp.START_TIME)
 
-        # 🔒 Security Check: Admin को पूरा Stats दिखेगा, Premium User को सिर्फ Files और Uptime
         if query.from_user.id in ADMINS:
             users, chats, premium = await asyncio.gather(
                 db.total_users_count(), 
@@ -208,7 +211,6 @@ async def ui_cb(client, query):
                 uptime
             )
         else:
-            # ✅ प्रीमियम यूजर के लिए Script.py वाला USER_STATUS_TXT इस्तेमाल होगा
             text = script.USER_STATUS_TXT.format(
                 files['total'], files['primary'], files['cloud'], files['archive'], 
                 uptime
@@ -226,7 +228,6 @@ async def ui_cb(client, query):
 # ─────────────────────────
 @Client.on_callback_query(filters.regex(r"^confirm_del#"))
 async def confirm_del(client, query):
-    # 🔒 Security Check
     if query.from_user.id not in ADMINS: return await query.answer("❌ You are not an Admin!", show_alert=True)
     
     storage = query.data.split("#")[1]
@@ -248,7 +249,6 @@ async def stream_cb(client, query):
 async def close_cb(c, q):
     try:
         parts = q.data.split("_")
-        # 🔒 Security Check: सिर्फ वही यूज़र क्लोज कर सकता है जिसने रिक्वेस्ट की थी
         if len(parts) > 1 and parts[1].isdigit() and int(parts[1]) != q.from_user.id:
             return await q.answer("❌ You cannot close this!", show_alert=True)
         
