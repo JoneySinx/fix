@@ -99,7 +99,7 @@ GEMINI_API_KEY = environ.get("GEMINI_API_KEY", "Yaha_Apni_API_Key_Dalein")
 # 🧩 FEATURE FLAGS
 # ─────────────────────────────────────────────
 USE_CAPTION_FILTER = is_enabled("USE_CAPTION_FILTER", True)
-AUTO_DELETE = is_enabled("AUTO_DELETE", False)
+AUTO_DELETE = is_enabled("AUTO_DELETE", True)
 PROTECT_CONTENT = is_enabled("PROTECT_CONTENT", False)
 SPELL_CHECK = is_enabled("SPELL_CHECK", True)
 IS_STREAM = is_enabled("IS_STREAM", True)
