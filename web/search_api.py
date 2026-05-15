@@ -1,7 +1,6 @@
 from aiohttp import web
 import time, re, asyncio, os, json, hmac, hashlib, urllib.parse
 from utils import temp, get_size, is_rate_limited, is_premium
-from helpers.tmdb import get_poster
 from info import BIN_CHANNEL, ADMINS, BOT_TOKEN
 from database.ia_filterdb import COLLECTIONS
 
@@ -10,19 +9,15 @@ search_routes = web.RouteTableDef()
 MAX_CACHE = 500
 thumb_cache = {}
 thumb_semaphore = asyncio.Semaphore(4)
-poster_cache = {}
-POSTER_CACHE_TTL = 3600
-
 
 # ─────────────────────────────────────────────
-# ✅ FIX: Telegram initData HMAC Verification
-# Telegram Mini App से आने वाले initData को verify करता है
+# 🔒 STRICT SECURITY: Telegram initData HMAC Verification
+# इसे कोई बायपास नहीं कर सकता क्योंकि यह BOT_TOKEN से वेरीफाई होता है
 # ─────────────────────────────────────────────
 def verify_telegram_init_data(init_data: str) -> dict | None:
     """
     Telegram WebApp का initData verify करता है।
     Returns: user dict अगर valid है, वरना None।
-    Docs: https://core.telegram.org/bots/webapps#validating-data-received-via-the-mini-app
     """
     try:
         parsed = dict(urllib.parse.parse_qsl(init_data, keep_blank_values=True))
@@ -30,32 +25,27 @@ def verify_telegram_init_data(init_data: str) -> dict | None:
         if not received_hash:
             return None
 
-        # Data string बनाओ (alphabetical order में)
         data_check_string = "\n".join(
             f"{k}={v}" for k, v in sorted(parsed.items())
         )
 
-        # Secret key: HMAC-SHA256("WebAppData", bot_token)
         secret_key = hmac.new(b"WebAppData", BOT_TOKEN.encode(), hashlib.sha256).digest()
         expected_hash = hmac.new(secret_key, data_check_string.encode(), hashlib.sha256).hexdigest()
 
         if not hmac.compare_digest(expected_hash, received_hash):
             return None
 
-        # User data parse करो
         user_str = parsed.get("user", "{}")
         return json.loads(user_str)
 
     except Exception:
         return None
 
-
 # ─────────────────────────────────────────────
-# ✅ FIX: Unified Auth - Cookie + initData दोनों support
+# 🔒 AUTHENTICATION: Check Admin / Premium status
 # ─────────────────────────────────────────────
 async def get_user_role(req):
     # 1️⃣ पहले Telegram initData check करो (Mini App के लिए)
-    #    Mini App में cookies नहीं आतीं, इसलिए यह जरूरी है
     init_data = req.headers.get("X-Telegram-Init-Data", "").strip()
     if init_data:
         user = verify_telegram_init_data(init_data)
@@ -66,11 +56,12 @@ async def get_user_role(req):
                     return "admin", tg_id
                 if await is_premium(tg_id):
                     return "user", tg_id
-                # ✅ FIX: IS_PREMIUM=False होने पर सभी verified users allow करो
+                
+                # Check global premium flag
                 from info import IS_PREMIUM
                 if not IS_PREMIUM:
                     return "user", tg_id
-        return None, None  # initData invalid है
+        return None, None
 
     # 2️⃣ Cookie session check करो (Web browser login के लिए)
     s_user = req.cookies.get("user_session")
@@ -85,37 +76,21 @@ async def get_user_role(req):
 
     return None, None
 
-
-# ✅ Cached TMDb poster lookup
-async def get_poster_cached(file_name: str) -> str:
-    now = time.time()
-    if file_name in poster_cache:
-        cached_url, cached_at = poster_cache[file_name]
-        if now - cached_at < POSTER_CACHE_TTL:
-            return cached_url
-    url = await get_poster(file_name)
-    if len(poster_cache) >= MAX_CACHE:
-        oldest = min(poster_cache, key=lambda k: poster_cache[k][1])
-        del poster_cache[oldest]
-    poster_cache[file_name] = (url or "", now)
-    return url or ""
-
-
 # ─────────────────────────────────────────────
-# 🔍 SEARCH API
+# 🔍 SEARCH API (TMDb Removed)
 # ─────────────────────────────────────────────
 @search_routes.get("/api/search")
 async def api_search(req):
     role, tg_id = await get_user_role(req)
     if not role:
-        return web.json_response({"error": "Unauthorized Access"}, status=403)
+        return web.json_response({"error": "Unauthorized Access! Admin or Premium only."}, status=403)
     if is_rate_limited(tg_id, "web_search", 1):
         return web.json_response({"error": "Searching too fast!"}, status=429)
 
     q = req.query.get("q", "").strip()
     off = req.query.get("offset", "0")
     col = req.query.get("col", "all").lower()
-    mode = req.query.get("mode", "smart").lower()
+    mode = req.query.get("mode", "tg").lower()
 
     if not q:
         return web.json_response({"results": [], "total": 0, "next_offset": ""})
@@ -169,13 +144,7 @@ async def api_search(req):
             db_thumb if db_thumb and db_thumb != "https://i.ibb.co/30B3RcS/default-movie.png"
             else f"/api/thumb?file_id={fid}"
         )
-        if mode == "smart":
-            poster_url = await get_poster_cached(file_name)
-            if not poster_url:
-                poster_url = tg_thumb
-        else:
-            poster_url = tg_thumb
-
+        
         return {
             "file_id": fid,
             "name": file_name,
@@ -183,7 +152,7 @@ async def api_search(req):
             "type": d.get("file_type", "document").upper(),
             "source": d.get("source_col", "unknown").capitalize(),
             "raw_collection": d.get("source_col", "primary"),
-            "poster": poster_url,
+            "poster": "" if mode == "none" else tg_thumb, 
             "tg_thumb": tg_thumb,
             "watch": f"/setup_stream?file_id={fid}&mode=watch",
             "download": f"/setup_stream?file_id={fid}&mode=download",
@@ -197,7 +166,6 @@ async def api_search(req):
         "next_offset": off + lim if off + lim < tot else "",
         "is_admin": role == "admin",
     })
-
 
 # ─────────────────────────────────────────────
 # 📸 THUMBNAIL API
@@ -247,14 +215,12 @@ async def get_telegram_thumb(req):
         except Exception:
             raise web.HTTPFound("https://i.ibb.co/30B3RcS/default-movie.png")
 
-
 async def _auto_del_msg(msg, delay):
     await asyncio.sleep(delay)
     try:
         await msg.delete()
     except Exception:
         pass
-
 
 # ─────────────────────────────────────────────
 # ▶️ STREAM SETUP
@@ -263,7 +229,7 @@ async def _auto_del_msg(msg, delay):
 async def setup_stream(req):
     role, _ = await get_user_role(req)
     if not role:
-        return web.Response(text="❌ Unauthorized!", status=403)
+        return web.Response(text="❌ Unauthorized! Premium Required.", status=403)
     fid = req.query.get("file_id")
     mode = req.query.get("mode", "watch")
     if not fid:
@@ -274,7 +240,6 @@ async def setup_stream(req):
         return web.HTTPFound(f"/{'download' if mode == 'download' else 'watch'}/{msg.id}")
     except Exception as e:
         return web.Response(text=f"❌ Error: {e}", status=500)
-
 
 # ─────────────────────────────────────────────
 # 🗑️ DELETE & EDIT APIs
@@ -295,7 +260,6 @@ async def api_delete(req):
         return web.json_response({"success": bool(res.deleted_count)})
     except Exception as e:
         return web.json_response({"error": str(e)}, status=500)
-
 
 @search_routes.post("/api/edit")
 async def api_edit(req):
@@ -318,17 +282,14 @@ async def api_edit(req):
     except Exception as e:
         return web.json_response({"error": str(e)}, status=500)
 
-
 # ─────────────────────────────────────────────
 # 🍿 MINI APP PAGE
 # ─────────────────────────────────────────────
 @search_routes.get("/miniapp")
 async def miniapp_page(req):
-    # ✅ FIX: __file__ से absolute path निकालो ताकि case/location issue न हो
     base_dir = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
     html_path = os.path.join(base_dir, "web", "miniapp.html")
 
-    # ✅ FIX: अगर "web" folder नहीं मिला तो "Web" try करो (case fallback)
     if not os.path.exists(html_path):
         html_path = os.path.join(base_dir, "Web", "miniapp.html")
 
