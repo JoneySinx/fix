@@ -1,10 +1,12 @@
 from aiohttp import web
 import time, re, asyncio
-from utils import temp, get_size, is_rate_limited, is_premium  # ✅ FIX: is_premium को यहाँ इम्पोर्ट कर लिया
+from utils import temp, get_size, is_rate_limited, is_premium
+from utils.tmdb import get_poster  # ✅ FIX: TMDb Poster Helper को यहाँ इम्पोर्ट किया
 from info import BIN_CHANNEL, ADMINS
 from database.ia_filterdb import COLLECTIONS
 
 search_routes = web.RouteTableDef()
+thumb_cache = {} # 🔥 मेमोरी में टेलीग्राम थंबनेल सेव करने के लिए ताकि सर्वर स्लो न हो
 
 # ✅ Unified Auth Check (Admins और Premium Users के लिए)
 async def get_user_role(req):
@@ -16,7 +18,7 @@ async def get_user_role(req):
         if tg_id in ADMINS:
             return 'admin', tg_id
             
-        # 2. Premium User चेक (🔥 FIX: अब यह utils.py के Cache और Expire लॉजिक का इस्तेमाल करेगा)
+        # 2. Premium User चेक 
         if await is_premium(tg_id):
             return 'user', tg_id
             
@@ -48,7 +50,7 @@ async def api_search(req):
     tgt_cols = {col: COLLECTIONS[col]} if col in COLLECTIONS else COLLECTIONS
 
     col_counts = {}
-    col_filters = {} # यह याद रखेगा कि $text चला या Regex
+    col_filters = {}
 
     for n, c in tgt_cols.items():
         # पहले $text से ढूँढो (Superfast)
@@ -73,13 +75,11 @@ async def api_search(req):
         count = col_counts[n]
         if count == 0: continue
             
-        # अगर इस कलेक्शन में रिज़ल्ट स्किप से कम हैं, तो पूरा कलेक्शन स्किप करें
         if remaining_skip >= count:
             remaining_skip -= count
             continue
             
         local_limit = lim - len(all_m)
-        # जो फ़िल्टर काम किया था, उसी से डेटा निकालो
         docs = await c.find(col_filters[n]).sort('_id', -1).skip(remaining_skip).limit(local_limit).to_list(length=local_limit)
         
         for d in docs: 
@@ -91,13 +91,21 @@ async def api_search(req):
     # रिज़ल्ट्स को फॉर्मेट करना
     for d in all_m:
         fid = d.get("file_ref", d.get("file_id"))
+        file_name = d.get("file_name", "Unknown File")
+        
+        # 🌟 SMART FALLBACK: पहले TMDb से लाओ, अगर नहीं मिला तो असली टेलीग्राम थंबनेल मंगाओ
+        poster_url = await get_poster(file_name)
+        if not poster_url:
+            poster_url = f"/api/thumb?file_id={fid}"
+            
         res.append({
             "file_id": fid,
-            "name": d.get("file_name", "Unknown File"),
+            "name": file_name,
             "size": get_size(d.get("file_size", 0)),
             "type": d.get("file_type", "document").upper(),
             "source": d.get("source_col", "unknown").capitalize(),
             "raw_collection": d.get("source_col", "primary"),
+            "poster": poster_url, # ✅ NAYA FEATURE: पोस्टर का लिंक
             "watch": f"/setup_stream?file_id={fid}&mode=watch",
             "download": f"/setup_stream?file_id={fid}&mode=download"
         })
@@ -108,6 +116,42 @@ async def api_search(req):
         "next_offset": off + lim if off + lim < tot else "",
         "is_admin": role == 'admin' 
     })
+
+# 📸 NEW FEATURE: असली टेलीग्राम थंबनेल डाउनलोड करने वाला API
+@search_routes.get('/api/thumb')
+async def get_telegram_thumb(req):
+    fid = req.query.get('file_id')
+    if not fid: return web.Response(status=400)
+    
+    # Cache Check (बार-बार डाउनलोड नहीं करेगा)
+    if fid in thumb_cache:
+        if thumb_cache[fid] == "NO_THUMB":
+            raise web.HTTPFound("https://i.ibb.co/30B3RcS/default-movie.png")
+        return web.Response(body=thumb_cache[fid], content_type="image/jpeg")
+        
+    try:
+        msg = await temp.BOT.send_cached_media(chat_id=BIN_CHANNEL, file_id=fid)
+        thumb_id = None
+        
+        if msg.video and msg.video.thumbs: 
+            thumb_id = msg.video.thumbs[0].file_id
+        elif msg.document and msg.document.thumbs: 
+            thumb_id = msg.document.thumbs[0].file_id
+            
+        if thumb_id:
+            # बैकग्राउंड में फोटो डाउनलोड करके वेब पेज को भेजो
+            file_data = await temp.BOT.download_media(thumb_id, in_memory=True)
+            thumb_bytes = file_data.getvalue()
+            thumb_cache[fid] = thumb_bytes
+            asyncio.create_task(msg.delete())
+            return web.Response(body=thumb_bytes, content_type="image/jpeg")
+        else:
+            thumb_cache[fid] = "NO_THUMB"
+            asyncio.create_task(msg.delete())
+            raise web.HTTPFound("https://i.ibb.co/30B3RcS/default-movie.png")
+    except Exception:
+        raise web.HTTPFound("https://i.ibb.co/30B3RcS/default-movie.png")
+
 
 # ✅ Auto Delete Task
 async def _auto_del_msg(msg, delay):
