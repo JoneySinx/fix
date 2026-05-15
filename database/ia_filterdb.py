@@ -73,11 +73,7 @@ async def db_count_documents():
 # ─────────────────────────────────────────────────────────
 async def upload_to_telegraph(file_bytes: bytes):
     try:
-        headers = {
-            # ✅ FIX: User-Agent जरूरी है — बिना इसके Telegraph block करता है
-            "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36"
-        }
-        async with aiohttp.ClientSession(headers=headers) as session:
+        async with aiohttp.ClientSession() as session:
             data = aiohttp.FormData()
             data.add_field(
                 'file',
@@ -86,26 +82,14 @@ async def upload_to_telegraph(file_bytes: bytes):
                 content_type='image/jpeg'
             )
             async with session.post("https://telegra.ph/upload", data=data) as resp:
-                # ✅ FIX: Status और raw text दोनों log करो — debug के लिए
-                raw_text = await resp.text()
-                logger.info(f"Telegraph Response [{resp.status}]: {raw_text[:200]}")
-
                 if resp.status == 200:
-                    try:
-                        import json
-                        res = json.loads(raw_text)
-                    except Exception:
-                        logger.error(f"Telegraph JSON parse failed: {raw_text[:200]}")
-                        return None
-
+                    res = await resp.json()
                     if isinstance(res, list) and len(res) > 0 and "src" in res[0]:
                         return "https://telegra.ph" + res[0]["src"]
                     else:
-                        logger.warning(f"Telegraph unexpected JSON structure: {res}")
-                else:
-                    logger.error(f"Telegraph HTTP {resp.status}: {raw_text[:300]}")
+                        logger.warning(f"Telegraph unexpected response: {res}")
     except Exception as e:
-        logger.error(f"Telegraph Upload Exception: {e}")
+        logger.error(f"Telegraph Upload Error: {e}")
     return None
 
 # ─────────────────────────────────────────────────────────
