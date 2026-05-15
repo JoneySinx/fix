@@ -2,10 +2,12 @@ import logging
 import re
 import base64
 import asyncio
+import aiohttp  # ✅ FIX: Telegraph अपलोड के लिए
 from struct import pack
 import motor.motor_asyncio
 from hydrogram.file_id import FileId
 from info import DATABASE_URL, DATABASE_NAME, MAX_BTN, USE_CAPTION_FILTER
+from utils import temp  # ✅ FIX: Bot से थंबनेल डाउनलोड करने के लिए
 
 logger = logging.getLogger(__name__)
 
@@ -67,7 +69,24 @@ async def db_count_documents():
         return {"primary": 0, "cloud": 0, "archive": 0, "total": 0}
 
 # ─────────────────────────────────────────────────────────
-# 💾 SAVE FILE
+# 📸 TELEGRAPH UPLOADER TOOL (For Fast Thumbnails)
+# ─────────────────────────────────────────────────────────
+async def upload_to_telegraph(file_bytes: bytes):
+    try:
+        async with aiohttp.ClientSession() as session:
+            data = aiohttp.FormData()
+            data.add_field('file', file_bytes, filename='thumb.jpg', content_type='image/jpeg')
+            async with session.post("https://telegra.ph/upload", data=data) as resp:
+                if resp.status == 200:
+                    res = await resp.json()
+                    if isinstance(res, list) and "src" in res[0]:
+                        return "https://telegra.ph" + res[0]["src"]
+    except Exception as e:
+        logger.error(f"Telegraph Upload Error: {e}")
+    return None
+
+# ─────────────────────────────────────────────────────────
+# 💾 SAVE FILE (WITH AUTO TELEGRAPH CACHING)
 # ─────────────────────────────────────────────────────────
 async def save_file(media, collection_type="primary"):
     try:
@@ -76,10 +95,24 @@ async def save_file(media, collection_type="primary"):
             logger.warning(f"Could not unpack file_id: {media.file_name}")
             return "err"
 
-        f_name  = re.sub(r"@\w+|(_|\-|\.|\+)", " ", str(media.file_name or "")).strip()
-        caption = re.sub(r"@\w+|(_|\-|\.|\+)", " ", str(media.caption  or "")).strip()
+        f_name  = re.sub(r"@\w+|(_|\-|\.|\+)", " ", str(getattr(media, 'file_name', "") or "")).strip()
+        caption = re.sub(r"@\w+|(_|\-|\.|\+)", " ", str(getattr(media, 'caption', "") or "")).strip()
 
         file_type = type(media).__name__.lower()
+
+        # 🌟 SMART CACHING: थंबनेल डाउनलोड करके Telegraph पर अपलोड करना
+        thumb_url = "https://i.ibb.co/30B3RcS/default-movie.png" # Default Image
+        try:
+            if hasattr(media, 'thumbs') and media.thumbs:
+                thumb_id = media.thumbs[0].file_id
+                if hasattr(temp, 'BOT') and temp.BOT:
+                    file_data = await temp.BOT.download_media(thumb_id, in_memory=True)
+                    if file_data:
+                        uploaded_url = await upload_to_telegraph(file_data.getvalue())
+                        if uploaded_url:
+                            thumb_url = uploaded_url
+        except Exception as e:
+            logger.error(f"Thumb cache error: {e}")
 
         doc = {
             "_id":       file_id,     
@@ -87,7 +120,8 @@ async def save_file(media, collection_type="primary"):
             "file_name": f_name,
             "file_size": media.file_size,
             "caption":   caption,
-            "file_type": file_type,   
+            "file_type": file_type, 
+            "thumb_url": thumb_url,  # ✅ Telegraph वाला सुपरफास्ट लिंक
         }
 
         col    = COLLECTIONS.get(collection_type, primary)
@@ -126,8 +160,6 @@ def _build_regex(query: str):
 # ─────────────────────────────────────────────────────────
 async def _search(col, raw_query: str, regex, offset: int, limit: int, lang=None):
     
-    # 1. ⚡ सुपरफास्ट Text Search (Strict AND Logic)
-    # हर शब्द को Quotes (") में डाल रहे हैं ताकि सटीक मैच ही मिले
     clean_query = raw_query.replace('"', '').replace("'", "")
     strict_query = " ".join(f'"{word}"' for word in clean_query.split())
 
@@ -139,7 +171,6 @@ async def _search(col, raw_query: str, regex, offset: int, limit: int, lang=None
     count = await col.count_documents(text_flt)
     
     if count > 0:
-        # अगर इंडेक्स से रिज़ल्ट मिला, तो सबसे अच्छी मैचिंग (Relevance Score) को ऊपर रखो
         async def _fetch_text():
             cursor = col.find(text_flt, {"score": {"$meta": "textScore"}})
             cursor.sort([("score", {"$meta": "textScore"})])
@@ -150,7 +181,6 @@ async def _search(col, raw_query: str, regex, offset: int, limit: int, lang=None
             return docs
         return await _fetch_text(), count
 
-    # 2. 🐢 Fallback to Regex (अगर यूज़र ने आधा शब्द लिखा हो, जैसे "Aveng")
     if USE_CAPTION_FILTER:
         reg_flt = {"$or": [{"file_name": regex}, {"caption": regex}]}
     else:
@@ -185,7 +215,6 @@ async def get_search_results(query, max_results=MAX_BTN, offset=0, lang=None, co
     total      = 0
     actual_src = collection_type
 
-    # ── CASCADE: Primary → Cloud → Archive ──
     if collection_type == "all":
         cascade = [("primary", primary), ("cloud", cloud), ("archive", archive)]
         for src, col in cascade:
@@ -196,14 +225,12 @@ async def get_search_results(query, max_results=MAX_BTN, offset=0, lang=None, co
                 actual_src = src
                 break  
 
-    # ── Single collection ──
     elif collection_type in COLLECTIONS:
         col       = COLLECTIONS[collection_type]
         docs, cnt = await _search(col, raw_query, regex, offset, max_results, lang)
         results   = docs
         total     = cnt
 
-    # ── Unknown → Primary default ──
     else:
         docs, cnt = await _search(primary, raw_query, regex, offset, max_results, lang)
         results   = docs
@@ -223,7 +250,6 @@ async def get_web_search_results(query, offset=0, limit=20):
         
     raw_query = str(query).strip()
     
-    # ✅ यहाँ भी Strict AND Logic लगा दिया
     clean_query = raw_query.replace('"', '').replace("'", "")
     strict_query = " ".join(f'"{word}"' for word in clean_query.split())
     
