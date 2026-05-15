@@ -114,16 +114,19 @@ async def api_search(req):
         "is_admin": role == 'admin' 
     })
 
-# 📸 PRO FEATURE 2: असली टेलीग्राम थंबनेल डाउनलोड करने वाला API (With Semaphore)
+# 📸 PRO FEATURE 2: असली टेलीग्राम थंबनेल डाउनलोड करने वाला API (With Semaphore & .bin FIX)
 @search_routes.get('/api/thumb')
 async def get_telegram_thumb(req):
     fid = req.query.get('file_id')
     if not fid: return web.Response(status=400)
     
+    # ✅ FIX: Chrome को बताना कि यह .bin नहीं, बल्कि .jpg है
+    headers = {"Content-Disposition": 'inline; filename="poster.jpg"'}
+    
     if fid in thumb_cache:
         if thumb_cache[fid] == "NO_THUMB":
             raise web.HTTPFound("https://i.ibb.co/30B3RcS/default-movie.png")
-        return web.Response(body=thumb_cache[fid], content_type="image/jpeg")
+        return web.Response(body=thumb_cache[fid], content_type="image/jpeg", headers=headers)
         
     # 🚦 Semaphore - सिर्फ 4 रिक्वेस्ट अंदर जाएंगी, बाकी इंतज़ार करेंगी
     async with thumb_semaphore:
@@ -141,7 +144,7 @@ async def get_telegram_thumb(req):
                 thumb_bytes = file_data.getvalue()
                 thumb_cache[fid] = thumb_bytes
                 asyncio.create_task(msg.delete())
-                return web.Response(body=thumb_bytes, content_type="image/jpeg")
+                return web.Response(body=thumb_bytes, content_type="image/jpeg", headers=headers)
             else:
                 thumb_cache[fid] = "NO_THUMB"
                 asyncio.create_task(msg.delete())
