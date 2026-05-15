@@ -60,6 +60,8 @@ ADMINS = [int(x) for x in ADMINS.split()]
 # 🖼️ IMAGES
 # ─────────────────────────────────────────────
 PICS = environ.get("PICS", "https://i.postimg.cc/8C15CQ5y/1.png").split()
+TMDB_API_KEY = environ.get("TMDB_API_KEY", "यहाँ_अपनी_TMDb_की_डालें") 
+
 
 # ─────────────────────────────────────────────
 # 📢 CHANNELS (AUTO INDEXING & LOGS)
