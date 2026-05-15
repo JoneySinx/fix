@@ -4,7 +4,7 @@ import asyncio
 from datetime import datetime
 from time import time as time_now
 from hydrogram import Client, filters, enums
-from hydrogram.types import InlineKeyboardButton, InlineKeyboardMarkup
+from hydrogram.types import InlineKeyboardButton, InlineKeyboardMarkup, WebAppInfo # ✅ FIX: WebAppInfo को इम्पोर्ट किया
 
 from Script import script
 from database.ia_filterdb import db_count_documents, get_file_details, delete_files
@@ -89,6 +89,8 @@ async def start(client, message):
 
     # 4. DEFAULT START MESSAGE
     btn = [
+        # 🌟 NAYA FEATURE: Telegram Mini App Button
+        [InlineKeyboardButton("🍿 Open Mini App", web_app=WebAppInfo(url=f"{URL}miniapp"))],
         [InlineKeyboardButton("+ Add to Group +", url=f"https://t.me/{temp.U_NAME}?startgroup=start")],
         [InlineKeyboardButton("👨‍🚒 Help", callback_data="help"), InlineKeyboardButton("📊 Stats", callback_data="stats")]
     ]
@@ -164,6 +166,8 @@ async def ui_cb(client, query):
     if data == "back_start":
         text = script.START_TXT.format(query.from_user.mention, get_wish())
         btn = [
+            # 🌟 NAYA FEATURE: Back बटन दबाने पर भी Mini App का बटन दिखेगा
+            [InlineKeyboardButton("🍿 Open Mini App", web_app=WebAppInfo(url=f"{URL}miniapp"))],
             [InlineKeyboardButton("+ Add to Group +", url=f"https://t.me/{temp.U_NAME}?startgroup=start")],
             [InlineKeyboardButton("👨‍🚒 Help", callback_data="help"), InlineKeyboardButton("📊 Stats", callback_data="stats")]
         ]
