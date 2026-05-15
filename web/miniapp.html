@@ -7,126 +7,142 @@
     <script src="https://telegram.org/js/telegram-web-app.js"></script>
     <link href="https://fonts.googleapis.com/css2?family=DM+Sans:wght@400;500;700;900&display=swap" rel="stylesheet">
     <style>
-        :root {
-            --bg: #141414;
-            --card: #1f1f1f;
-            --text: #ffffff;
-            --muted: #999999;
-            --accent: #e50914;
-            --border: #333333;
-        }
-        * { box-sizing: border-box; margin: 0; padding: 0; font-family: 'DM Sans', sans-serif; }
-        body { background: var(--bg); color: var(--text); padding-bottom: 20px; overflow-x: hidden; }
+        /* Web UI Parity CSS */
+        *{box-sizing:border-box;margin:0;padding:0}:root{--bg:#141414;--bg2:#000;--bg3:#2b2b2b;--bg4:#333;--accent:#e50914;--text:#fff;--muted:#808080;--border:#404040;--card:#181818}
+        .light{--bg:#f3f3f3;--bg2:#fff;--bg3:#e6e6e6;--bg4:#ccc;--text:#141414;--muted:#666;--border:#ccc;--card:#fff}
+        body{font-family:'DM Sans',sans-serif;background:var(--bg);color:var(--text);min-height:100vh;overflow-x:hidden;transition:background 0.2s, color 0.2s; padding-bottom: 20px;}
+        
+        /* Header & Theme */
+        .topbar{background:var(--bg2);padding:15px 4%;display:flex;justify-content:space-between;align-items:center;position:sticky;top:0;z-index:100;border-bottom: 1px solid var(--border); backdrop-filter: blur(10px);}
+        .logo{font-size:18px;font-weight:900;letter-spacing:1px;color:var(--accent);display:flex;align-items:center;gap:8px;}
+        .nf-icon{background:var(--accent);color:#fff;padding:2px 7px;border-radius:3px;font-size:18px;line-height:1}
+        .controls-row{display:flex; gap:10px; align-items:center;}
+        .theme-btn, .settings-btn{background:var(--card);border:1px solid var(--border);border-radius:6px;padding:6px 12px;font-size:12px;font-weight:700;color:var(--text);cursor:pointer;transition:0.2s; outline:none;}
+        .theme-btn:hover, .settings-btn:hover{background:var(--bg3)}
 
-        /* Header & Search */
-        .header { position: sticky; top: 0; background: rgba(20, 20, 20, 0.95); backdrop-filter: blur(10px); z-index: 100; padding: 15px; border-bottom: 1px solid var(--border); }
-        .logo-row { display: flex; justify-content: space-between; align-items: center; margin-bottom: 15px; }
-        .logo { font-size: 20px; font-weight: 900; color: var(--accent); letter-spacing: 1px; }
-        .settings-btn { background: var(--card); border: 1px solid var(--border); color: var(--text); padding: 6px 12px; border-radius: 6px; font-size: 12px; font-weight: 700; outline: none; }
+        /* Search & Filters */
+        .search-zone{padding:15px 4%;background:var(--bg)}
+        .search-row{display:flex;gap:10px; margin-bottom:15px;}
+        .search-input{flex:1;background:var(--card);border:1px solid var(--border);border-radius:8px;padding:12px 15px;color:var(--text);font-size:15px;outline:0}
+        .search-input:focus{border-color:var(--accent)}
+        .search-btn{background:var(--accent);color:#fff;border:0;border-radius:8px;padding:0 20px;font-weight:700;cursor:pointer; font-size:15px;}
 
-        .search-box { display: flex; gap: 10px; }
-        .search-input { flex: 1; background: var(--card); border: 1px solid var(--border); padding: 12px 15px; border-radius: 8px; color: var(--text); font-size: 15px; outline: none; }
-        .search-input:focus { border-color: var(--accent); }
-        .search-btn { background: var(--accent); border: none; color: white; padding: 0 20px; border-radius: 8px; font-weight: 700; font-size: 15px; cursor: pointer; }
-
-        /* Filters */
-        .filters { display: flex; gap: 8px; padding: 0 15px; margin: 15px 0; overflow-x: auto; white-space: nowrap; scrollbar-width: none; }
+        .filters{display:flex;gap:8px;overflow-x:auto;white-space:nowrap;scrollbar-width:none;}
         .filters::-webkit-scrollbar { display: none; }
-        .filter-btn { background: var(--card); border: 1px solid var(--border); color: var(--muted); padding: 8px 16px; border-radius: 20px; font-size: 13px; font-weight: 700; cursor: pointer; transition: 0.2s; }
-        .filter-btn.active { background: var(--text); color: var(--bg); border-color: var(--text); }
-
+        .filter-btn{background:var(--card);border:1px solid var(--border);padding:8px 16px;font-weight:700;color:var(--muted);cursor:pointer;border-radius:20px; font-size: 13px; transition:0.2s;}
+        .filter-btn.active{background:var(--text);color:var(--bg); border-color:var(--text);}
+        
         /* Grid Layout */
-        .grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(130px, 1fr)); gap: 15px; padding: 0 15px; }
-        .movie-card { background: var(--card); border-radius: 10px; overflow: hidden; display: flex; flex-direction: column; position: relative; border: 1px solid var(--border); }
-
-        .poster-wrapper { position: relative; width: 100%; padding-top: 150%; background: #222; }
-        .poster-img { position: absolute; top: 0; left: 0; width: 100%; height: 100%; object-fit: cover; }
-
-        .badge { position: absolute; top: 8px; left: 8px; background: rgba(0,0,0,0.8); color: var(--accent); font-size: 10px; font-weight: 900; padding: 3px 6px; border-radius: 4px; border: 1px solid var(--accent); z-index: 2; }
+        .main{padding:0 4%; max-width:1400px; margin:0 auto}
+        .res-grid{display:grid;grid-template-columns:repeat(auto-fill, minmax(130px, 1fr));gap:15px;}
+        .file-card{display:flex;flex-direction:column;background:var(--card);border-radius:10px;border:1px solid var(--border);overflow:hidden;position:relative;}
+        
+        .poster-box{width:100%;position:relative;background:var(--bg3); padding-top: 150%;}
+        .mode-none .poster-box{display:none}
+        .fc-poster{position:absolute;top:0;left:0;width:100%;height:100%;object-fit:cover}
+        
+        .badge { position: absolute; top: 8px; left: 8px; background: rgba(0,0,0,0.8); font-size: 10px; font-weight: 900; padding: 3px 6px; border-radius: 4px; border: 1px solid; z-index: 2; }
+        .badge.primary { color: var(--accent); border-color: var(--accent); }
         .badge.cloud { color: #3399ff; border-color: #3399ff; }
         .badge.archive { color: #aaaaaa; border-color: #aaaaaa; }
 
-        .card-info { padding: 12px; flex: 1; display: flex; flex-direction: column; }
-        .movie-title { font-size: 14px; font-weight: 700; margin-bottom: 5px; display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; line-height: 1.3; }
-        .movie-meta { font-size: 11px; color: var(--muted); margin-bottom: 10px; font-weight: 500; }
-
-        .action-row { display: flex; gap: 5px; margin-top: auto; }
-        .btn { flex: 1; text-align: center; padding: 8px 0; border-radius: 6px; font-size: 12px; font-weight: 700; text-decoration: none; cursor: pointer; border: none; }
-        .btn-play { background: var(--text); color: var(--bg); }
-        .btn-dl { background: var(--bg); color: var(--text); border: 1px solid var(--border); }
+        .fc-content{padding:12px;display:flex;flex-direction:column;flex:1}
+        .fc-name{font-size:14px;font-weight:700;margin-bottom:5px;word-break:break-all;display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden;line-height:1.3;}
+        .fc-meta{font-size:11px;color:var(--muted);margin-bottom:10px;font-weight:500;}
+        
+        .fc-actions{margin-top:auto;display:flex;gap:5px;}
+        .btn{flex:1;text-align:center;padding:8px 0;border-radius:6px;font-size:12px;font-weight:700;cursor:pointer;border:none;}
+        .btn-play{background:var(--text);color:var(--bg);}
+        .btn-dl{background:var(--bg);color:var(--text);border:1px solid var(--border);}
 
         /* States */
-        .loading, .empty { text-align: center; padding: 50px 20px; color: var(--muted); font-weight: 500; grid-column: 1 / -1; }
-
-        /* ✅ FIX: Error state - premium/auth error के लिए अलग style */
-        .error-state { text-align: center; padding: 40px 20px; grid-column: 1 / -1; }
-        .error-state .error-icon { font-size: 40px; margin-bottom: 15px; }
-        .error-state .error-title { font-size: 16px; font-weight: 700; color: var(--text); margin-bottom: 8px; }
-        .error-state .error-msg { font-size: 13px; color: var(--muted); }
-
-        .pagination { display: flex; justify-content: space-between; align-items: center; padding: 20px 15px; }
-        .pg-btn { background: var(--card); border: 1px solid var(--border); color: var(--text); padding: 10px 20px; border-radius: 8px; font-weight: 700; }
-        .pg-btn:disabled { opacity: 0.5; }
-
-        .toast { position: fixed; bottom: 20px; left: 50%; transform: translateX(-50%) translateY(100px); background: var(--accent); color: white; padding: 12px 24px; border-radius: 30px; font-weight: 700; font-size: 13px; transition: 0.3s; z-index: 1000; white-space: nowrap; }
-        .toast.show { transform: translateX(-50%) translateY(0); }
+        .empty, .error-state{text-align:center;padding:50px 20px;color:var(--muted);grid-column:1/-1;font-weight:500;}
+        .error-state .error-icon{font-size:40px;margin-bottom:15px}
+        .error-state .error-title{font-size:16px;font-weight:700;color:var(--text);margin-bottom:8px}
+        .error-state .error-msg{font-size:13px;}
+        
+        .pagination{display:none;justify-content:space-between;padding:20px 0;align-items:center}
+        .pg-btn{background:var(--card);border:1px solid var(--border);color:var(--text);padding:10px 20px;border-radius:8px;font-weight:700;cursor:pointer}
+        .pg-btn:disabled{opacity:0.5;cursor:not-allowed;}
+        
+        .toast{position:fixed;bottom:20px;left:50%;transform:translateX(-50%) translateY(100px);background:var(--accent);color:#fff;padding:12px 24px;border-radius:30px;font-weight:700;font-size:13px;transition:0.3s;z-index:1000;white-space:nowrap;box-shadow:0 4px 10px rgba(0,0,0,0.5);}
+        .toast.show{transform:translateX(-50%) translateY(0)}
     </style>
 </head>
 <body>
 
-    <div class="header">
-        <div class="logo-row">
-            <div class="logo">FAST FINDER</div>
+    <div class="topbar">
+        <div class="logo"><span class="nf-icon">F</span> FINDER</div>
+        <div class="controls-row">
             <select id="posterMode" class="settings-btn" onchange="changePosterMode()">
-                <option value="smart">🎬 TMDb Poster</option>
                 <option value="tg">📸 TG Thumb</option>
-                <option value="none">⚡ Fast (No Image)</option>
+                <option value="none">⚡ Fast (Text)</option>
             </select>
+            <button class="theme-btn" onclick="toggleTheme()">🌓 Theme</button>
         </div>
-        <div class="search-box">
+    </div>
+
+    <div class="search-zone">
+        <div class="search-row">
             <input type="text" id="q" class="search-input" placeholder="Search movies, series..." enterkeyhint="search">
             <button class="search-btn" onclick="doSearch(0)">Go</button>
         </div>
+        <div class="filters">
+            <button class="filter-btn active" data-col="all" onclick="setCol(this)">All Sources</button>
+            <button class="filter-btn" data-col="primary" onclick="setCol(this)">Primary</button>
+            <button class="filter-btn" data-col="cloud" onclick="setCol(this)">Cloud</button>
+            <button class="filter-btn" data-col="archive" onclick="setCol(this)">Archive</button>
+        </div>
     </div>
 
-    <div class="filters">
-        <button class="filter-btn active" data-col="all" onclick="setCol(this)">All Sources</button>
-        <button class="filter-btn" data-col="primary" onclick="setCol(this)">Primary</button>
-        <button class="filter-btn" data-col="cloud" onclick="setCol(this)">Cloud</button>
-        <button class="filter-btn" data-col="archive" onclick="setCol(this)">Archive</button>
-    </div>
+    <div class="main">
+        <div class="res-grid" id="results">
+            <div class="empty">Type a movie name above to start searching.</div>
+        </div>
 
-    <div class="grid" id="results">
-        <div class="empty">Type a movie name above to start searching.</div>
-    </div>
-
-    <div class="pagination" id="pageBox" style="display: none;">
-        <button class="pg-btn" id="pBtn" onclick="prev()">◀ Prev</button>
-        <span style="font-size: 13px; font-weight: 700;" id="pgInfo">Page 1</span>
-        <button class="pg-btn" id="nBtn" onclick="next()">Next ▶</button>
+        <div class="pagination" id="pageBox">
+            <button class="pg-btn" id="pBtn" onclick="prev()">◀ Prev</button>
+            <span style="font-size:13px; font-weight:700;" id="pgInfo">Page 1</span>
+            <button class="pg-btn" id="nBtn" onclick="next()">Next ▶</button>
+        </div>
     </div>
 
     <div class="toast" id="toast"></div>
 
     <script>
         // ─────────────────────────────────────────────
-        // Telegram WebApp Init
+        // Telegram WebApp Init & Theme
         // ─────────────────────────────────────────────
         let tg = window.Telegram.WebApp;
         tg.expand();
         tg.ready();
 
+        if(localStorage.getItem('miniapp_theme') === 'light') {
+            document.documentElement.classList.add('light');
+        }
+        function toggleTheme() {
+            let isLight = document.documentElement.classList.toggle('light');
+            localStorage.setItem('miniapp_theme', isLight ? 'light' : 'dark');
+        }
+
         let curQ = '', curOff = 0, nextOff = '', curCol = 'all', curPage = 1;
-        let pMode = localStorage.getItem('miniapp_posterMode') || 'smart';
+        
+        // Default to 'tg' (TMDb removed)
+        let pMode = localStorage.getItem('miniapp_posterMode') || 'tg';
         document.getElementById('posterMode').value = pMode;
 
-        // ✅ FIX: initData हमेशा available होना चाहिए
-        // अगर Mini App सही से open हुआ है तो यह empty नहीं होगा
+        // ✅ SECURITY: initData हमेशा available होना चाहिए
         const INIT_DATA = tg.initData || '';
 
         function changePosterMode() {
             pMode = document.getElementById('posterMode').value;
             localStorage.setItem('miniapp_posterMode', pMode);
+            let resGrid = document.getElementById('results');
+            if(pMode === 'none') {
+                resGrid.classList.add('mode-none');
+            } else {
+                resGrid.classList.remove('mode-none');
+            }
             if (curQ) doSearch(curOff);
         }
 
@@ -149,7 +165,7 @@
         });
 
         // ─────────────────────────────────────────────
-        // ✅ FIX: showError - अलग-अलग errors के लिए proper message
+        // Error Handling
         // ─────────────────────────────────────────────
         function showError(type, extra = '') {
             const grid = document.getElementById('results');
@@ -172,7 +188,7 @@
                     <div class="error-state">
                         <div class="error-icon">⚠️</div>
                         <div class="error-title">Open via Telegram Bot</div>
-                        <div class="error-msg">This app only works inside Telegram.<br>Open it from the bot's menu button.</div>
+                        <div class="error-msg">This app securely works only inside Telegram.<br>Open it from the bot's menu.</div>
                     </div>`;
             } else {
                 grid.innerHTML = `
@@ -185,50 +201,31 @@
         }
 
         // ─────────────────────────────────────────────
-        // 🔍 SEARCH FUNCTION
+        // 🔍 SEARCH FUNCTION (Secure with INIT_DATA)
         // ─────────────────────────────────────────────
         async function doSearch(offset) {
             let q = document.getElementById('q').value.trim();
             if (!q) return showToast("Enter a movie name!");
 
-            // ✅ FIX: initData check - अगर Telegram के बाहर खोला है
             if (!INIT_DATA) {
                 showError('init');
                 return;
             }
 
-            curQ = q;
-            curOff = offset;
-            if (offset === 0) curPage = 1;
+            curQ = q; curOff = offset; if (offset === 0) curPage = 1;
 
-            document.getElementById('results').innerHTML = '<div class="loading">Searching...</div>';
+            document.getElementById('results').innerHTML = '<div class="empty">Searching...</div>';
             document.getElementById('pageBox').style.display = 'none';
 
             try {
-                // ✅ FIX: X-Telegram-Init-Data header भेजो - यही असली fix है
-                // Server इसी से user verify करता है, cookies नहीं
                 let res = await fetch(
                     `/api/search?q=${encodeURIComponent(q)}&offset=${offset}&col=${curCol}&mode=${pMode}`,
-                    {
-                        headers: {
-                            'X-Telegram-Init-Data': INIT_DATA
-                        }
-                    }
+                    { headers: { 'X-Telegram-Init-Data': INIT_DATA } }
                 );
 
-                // ✅ FIX: HTTP status codes को properly handle करो
-                if (res.status === 403) {
-                    showError('auth');
-                    return;
-                }
-                if (res.status === 429) {
-                    showError('rate');
-                    return;
-                }
-                if (!res.ok) {
-                    showError('generic', `Server error (${res.status})`);
-                    return;
-                }
+                if (res.status === 403) { showError('auth'); return; }
+                if (res.status === 429) { showError('rate'); return; }
+                if (!res.ok) { showError('generic', `Server error (${res.status})`); return; }
 
                 let d = await res.json();
 
@@ -240,8 +237,7 @@
                 }
 
                 if (!d.results || d.results.length === 0) {
-                    document.getElementById('results').innerHTML =
-                        `<div class="empty">No results found for "${q}"</div>`;
+                    document.getElementById('results').innerHTML = `<div class="empty">No results found for "${q}"</div>`;
                     return;
                 }
 
@@ -252,28 +248,21 @@
 
                     let imgHtml = '';
                     if (pMode !== 'none') {
-                        let imgSrc = f.poster;
-                        if (pMode === 'tg') imgSrc = `/api/thumb?file_id=${f.file_id}`;
-                        imgHtml = `<div class="poster-wrapper">
-                            <img src="${imgSrc}" class="poster-img"
-                                 onerror="this.src='https://i.ibb.co/30B3RcS/default-movie.png'"
-                                 loading="lazy">
+                        // TMDb logic is gone, relying solely on f.tg_thumb / f.poster API
+                        imgHtml = `
+                        <div class="poster-box">
+                            <img src="${f.poster}" class="fc-poster" onerror="this.src='https://i.ibb.co/30B3RcS/default-movie.png'" loading="lazy">
                         </div>`;
                     }
 
-                    // ✅ FIX: Watch/Download के लिए भी initData header चाहिए
-                    // इसलिए tg.openLink की जगह setupStream() use करो
-                    let watchUrl = window.location.origin + f.watch;
-                    let dlUrl = window.location.origin + f.download;
-
                     html += `
-                    <div class="movie-card">
+                    <div class="file-card">
                         <span class="badge ${badgeClass}">${sc.toUpperCase()}</span>
                         ${imgHtml}
-                        <div class="card-info">
-                            <div class="movie-title">${f.name}</div>
-                            <div class="movie-meta">${f.size} • ${f.type}</div>
-                            <div class="action-row">
+                        <div class="fc-content">
+                            <div class="fc-name">${f.name}</div>
+                            <div class="fc-meta">${f.size} • ${f.type}</div>
+                            <div class="fc-actions">
                                 <button class="btn btn-play" onclick="openStream('${f.file_id}', 'watch')">▶ Play</button>
                                 <button class="btn btn-dl" onclick="openStream('${f.file_id}', 'download')">⬇ DL</button>
                             </div>
@@ -298,24 +287,20 @@
         }
 
         // ─────────────────────────────────────────────
-        // ✅ FIX: Stream/Download - initData header के साथ
+        // ✅ Stream/Download - Secure Header Verification
         // ─────────────────────────────────────────────
         async function openStream(fileId, mode) {
             showToast(mode === 'watch' ? '▶ Opening player...' : '⬇ Preparing download...');
             try {
-                // /setup_stream को initData header के साथ call करो
                 let res = await fetch(
                     `/setup_stream?file_id=${fileId}&mode=${mode}`,
                     {
                         headers: { 'X-Telegram-Init-Data': INIT_DATA },
-                        redirect: 'manual'  // redirect को manually handle करेंगे
+                        redirect: 'manual' 
                     }
                 );
 
-                // Server redirect (302) देगा watch/download URL पर
                 if (res.type === 'opaqueredirect' || res.status === 0) {
-                    // fetch redirect follow नहीं करता manual mode में
-                    // तो URL construct करके खोलते हैं
                     let location = res.headers.get('Location') || res.url;
                     if (location) {
                         tg.openLink(window.location.origin + location);
@@ -325,21 +310,21 @@
 
                 if (res.status === 403) { showToast('🔒 Access denied'); return; }
 
-                // Fallback: JSON response से URL निकालो
                 let data = await res.json().catch(() => ({}));
                 if (data.url) {
                     tg.openLink(data.url);
                 } else {
-                    // Last fallback: सीधे URL बनाओ
                     tg.openLink(`${window.location.origin}/setup_stream?file_id=${fileId}&mode=${mode}`);
                 }
 
             } catch (err) {
                 console.error(err);
-                // अगर fetch काम नहीं करता, direct link खोलो
                 tg.openLink(`${window.location.origin}/setup_stream?file_id=${fileId}&mode=${mode}`);
             }
         }
+
+        // Initialize mode visually on load
+        if(pMode === 'none') document.getElementById('results').classList.add('mode-none');
 
         function next() { if (nextOff) { curPage++; doSearch(nextOff); } }
         function prev() { if (curPage > 1) { curPage--; doSearch(Math.max(0, curOff - 20)); } }
