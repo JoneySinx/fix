@@ -87,7 +87,7 @@ async def index_files(bot, query):
         collection = data_parts[5]
         
         msg = query.message
-        await msg.edit(f"Starting Indexing to <b>{collection.upper()}</b> collection...")
+        await msg.edit(f"Starting Indexing to <b>{collection.upper()}</b> collection...\n<i>⚡ Auto-caching posters to Telegraph...</i>")
         
         try:
             chat = int(chat)
@@ -187,7 +187,8 @@ async def index_files_to_db(lst_msg_id, chat, msg, bot, skip, collection_type="p
                         f"❌ No Media: <code>{no_media + unsupported}</code>\n"
                         f"⚠️ Unsupported: <code>{unsupported}</code>\n"
                         f"❗ Errors: <code>{errors}</code>\n"
-                        f"🚫 Bad Files: <code>{badfiles}</code>"
+                        f"🚫 Bad Files: <code>{badfiles}</code>\n\n"
+                        f"<i>📸 Note: Telegraph poster caching stopped.</i>"
                     )
                     return
                 
@@ -210,7 +211,8 @@ async def index_files_to_db(lst_msg_id, chat, msg, bot, skip, collection_type="p
                             f"❌ No Media: <code>{no_media + unsupported}</code>\n"
                             f"⚠️ Unsupported: <code>{unsupported}</code>\n"
                             f"❗ Errors: <code>{errors}</code>\n"
-                            f"🚫 Bad Files: <code>{badfiles}</code>", 
+                            f"🚫 Bad Files: <code>{badfiles}</code>\n\n"
+                            f"<i>⚡ Automatically uploading HD posters to Telegraph...</i>", 
                             reply_markup=InlineKeyboardMarkup(btn)
                         )
                     except FloodWait as e:
@@ -246,7 +248,7 @@ async def index_files_to_db(lst_msg_id, chat, msg, bot, skip, collection_type="p
                 except:
                     pass
                 
-                # Save to selected collection
+                # Save to selected collection (यह अंदर ही Telegraph पर थंबनेल अपलोड कर देगा)
                 sts = await save_file(media, collection_type=collection_type)
                 
                 if sts == 'suc':
@@ -270,5 +272,6 @@ async def index_files_to_db(lst_msg_id, chat, msg, bot, skip, collection_type="p
                 f'❌ No Media: <code>{no_media + unsupported}</code>\n'
                 f'⚠️ Unsupported: <code>{unsupported}</code>\n'
                 f'❗ Errors: <code>{errors}</code>\n'
-                f'🚫 Bad Files: <code>{badfiles}</code>'
+                f'🚫 Bad Files: <code>{badfiles}</code>\n\n'
+                f'<i>🎉 All posters successfully uploaded to Telegraph!</i>'
             )
