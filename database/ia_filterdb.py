@@ -3,6 +3,7 @@ import re
 import base64
 import asyncio
 import aiohttp  # ✅ FIX: Telegraph अपलोड के लिए
+import io       # ✅ FIX: Bytes को असली फाइल ऑब्जेक्ट बनाने के लिए
 from struct import pack
 import motor.motor_asyncio
 from hydrogram.file_id import FileId
@@ -75,7 +76,8 @@ async def upload_to_telegraph(file_bytes: bytes):
     try:
         async with aiohttp.ClientSession() as session:
             data = aiohttp.FormData()
-            data.add_field('file', file_bytes, filename='thumb.jpg', content_type='image/jpeg')
+            # ✅ FIX: io.BytesIO() लगाने से Telegraph इसे असली फोटो मानेगा, .bin नहीं!
+            data.add_field('file', io.BytesIO(file_bytes), filename='thumb.jpg', content_type='image/jpeg')
             async with session.post("https://telegra.ph/upload", data=data) as resp:
                 if resp.status == 200:
                     res = await resp.json()
