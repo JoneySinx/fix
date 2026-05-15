@@ -1,5 +1,5 @@
 from aiohttp import web
-import time, re, asyncio
+import time, re, asyncio, os  # ✅ FIX: Mini App के लिए 'os' को इम्पोर्ट किया
 from utils import temp, get_size, is_rate_limited, is_premium
 from utils.tmdb import get_poster  # ✅ FIX: TMDb Poster Helper को यहाँ इम्पोर्ट किया
 from info import BIN_CHANNEL, ADMINS
@@ -229,3 +229,10 @@ async def api_edit(req):
         return web.json_response({"error": "File not found or no changes made!"}, status=404)
     except Exception as e:
         return web.json_response({"error": str(e)}, status=500)
+
+# 📱 NAYA FEATURE: Mini App Serve Route
+@search_routes.get('/miniapp')
+async def miniapp_page(req):
+    # यह 'Web/miniapp.html' फ़ाइल को ब्राउज़र या टेलीग्राम मिनी ऐप में भेज देगा
+    file_path = os.path.join("Web", "miniapp.html") 
+    return web.FileResponse(file_path)
