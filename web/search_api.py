@@ -1,7 +1,7 @@
 from aiohttp import web
 import time, re, asyncio, os  # ✅ FIX: Mini App के लिए 'os' को इम्पोर्ट किया
 from utils import temp, get_size, is_rate_limited, is_premium
-from utils.tmdb import get_poster  # ✅ FIX: TMDb Poster Helper को यहाँ इम्पोर्ट किया
+from helpers.tmdb import get_poster  # ✅ FIX: अब यह 'helpers' फोल्डर से इम्पोर्ट होगा (क्रैश फिक्स)
 from info import BIN_CHANNEL, ADMINS
 from database.ia_filterdb import COLLECTIONS
 
