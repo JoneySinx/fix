@@ -25,7 +25,6 @@ def is_valid_ip(ip):
     )
     return re.match(ip_pattern, ip) is not None
 
-# 🛠 Smart List Parser: मल्टीपल IDs को स्पेस या कॉमा से अलग करके लिस्ट बना देगा
 def get_channels(env_var):
     val = environ.get(env_var, "").replace(",", " ").strip()
     if not val: return []
@@ -45,8 +44,6 @@ if not API_ID or not API_HASH or not BOT_TOKEN:
 BOT_ID = int(BOT_TOKEN.split(":")[0])
 PORT = int(environ.get("PORT", 80))
 
-# ✅ NOTE: ADMIN_USERNAME और ADMIN_PASSWORD को हटा दिया गया है क्योंकि अब लॉगिन Telegram ID से होता है।
-
 # ─────────────────────────────────────────────
 # 👑 ADMINS
 # ─────────────────────────────────────────────
@@ -60,13 +57,11 @@ ADMINS = [int(x) for x in ADMINS.split()]
 # 🖼️ IMAGES
 # ─────────────────────────────────────────────
 PICS = environ.get("PICS", "https://i.postimg.cc/8C15CQ5y/1.png").split()
-TMDB_API_KEY = environ.get("TMDB_API_KEY", "यहाँ_अपनी_TMDb_की_डालें") 
-
+TMDB_API_KEY = environ.get("TMDB_API_KEY", "यहाँ_अपनी_TMDb_की_डालें")
 
 # ─────────────────────────────────────────────
-# 📢 CHANNELS (AUTO INDEXING & LOGS)
+# 📢 CHANNELS
 # ─────────────────────────────────────────────
-# 🌟 Auto Indexing Channels (मल्टीपल चैनल्स के लिए स्पेस या कॉमा दें, नहीं देना तो खाली छोड़ें)
 PRIMARY_CHANNEL = get_channels("PRIMARY_CHANNEL")
 CLOUD_CHANNEL = get_channels("CLOUD_CHANNEL")
 ARCHIVE_CHANNEL = get_channels("ARCHIVE_CHANNEL")
@@ -125,12 +120,21 @@ if not URL:
     logger.error("URL missing")
     exit(1)
 
-if URL.startswith(("http://", "https://")):
+# ✅ FIX: http:// को https:// में auto-convert करो
+# Telegram WebApp और Koyeb दोनों के लिए HTTPS जरूरी है
+if URL.startswith("http://"):
+    logger.warning(f"URL is HTTP, auto-converting to HTTPS: {URL}")
+    URL = "https://" + URL[len("http://"):]
+
+if URL.startswith("https://"):
     if not URL.endswith("/"): URL += "/"
 elif is_valid_ip(URL):
-    URL = f"http://{URL}/"
+    # ✅ FIX: IP के लिए भी https prefer करो (अगर cert हो)
+    # अगर plain IP पर TLS नहीं है तो http रहेगा, लेकिन Mini App काम नहीं करेगा
+    URL = f"https://{URL}/"
+    logger.warning("IP-based URL detected. Telegram WebApp requires a valid HTTPS domain, not a plain IP.")
 else:
-    logger.error("Invalid URL")
+    logger.error("Invalid URL - must start with https:// for Telegram WebApp support")
     exit(1)
 
 # ─────────────────────────────────────────────
