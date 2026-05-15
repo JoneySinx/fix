@@ -1,0 +1,217 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>Fast Finder Mini App</title>
+    <script src="https://telegram.org/js/telegram-web-app.js"></script>
+    <link href="https://fonts.googleapis.com/css2?family=DM+Sans:wght@400;500;700;900&display=swap" rel="stylesheet">
+    <style>
+        :root {
+            --bg: #141414;
+            --card: #1f1f1f;
+            --text: #ffffff;
+            --muted: #999999;
+            --accent: #e50914;
+            --border: #333333;
+        }
+        * { box-sizing: border-box; margin: 0; padding: 0; font-family: 'DM Sans', sans-serif; }
+        body { background: var(--bg); color: var(--text); padding-bottom: 20px; overflow-x: hidden; }
+        
+        /* Header & Search */
+        .header { position: sticky; top: 0; background: rgba(20, 20, 20, 0.95); backdrop-filter: blur(10px); z-index: 100; padding: 15px; border-bottom: 1px solid var(--border); }
+        .logo-row { display: flex; justify-content: space-between; align-items: center; margin-bottom: 15px; }
+        .logo { font-size: 20px; font-weight: 900; color: var(--accent); letter-spacing: 1px; }
+        .settings-btn { background: var(--card); border: 1px solid var(--border); color: var(--text); padding: 6px 12px; border-radius: 6px; font-size: 12px; font-weight: 700; outline: none; }
+        
+        .search-box { display: flex; gap: 10px; }
+        .search-input { flex: 1; background: var(--card); border: 1px solid var(--border); padding: 12px 15px; border-radius: 8px; color: var(--text); font-size: 15px; outline: none; }
+        .search-input:focus { border-color: var(--accent); }
+        .search-btn { background: var(--accent); border: none; color: white; padding: 0 20px; border-radius: 8px; font-weight: 700; font-size: 15px; cursor: pointer; }
+        
+        /* Filters */
+        .filters { display: flex; gap: 8px; padding: 0 15px; margin: 15px 0; overflow-x: auto; white-space: nowrap; scrollbar-width: none; }
+        .filters::-webkit-scrollbar { display: none; }
+        .filter-btn { background: var(--card); border: 1px solid var(--border); color: var(--muted); padding: 8px 16px; border-radius: 20px; font-size: 13px; font-weight: 700; cursor: pointer; transition: 0.2s; }
+        .filter-btn.active { background: var(--text); color: var(--bg); border-color: var(--text); }
+        
+        /* Grid Layout (Netflix Style) */
+        .grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(130px, 1fr)); gap: 15px; padding: 0 15px; }
+        .movie-card { background: var(--card); border-radius: 10px; overflow: hidden; display: flex; flex-direction: column; position: relative; border: 1px solid var(--border); }
+        
+        /* Poster Image */
+        .poster-wrapper { position: relative; width: 100%; padding-top: 150%; /* 2:3 Aspect Ratio */ background: #222; }
+        .poster-img { position: absolute; top: 0; left: 0; width: 100%; height: 100%; object-fit: cover; }
+        
+        /* Badges */
+        .badge { position: absolute; top: 8px; left: 8px; background: rgba(0,0,0,0.8); color: var(--accent); font-size: 10px; font-weight: 900; padding: 3px 6px; border-radius: 4px; border: 1px solid var(--accent); z-index: 2; }
+        .badge.cloud { color: #3399ff; border-color: #3399ff; }
+        .badge.archive { color: #aaaaaa; border-color: #aaaaaa; }
+        
+        /* Card Info */
+        .card-info { padding: 12px; flex: 1; display: flex; flex-direction: column; }
+        .movie-title { font-size: 14px; font-weight: 700; margin-bottom: 5px; display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; line-height: 1.3; }
+        .movie-meta { font-size: 11px; color: var(--muted); margin-bottom: 10px; font-weight: 500; }
+        
+        /* Buttons */
+        .action-row { display: flex; gap: 5px; margin-top: auto; }
+        .btn { flex: 1; text-align: center; padding: 8px 0; border-radius: 6px; font-size: 12px; font-weight: 700; text-decoration: none; cursor: pointer; border: none; }
+        .btn-play { background: var(--text); color: var(--bg); }
+        .btn-dl { background: var(--bg); color: var(--text); border: 1px solid var(--border); }
+        
+        /* Pagination & States */
+        .loading, .empty { text-align: center; padding: 50px 20px; color: var(--muted); font-weight: 500; grid-column: 1 / -1; }
+        .pagination { display: flex; justify-content: space-between; align-items: center; padding: 20px 15px; }
+        .pg-btn { background: var(--card); border: 1px solid var(--border); color: var(--text); padding: 10px 20px; border-radius: 8px; font-weight: 700; }
+        .pg-btn:disabled { opacity: 0.5; }
+        
+        /* Toast */
+        .toast { position: fixed; bottom: 20px; left: 50%; transform: translateX(-50%) translateY(100px); background: var(--accent); color: white; padding: 12px 24px; border-radius: 30px; font-weight: 700; font-size: 13px; transition: 0.3s; z-index: 1000; white-space: nowrap; }
+        .toast.show { transform: translateX(-50%) translateY(0); }
+    </style>
+</head>
+<body>
+
+    <div class="header">
+        <div class="logo-row">
+            <div class="logo">FAST FINDER</div>
+            <select id="posterMode" class="settings-btn" onchange="changePosterMode()">
+                <option value="smart">🎬 TMDb Poster</option>
+                <option value="tg">📸 TG Thumb</option>
+                <option value="none">⚡ Fast (No Image)</option>
+            </select>
+        </div>
+        <div class="search-box">
+            <input type="text" id="q" class="search-input" placeholder="Search movies, series..." enterkeyhint="search">
+            <button class="search-btn" onclick="doSearch(0)">Go</button>
+        </div>
+    </div>
+
+    <div class="filters">
+        <button class="filter-btn active" data-col="all" onclick="setCol(this)">All Sources</button>
+        <button class="filter-btn" data-col="primary" onclick="setCol(this)">Primary</button>
+        <button class="filter-btn" data-col="cloud" onclick="setCol(this)">Cloud</button>
+        <button class="filter-btn" data-col="archive" onclick="setCol(this)">Archive</button>
+    </div>
+
+    <div class="grid" id="results">
+        <div class="empty">Type a movie name above to start searching.</div>
+    </div>
+
+    <div class="pagination" id="pageBox" style="display: none;">
+        <button class="pg-btn" id="pBtn" onclick="prev()">◀ Prev</button>
+        <span style="font-size: 13px; font-weight: 700;" id="pgInfo">Page 1</span>
+        <button class="pg-btn" id="nBtn" onclick="next()">Next ▶</button>
+    </div>
+
+    <div class="toast" id="toast"></div>
+
+    <script>
+        // Telegram WebApp Initialization
+        let tg = window.Telegram.WebApp;
+        tg.expand(); // स्क्रीन को पूरा बड़ा कर देगा
+        tg.ready();
+
+        let curQ = '', curOff = 0, nextOff = '', curCol = 'all', curPage = 1;
+        let pMode = localStorage.getItem('miniapp_posterMode') || 'smart';
+        
+        document.getElementById('posterMode').value = pMode;
+
+        function changePosterMode() {
+            pMode = document.getElementById('posterMode').value;
+            localStorage.setItem('miniapp_posterMode', pMode);
+            if(curQ) doSearch(curOff);
+        }
+
+        function setCol(btn) {
+            document.querySelectorAll('.filter-btn').forEach(b => b.classList.remove('active'));
+            btn.classList.add('active');
+            curCol = btn.dataset.col;
+            if(curQ) doSearch(0);
+        }
+
+        function showToast(msg) {
+            let t = document.getElementById('toast');
+            t.innerText = msg;
+            t.classList.add('show');
+            setTimeout(() => t.classList.remove('show'), 3000);
+        }
+
+        document.getElementById('q').addEventListener('keydown', e => {
+            if(e.key === 'Enter') doSearch(0);
+        });
+
+        async function doSearch(offset) {
+            let q = document.getElementById('q').value.trim();
+            if(!q) return showToast("Enter a movie name!");
+            
+            curQ = q; curOff = offset; if(offset === 0) curPage = 1;
+            document.getElementById('results').innerHTML = '<div class="loading">Searching...</div>';
+            document.getElementById('pageBox').style.display = 'none';
+
+            try {
+                // बॉट की वेब API को कॉल करें
+                let res = await fetch(`/api/search?q=${encodeURIComponent(q)}&offset=${offset}&col=${curCol}`);
+                if(!res.ok) throw new Error("Server error");
+                
+                let d = await res.json();
+                if(d.error) return showToast(d.error);
+
+                if(!d.results || d.results.length === 0) {
+                    document.getElementById('results').innerHTML = `<div class="empty">No results found for "${q}"</div>`;
+                    return;
+                }
+
+                let html = '';
+                d.results.forEach(f => {
+                    let sc = (f.source || 'primary').toLowerCase();
+                    let badgeClass = ['primary','cloud','archive'].includes(sc) ? sc : 'primary';
+                    
+                    // Poster Logic
+                    let imgHtml = '';
+                    if(pMode !== 'none') {
+                        let imgSrc = f.poster;
+                        if(pMode === 'tg') imgSrc = `/api/thumb?file_id=${f.file_id}`;
+                        imgHtml = `<div class="poster-wrapper"><img src="${imgSrc}" class="poster-img" onerror="this.src='https://i.ibb.co/30B3RcS/default-movie.png'" loading="lazy"></div>`;
+                    }
+
+                    // TG WebApp Link Open Logic
+                    let watchUrl = window.location.origin + f.watch;
+                    let dlUrl = window.location.origin + f.download;
+
+                    html += `
+                    <div class="movie-card">
+                        <span class="badge ${badgeClass}">${sc.toUpperCase()}</span>
+                        ${imgHtml}
+                        <div class="card-info">
+                            <div class="movie-title">${f.name}</div>
+                            <div class="movie-meta">${f.size} • ${f.type}</div>
+                            <div class="action-row">
+                                <button class="btn btn-play" onclick="tg.openLink('${watchUrl}')">▶ Play</button>
+                                <button class="btn btn-dl" onclick="tg.openLink('${dlUrl}')">⬇ DL</button>
+                            </div>
+                        </div>
+                    </div>`;
+                });
+
+                document.getElementById('results').innerHTML = html;
+                nextOff = d.next_offset;
+                
+                document.getElementById('pageBox').style.display = 'flex';
+                document.getElementById('pBtn').disabled = (offset === 0);
+                document.getElementById('nBtn').disabled = !nextOff;
+                document.getElementById('pgInfo').innerText = 'Page ' + curPage;
+                
+                window.scrollTo({ top: 0, behavior: 'smooth' });
+
+            } catch (err) {
+                showToast("Network Error!");
+                document.getElementById('results').innerHTML = `<div class="empty">Error loading results.</div>`;
+            }
+        }
+
+        function next() { if(nextOff) { curPage++; doSearch(nextOff); } }
+        function prev() { if(curPage > 1) { curPage--; doSearch(Math.max(0, curOff - 20)); } }
+    </script>
+</body>
+</html>
