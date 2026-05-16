@@ -88,7 +88,7 @@ async function doSearch(o){
 }
 
 function next(){if(nextOff){curPage++;doSearch(nextOff);scrollTo(0,0);}}
-function prev(){if(curPage>1){curPage--;doSearch(Math.max(0,curOff-20));scrollTo(0,0);}}
+function prev(){if(curPage>1){curPage--;doSearch(Math.max(0,curOff-21));scrollTo(0,0);}}
 var _tt;
 function showToast(m,t='success'){var x=document.getElementById('toast');x.textContent=m;x.className=`toast ${t} show`;clearTimeout(_tt);_tt=setTimeout(()=>x.classList.remove('show'),3000);}
 
