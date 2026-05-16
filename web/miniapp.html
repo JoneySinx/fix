@@ -32,15 +32,16 @@
         .filter-btn{background:var(--card);border:1px solid var(--border);padding:8px 16px;font-weight:700;color:var(--muted);cursor:pointer;border-radius:20px; font-size: 13px; transition:0.2s;}
         .filter-btn.active{background:var(--text);color:var(--bg); border-color:var(--text);}
         
-        /* Grid Layout */
+        /* Grid Layout: ✅ FIX - 1 Column for Mobile, 3 for Desktop */
         .main{padding:0 4%; max-width:1400px; margin:0 auto}
-        .res-grid{display:grid;grid-template-columns:1fr;gap:15px;} 
+        .res-grid{display:grid;grid-template-columns:1fr;gap:15px;} /* Mobile Default: 1 Row */
         
-        @media(min-width: 600px) { .res-grid{grid-template-columns:repeat(2, 1fr);} } 
-        @media(min-width: 900px) { .res-grid{grid-template-columns:repeat(3, 1fr);} } 
+        @media(min-width: 600px) { .res-grid{grid-template-columns:repeat(2, 1fr);} } /* Tablet: 2 Rows */
+        @media(min-width: 900px) { .res-grid{grid-template-columns:repeat(3, 1fr);} } /* Desktop: 3 Rows */
 
         .file-card{display:flex;flex-direction:column;background:var(--card);border-radius:10px;border:1px solid var(--border);overflow:hidden;position:relative;}
         
+        /* ✅ FIX - Landscape Aspect Ratio (16:9) */
         .poster-box{width:100%;position:relative;background:var(--bg3); padding-top: 56.25%;} 
         .mode-none .poster-box{display:none}
         .fc-poster{position:absolute;top:0;left:0;width:100%;height:100%;object-fit:cover}
@@ -281,9 +282,6 @@
             }
         }
 
-        // ─────────────────────────────────────────────
-        // ✅ STREAM / DOWNLOAD LOGIC (Play In-App, DL Externally)
-        // ─────────────────────────────────────────────
         async function openStream(fileId, mode) {
             showToast(mode === 'watch' ? '▶ Opening player...' : '⬇ Preparing download...');
             try {
@@ -295,44 +293,34 @@
                     }
                 );
 
-                let finalUrl = '';
-
                 if (res.type === 'opaqueredirect' || res.status === 0) {
                     let location = res.headers.get('Location') || res.url;
-                    if (location) finalUrl = window.location.origin + location;
-                } else if (res.status === 403) {
-                    showToast('🔒 Access denied'); return;
-                } else {
-                    let data = await res.json().catch(() => ({}));
-                    if (data.url) finalUrl = data.url;
+                    if (location) {
+                        tg.openLink(window.location.origin + location);
+                        return;
+                    }
                 }
 
-                if (!finalUrl) {
-                    finalUrl = `${window.location.origin}/setup_stream?file_id=${fileId}&mode=${mode}`;
-                }
+                if (res.status === 403) { showToast('🔒 Access denied'); return; }
 
-                // ✅ FIX: अगर Play कर रहे हैं, तो Mini App के अंदर ही खोलें
-                // अगर Download कर रहे हैं, तो ब्राउज़र में भेजें
-                if (mode === 'watch') {
-                    window.location.href = finalUrl; 
+                let data = await res.json().catch(() => ({}));
+                if (data.url) {
+                    tg.openLink(data.url);
                 } else {
-                    tg.openLink(finalUrl); 
+                    tg.openLink(`${window.location.origin}/setup_stream?file_id=${fileId}&mode=${mode}`);
                 }
 
             } catch (err) {
                 console.error(err);
-                let fallbackUrl = `${window.location.origin}/setup_stream?file_id=${fileId}&mode=${mode}`;
-                if (mode === 'watch') {
-                    window.location.href = fallbackUrl;
-                } else {
-                    tg.openLink(fallbackUrl);
-                }
+                tg.openLink(`${window.location.origin}/setup_stream?file_id=${fileId}&mode=${mode}`);
             }
         }
 
         if(pMode === 'none') document.getElementById('results').classList.add('mode-none');
 
         function next() { if (nextOff) { curPage++; doSearch(nextOff); } }
+        
+        // ✅ FIX - Pagination set to 21
         function prev() { if (curPage > 1) { curPage--; doSearch(Math.max(0, curOff - 21)); } }
     </script>
 </body>
