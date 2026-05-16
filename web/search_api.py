@@ -140,10 +140,12 @@ async def api_search(req):
         fid = d.get("file_ref", d.get("file_id"))
         file_name = d.get("file_name", "Unknown File")
         db_thumb = d.get("thumb_url")
-        tg_thumb = (
-            db_thumb if db_thumb and db_thumb != "https://i.ibb.co/30B3RcS/default-movie.png"
-            else f"/api/thumb?file_id={fid}"
-        )
+        
+        # ✅ FIX: अगर डेटाबेस में पुरानी imgbb वाली खराब लिंक सेव है, तो उसे इग्नोर करें
+        if db_thumb and ("ibb.co" in db_thumb or "default-movie" in db_thumb):
+            db_thumb = None
+
+        tg_thumb = db_thumb if db_thumb else f"/api/thumb?file_id={fid}"
         
         return {
             "file_id": fid,
@@ -177,16 +179,19 @@ async def get_telegram_thumb(req):
         return web.Response(status=400)
 
     headers = {"Content-Disposition": 'inline; filename="poster.jpg"'}
+    
+    # ✅ FIX: नई काम करने वाली डिफ़ॉल्ट इमेज (Professional Dark Theme)
+    DEFAULT_THUMB = "https://placehold.co/400x600/141414/e50914?text=No+Poster"
 
     if fid in thumb_cache:
         if thumb_cache[fid] == "NO_THUMB":
-            raise web.HTTPFound("https://i.ibb.co/30B3RcS/default-movie.png")
+            raise web.HTTPFound(DEFAULT_THUMB)
         return web.Response(body=thumb_cache[fid], content_type="image/jpeg", headers=headers)
 
     async with thumb_semaphore:
         if fid in thumb_cache:
             if thumb_cache[fid] == "NO_THUMB":
-                raise web.HTTPFound("https://i.ibb.co/30B3RcS/default-movie.png")
+                raise web.HTTPFound(DEFAULT_THUMB)
             return web.Response(body=thumb_cache[fid], content_type="image/jpeg", headers=headers)
 
         try:
@@ -209,11 +214,11 @@ async def get_telegram_thumb(req):
             else:
                 thumb_cache[fid] = "NO_THUMB"
                 asyncio.create_task(msg.delete())
-                raise web.HTTPFound("https://i.ibb.co/30B3RcS/default-movie.png")
+                raise web.HTTPFound(DEFAULT_THUMB)
         except web.HTTPFound:
             raise
         except Exception:
-            raise web.HTTPFound("https://i.ibb.co/30B3RcS/default-movie.png")
+            raise web.HTTPFound(DEFAULT_THUMB)
 
 async def _auto_del_msg(msg, delay):
     await asyncio.sleep(delay)
