@@ -102,7 +102,7 @@ async def api_search(req):
 
     flt_text = {"$text": {"$search": q}}
     flt_regex = {"file_name": re.compile(re.escape(q), re.IGNORECASE)}
-    all_m, tot, lim = [], 0, 20
+    all_m, tot, lim = [], 0, 21
     tgt_cols = {col: COLLECTIONS[col]} if col in COLLECTIONS else COLLECTIONS
     col_counts, col_filters = {}, {}
 
