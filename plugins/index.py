@@ -4,6 +4,7 @@ import asyncio
 from hydrogram import Client, filters, enums
 from hydrogram.errors import FloodWait
 from info import ADMINS
+# ✅ Updated Import
 from database.ia_filterdb import save_file
 from hydrogram.types import InlineKeyboardMarkup, InlineKeyboardButton
 from utils import temp, get_readable_time
@@ -16,6 +17,7 @@ async def index_files(bot, query):
     ident = data_parts[1]
     
     if ident == 'yes':
+        # Show collection selection buttons (Direct Skip 0 comes here directly)
         chat = data_parts[2]
         lst_msg_id = data_parts[3]
         skip = data_parts[4]
@@ -42,6 +44,7 @@ async def index_files(bot, query):
         )
         
     elif ident == 'ask_skip':
+        # Manual Skip Selection
         chat = data_parts[2]
         lst_msg_id = data_parts[3]
         
@@ -50,10 +53,11 @@ async def index_files(bot, query):
         try:
             msg = await bot.listen(chat_id=query.message.chat.id, user_id=query.from_user.id)
             skip = int(msg.text)
-            await msg.delete()
+            await msg.delete() # delete user message
         except:
             return await query.message.edit("❌ Invalid number or Timeout. Try again.")
             
+        # After getting skip, show collection buttons
         buttons = [
             [
                 InlineKeyboardButton('✅ PRIMARY', callback_data=f'index#start#{chat}#{lst_msg_id}#{skip}#primary'),
@@ -76,23 +80,20 @@ async def index_files(bot, query):
         )
     
     elif ident == 'start':
+        # Start indexing with selected collection
         chat = data_parts[2]
         lst_msg_id = data_parts[3]
         skip = data_parts[4]
         collection = data_parts[5]
         
         msg = query.message
-        await msg.edit(
-            f"Starting Indexing to <b>{collection.upper()}</b> collection...\n"
-            f"<i>⚡ Auto-caching thumbnails to Telegraph...</i>"
-        )
+        await msg.edit(f"Starting Indexing to <b>{collection.upper()}</b> collection...")
         
         try:
             chat = int(chat)
         except:
             chat = chat
         
-        # ✅ FIX: bot object pass किया index_files_to_db को
         await index_files_to_db(int(lst_msg_id), chat, msg, bot, int(skip), collection)
     
     elif ident == 'cancel':
@@ -100,8 +101,10 @@ async def index_files(bot, query):
         await query.message.edit("Trying to cancel Indexing...")
 
 
+# Auto-index when forwarded message or channel link is sent
 @Client.on_message(filters.private & filters.user(ADMINS) & (filters.forwarded | filters.text))
 async def auto_index(bot, message):
+    # Skip if it's a command or regular chat
     if message.text and not message.text.startswith("https://t.me"):
         if not message.forward_from_chat:
             return
@@ -109,10 +112,12 @@ async def auto_index(bot, message):
     if lock.locked():
         return await message.reply('⏳ Wait until previous indexing process completes.')
     
+    # Handle forwarded messages
     if message.forward_from_chat and message.forward_from_chat.type == enums.ChatType.CHANNEL:
         last_msg_id = message.forward_from_message_id
         chat_id = message.forward_from_chat.username or message.forward_from_chat.id
     
+    # Handle channel links
     elif message.text and message.text.startswith("https://t.me"):
         try:
             msg_link = message.text.split("/")
@@ -133,6 +138,7 @@ async def auto_index(bot, message):
     if chat.type != enums.ChatType.CHANNEL:
         return await message.reply("⚠️ I can only index channels.")
 
+    # Show Initial Options (Direct Skip 0 OR Custom Skip)
     buttons = [
         [
             InlineKeyboardButton('⚡ START INDEXING (Skip 0)', callback_data=f'index#yes#{chat_id}#{last_msg_id}#0')
@@ -187,6 +193,7 @@ async def index_files_to_db(lst_msg_id, chat, msg, bot, skip, collection_type="p
                 
                 current += 1
                 
+                # Update progress every 50 messages (Less spam)
                 if current % 50 == 0:
                     btn = [[
                         InlineKeyboardButton('CANCEL', callback_data=f'index#cancel#{chat}#{lst_msg_id}#{skip}')
@@ -203,8 +210,7 @@ async def index_files_to_db(lst_msg_id, chat, msg, bot, skip, collection_type="p
                             f"❌ No Media: <code>{no_media + unsupported}</code>\n"
                             f"⚠️ Unsupported: <code>{unsupported}</code>\n"
                             f"❗ Errors: <code>{errors}</code>\n"
-                            f"🚫 Bad Files: <code>{badfiles}</code>\n\n"
-                            f"<i>⚡ Uploading thumbnails to Telegraph...</i>",
+                            f"🚫 Bad Files: <code>{badfiles}</code>", 
                             reply_markup=InlineKeyboardMarkup(btn)
                         )
                     except FloodWait as e:
@@ -227,19 +233,21 @@ async def index_files_to_db(lst_msg_id, chat, msg, bot, skip, collection_type="p
                     unsupported += 1
                     continue
                 
+                # Check file size - skip files under 2 MB
                 file_size = getattr(media, 'file_size', 0)
-                if file_size < 2097152:
+                if file_size < 2097152:  # 2 MB in bytes
                     badfiles += 1
                     continue
                 
                 media.caption = message.caption
+                # ✅ Safe Name Cleaning (No Error)
                 try:
                     media.file_name = re.sub(r"@\w+|(_|\-|\.|\+)", " ", str(media.file_name))
                 except:
                     pass
                 
-                # ✅ FIX: bot pass किया save_file को — अब thumbnail download होगा
-                sts = await save_file(media, collection_type=collection_type, bot=bot)
+                # Save to selected collection
+                sts = await save_file(media, collection_type=collection_type)
                 
                 if sts == 'suc':
                     total_files += 1
@@ -262,6 +270,5 @@ async def index_files_to_db(lst_msg_id, chat, msg, bot, skip, collection_type="p
                 f'❌ No Media: <code>{no_media + unsupported}</code>\n'
                 f'⚠️ Unsupported: <code>{unsupported}</code>\n'
                 f'❗ Errors: <code>{errors}</code>\n'
-                f'🚫 Bad Files: <code>{badfiles}</code>\n\n'
-                f'<i>🎉 Thumbnails successfully cached to Telegraph!</i>'
+                f'🚫 Bad Files: <code>{badfiles}</code>'
             )
