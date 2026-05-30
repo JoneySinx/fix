@@ -152,7 +152,7 @@ async def media_watch(message_id):
             fn = html.escape(getattr(media, 'file_name', "Fast Finder Movie"))
             return watch_tmplt.format(heading=f"Watch {fn}", file_name=fn, src=src, mime_type=mime)
         
-        # Minified HTML string for non-video files
+        # ✅ FIX: f-string के अंदर मौजूद CSS कर्ली ब्रेसेस को डबल {{}} किया गया ताकि KeyError न आए
         return f'<body style="background:#000;color:#fff;display:flex;align-items:center;justify-content:center;height:100vh;font-family:\'DM Sans\',sans-serif;"><div style="text-align:center;background:#141414;padding:40px;border-radius:12px;border:1px solid rgba(255,255,255,.08);"><h2>⚠️ Unsupported File</h2><br><a href="{src}" style="background:#e50914;color:#fff;padding:12px 24px;border-radius:6px;text-decoration:none;font-weight:bold;">Download Direct</a></div></body>'
 
     except Exception as e:
