@@ -34,7 +34,6 @@ async def is_valid_search(message):
 # ─────────────────────────────────────────────
 # 🧠 SPELL CHECKER (Google Suggest API - High Performance)
 # ─────────────────────────────────────────────
-# ✅ FIX: Global Session for extreme speed & memory saving
 _http_session = None
 
 async def get_http_session():
@@ -61,6 +60,7 @@ async def get_spell_suggestion(query):
 # 🎨 UI HELPER FUNCTION (Ultra Clean UI)
 # ─────────────────────────────────────────────
 def get_filter_ui(search, files, total, act_src, offset, chat_id, req_id, key, next_off, simple_mode=True):
+    # ✅ f['_id'] का सिंक पूरी तरह से शॉर्ट आईडी मैपिंग के साथ परफेक्ट है
     list_items = [
         f"📁 <a href='https://t.me/{temp.U_NAME}?start=file_{chat_id}_{f['_id']}'>[{get_size(f['file_size'])}] {f['file_name']}</a>"
         for f in files
@@ -72,14 +72,13 @@ def get_filter_ui(search, files, total, act_src, offset, chat_id, req_id, key, n
     cap = (f"<b>👑 Search: {search}\n🎬 Total: {total}\n📚 Source: {act_src.upper()}\n"
            f"📄 Page: {curr_page}/{total_pages}</b>\n\n{files_text}")
 
-    # 1. अगर रिज़ल्ट 1 पेज के ही हैं, तो कोई बटन नहीं
     if total <= MAX_BTN:
         return cap, None
 
     btn = []
     act_src_short = SRC_TO_SHORT.get(act_src, "pri")
 
-    # 2. पेजिनेशन (Next/Prev) - NO PAGE NUMBER BUTTON
+    # पेजिनेशन (Next/Prev)
     nav = []
     prev_off = int(offset) - MAX_BTN
     if prev_off >= 0: 
@@ -90,7 +89,6 @@ def get_filter_ui(search, files, total, act_src, offset, chat_id, req_id, key, n
     
     if nav: btn.append(nav)
 
-    # 3. फुल मोड है तो सिर्फ सोर्स (Primary/Cloud/Archive) बटन्स लगाओ (Send All / Close हटाया गया)
     if not simple_mode:
         col_btn = []
         for c in ["primary", "cloud", "archive"]:
@@ -103,7 +101,7 @@ def get_filter_ui(search, files, total, act_src, offset, chat_id, req_id, key, n
 # ─────────────────────────────────────────────
 # 🕒 SMART INACTIVITY TRACKER
 # ─────────────────────────────────────────────
-async def smart_delete_msg(bot_msg, user_msg=None, delay=300): # 300 sec = 5 mins
+async def smart_delete_msg(bot_msg, user_msg=None, delay=300):
     try:
         await asyncio.sleep(delay)
         try: await bot_msg.delete()
@@ -113,14 +111,13 @@ async def smart_delete_msg(bot_msg, user_msg=None, delay=300): # 300 sec = 5 min
             except: pass
         SMART_TASKS.pop(bot_msg.id, None)
     except asyncio.CancelledError:
-        pass # अगर यूज़र ने Next बटन दबाया, तो यह पुराना टाइमर कैंसिल हो जाएगा
+        pass
 
 # ─────────────────────────────────────────────
 # 🔍 COMMAND HANDLERS
 # ─────────────────────────────────────────────
 @Client.on_message(filters.command("button_style"))
 async def button_style_toggle(client, message):
-    """एडमिन (ग्रुप में) या यूज़र (PM में) द्वारा सिंपल/फुल बटन मोड सेट करने के लिए"""
     if message.chat.type in [enums.ChatType.GROUP, enums.ChatType.SUPERGROUP]:
         if not await is_check_admin(client, message.chat.id, message.from_user.id): return
         
@@ -177,7 +174,7 @@ async def group_search(client, message):
     await auto_filter(client, message, collection_type="all", settings=settings)
 
 # ─────────────────────────────────────────────
-# 🚀 AUTO FILTER CORE 
+# 🚀 AUTO FILTER CORE
 # ─────────────────────────────────────────────
 async def auto_filter(client, msg, collection_type="all", settings=None):
     check_cache_limit() 
@@ -244,9 +241,9 @@ async def spell_check_handler(client, query):
         cap, markup = get_filter_ui(suggestion, files, total, act_src, 0, query.message.chat.id, query.from_user.id, key, next_offset, is_simple_mode)
         await query.message.edit_text(cap, reply_markup=markup, disable_web_page_preview=True)
         
-        # ⏱️ Reset Auto Delete Timer on spellcheck click
         if settings.get("auto_delete") and query.message.id in SMART_TASKS:
             SMART_TASKS[query.message.id].cancel()
+            SMART_TASKS.pop(query.message.id, None) # ✅ Clean Dict entry
             SMART_TASKS[query.message.id] = asyncio.create_task(smart_delete_msg(query.message, delay=300))
             
     except Exception as e:
@@ -287,7 +284,7 @@ async def pagination_handler(client, query):
     except: pass
     await query.answer()
 
-    # ⏱️ Reset Smart Inactivity Timer 
     if settings.get("auto_delete") and query.message.id in SMART_TASKS:
         SMART_TASKS[query.message.id].cancel()
+        SMART_TASKS.pop(query.message.id, None) # ✅ Clean Dict entry
         SMART_TASKS[query.message.id] = asyncio.create_task(smart_delete_msg(query.message, delay=300))
