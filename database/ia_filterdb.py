@@ -67,7 +67,7 @@ async def db_count_documents():
         return {"primary": 0, "cloud": 0, "archive": 0, "total": 0}
 
 # ─────────────────────────────────────────────────────────
-# 💾 SAVE FILE (Updated for Telegraph CDN Caching)
+# 💾 SAVE FILE (100% Native Telegram Caching Only)
 # ─────────────────────────────────────────────────────────
 async def save_file(media, collection_type="primary"):
     try:
@@ -81,8 +81,6 @@ async def save_file(media, collection_type="primary"):
 
         file_type = type(media).__name__.lower()
 
-        # ✅ यहाँ 'thumb_url' को डिफ़ॉल्ट रूप से None रख रहे हैं 
-        # ताकि हमारा नया search_api इसमें सीधे Telegraph का परमानेंट लिंक इंजेक्ट कर सके
         doc = {
             "_id":       file_id,     
             "file_ref":  media.file_id, 
@@ -93,13 +91,14 @@ async def save_file(media, collection_type="primary"):
             "thumb_url": None  
         }
 
-        col    = COLLECTIONS.get(collection_type, primary)
+        col = COLLECTIONS.get(collection_type, primary)
         
-        # यदि फ़ाइल पहले से मौजूद है, तो हम उसकी पुरानी thumb_url को नष्ट होने से बचाएंगे 
-        # (अगर वह पहले से ही एक वैध telegra.ph लिंक है)
+        # ✅ CLEAN FIX: फालतू की साइट्स हटाईं, सिर्फ हमारे 'TG_ID:' वाले परमानेंट थंबनेल को सेफ रखेंगे
         existing_doc = await col.find_one({"_id": file_id})
-        if existing_doc and existing_doc.get("thumb_url") and "telegra.ph" in existing_doc.get("thumb_url"):
-            doc["thumb_url"] = existing_doc["thumb_url"]
+        if existing_doc and existing_doc.get("thumb_url"):
+            old_thumb = existing_doc.get("thumb_url")
+            if "TG_ID:" in old_thumb:
+                doc["thumb_url"] = old_thumb
 
         result = await col.replace_one({"_id": file_id}, doc, upsert=True)
 
@@ -132,11 +131,9 @@ def _build_regex(query: str):
         return re.compile(re.escape(query), flags=re.IGNORECASE)
 
 # ─────────────────────────────────────────────────────────
-# 🚀 SMART SEARCH (HYBRID: TEXT INDEX + REGEX) -> STRICT AND LOGIC
+# 🚀 SMART SEARCH (HYBRID: TEXT INDEX + REGEX)
 # ─────────────────────────────────────────────────────────
 async def _search(col, raw_query: str, regex, offset: int, limit: int, lang=None):
-    
-    # 1. ⚡ सुपरफास्ट Text Search (Strict AND Logic)
     clean_query = raw_query.replace('"', '').replace("'", "")
     strict_query = " ".join(f'"{word}"' for word in clean_query.split())
 
@@ -158,7 +155,6 @@ async def _search(col, raw_query: str, regex, offset: int, limit: int, lang=None
             return docs
         return await _fetch_text(), count
 
-    # 2. 🐢 Fallback to Regex
     if USE_CAPTION_FILTER:
         reg_flt = {"$or": [{"file_name": regex}, {"caption": regex}]}
     else:
@@ -193,7 +189,6 @@ async def get_search_results(query, max_results=MAX_BTN, offset=0, lang=None, co
     total      = 0
     actual_src = collection_type
 
-    # ── CASCADE: Primary → Cloud → Archive ──
     if collection_type == "all":
         cascade = [("primary", primary), ("cloud", cloud), ("archive", archive)]
         for src, col in cascade:
@@ -204,14 +199,12 @@ async def get_search_results(query, max_results=MAX_BTN, offset=0, lang=None, co
                 actual_src = src
                 break  
 
-    # ── Single collection ──
     elif collection_type in COLLECTIONS:
         col       = COLLECTIONS[collection_type]
         docs, cnt = await _search(col, raw_query, regex, offset, max_results, lang)
         results   = docs
         total     = cnt
 
-    # ── Unknown → Primary default ──
     else:
         docs, cnt = await _search(primary, raw_query, regex, offset, max_results, lang)
         results   = docs
@@ -230,7 +223,6 @@ async def get_web_search_results(query, offset=0, limit=20):
         return []
         
     raw_query = str(query).strip()
-    
     clean_query = raw_query.replace('"', '').replace("'", "")
     strict_query = " ".join(f'"{word}"' for word in clean_query.split())
     
@@ -307,13 +299,12 @@ async def get_file_details(file_id):
         return None
 
 # ─────────────────────────────────────────────────────────
-# 🔑 FILE ID ENCODING UTILS
+# 🗑 UNPACK/ENCODE UTILS
 # ─────────────────────────────────────────────────────────
 def encode_file_id(s: bytes) -> str:
     r, n = b"", 0
     for i in s + bytes([22]) + bytes([4]):
-        if i == 0:
-            n += 1
+        if i == 0: n += 1
         else:
             if n:
                 r += b"\x00" + bytes([n])
