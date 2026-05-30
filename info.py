@@ -87,7 +87,7 @@ if not DATABASE_URL:
 TIME_ZONE = environ.get("TIME_ZONE", "Asia/Kolkata")
 DELETE_TIME = int(environ.get("DELETE_TIME", 3600))
 CACHE_TIME = int(environ.get("CACHE_TIME", 300))
-MAX_BTN = int(environ.get("MAX_BTN", 21)) # पेजिनेशन को सही रखने के लिए 21 बेस्ट है
+MAX_BTN = int(environ.get("MAX_BTN", 12)) # पेजिनेशन को सही रखने के लिए 21 बेस्ट है
 PM_FILE_DELETE_TIME = int(environ.get("PM_FILE_DELETE_TIME", 3600))
 
 GEMINI_API_KEY = environ.get("GEMINI_API_KEY", "")
