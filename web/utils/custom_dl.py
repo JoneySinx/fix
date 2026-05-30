@@ -54,7 +54,6 @@ class TGCustomYield:
         ms = await self.generate_media_session(self.main_bot, msg)
         loc = await self.get_location(await self.generate_file_properties(msg))
         
-        # ✅ FIX: For-loop makes streaming perfectly clean without writing request again & again
         for i in range(1, parts + 1):
             r = await ms.send(raw.functions.upload.GetFile(location=loc, offset=offset, limit=chunk_size))
             if not isinstance(r, raw.types.upload.File) or not r.bytes: break
@@ -65,18 +64,18 @@ class TGCustomYield:
             elif i == parts: yield chunk[:last_cut]
             else: yield chunk
             
-            offset += chunk_size
+            # ✅ FIX: डायनामिक ऑफसेट कैलकुलेशन ताकि वीडियो बफरिंग में कभी न फंसे
+            offset += len(chunk)
 
     async def download_as_bytesio(self, msg: Message):
         ms = await self.generate_media_session(self.main_bot, msg)
         loc = await self.get_location(await self.generate_file_properties(msg))
         limit, offset, m_file = 1048576, 0, []
         
-        # ✅ FIX: Single request call dynamically handles full buffering
         while True:
             r = await ms.send(raw.functions.upload.GetFile(location=loc, offset=offset, limit=limit))
             if not isinstance(r, raw.types.upload.File) or not r.bytes: break
             m_file.append(r.bytes)
-            offset += limit
+            offset += len(r.bytes) # ✅ FIX
             
         return m_file
