@@ -15,7 +15,7 @@ BUTTONS = {}
 SRC_TO_SHORT = {"primary": "pri", "cloud": "cld", "archive": "arc"}
 SHORT_TO_SRC = {"pri": "primary", "cld": "cloud", "arc": "archive"}
 
-# 🕒 Smart Auto-Delete Tracker
+# 🕒 स्मार्ट ऑटो-डिलीट ट्रैकर
 SMART_TASKS = {}
 
 def check_cache_limit():
@@ -32,7 +32,7 @@ async def is_valid_search(message):
     return True
 
 # ─────────────────────────────────────────────
-# 🧠 SPELL CHECKER (Google Suggest API - High Performance)
+# 🧠 SPELL CHECKER (Google Suggest API)
 # ─────────────────────────────────────────────
 _http_session = None
 
@@ -57,10 +57,9 @@ async def get_spell_suggestion(query):
     return None
 
 # ─────────────────────────────────────────────
-# 🎨 UI HELPER FUNCTION (Ultra Clean UI)
+# 🎨 UI HELPER FUNCTION
 # ─────────────────────────────────────────────
 def get_filter_ui(search, files, total, act_src, offset, chat_id, req_id, key, next_off, simple_mode=True):
-    # ✅ f['_id'] का सिंक पूरी तरह से शॉर्ट आईडी मैपिंग के साथ परफेक्ट है
     list_items = [
         f"📁 <a href='https://t.me/{temp.U_NAME}?start=file_{chat_id}_{f['_id']}'>[{get_size(f['file_size'])}] {f['file_name']}</a>"
         for f in files
@@ -78,7 +77,6 @@ def get_filter_ui(search, files, total, act_src, offset, chat_id, req_id, key, n
     btn = []
     act_src_short = SRC_TO_SHORT.get(act_src, "pri")
 
-    # पेजिनेशन (Next/Prev)
     nav = []
     prev_off = int(offset) - MAX_BTN
     if prev_off >= 0: 
@@ -99,19 +97,31 @@ def get_filter_ui(search, files, total, act_src, offset, chat_id, req_id, key, n
     return cap, InlineKeyboardMarkup(btn)
 
 # ─────────────────────────────────────────────
-# 🕒 SMART INACTIVITY TRACKER
+# 🕒 SMART INACTIVITY TRACKER (Inactivity Only)
 # ─────────────────────────────────────────────
 async def smart_delete_msg(bot_msg, user_msg=None, delay=300):
     try:
         await asyncio.sleep(delay)
-        try: await bot_msg.delete()
-        except: pass
-        if user_msg:
-            try: await user_msg.delete()
-            except: pass
-        SMART_TASKS.pop(bot_msg.id, None)
+        
+        # 1. बोट का रिज़ल्ट मैसेज हमेशा डिलीट होगा
+        try: 
+            await bot_msg.delete()
+        except: 
+            pass
+            
+        # 2. यूज़र का मैसेज सिर्फ ग्रुप में डिलीट होगा, पीएम में छोड़ देगा
+        if user_msg and user_msg.chat.type in [enums.ChatType.GROUP, enums.ChatType.SUPERGROUP]:
+            try: 
+                await user_msg.delete()
+            except: 
+                pass
+                
     except asyncio.CancelledError:
+        # 🎯 जब यूज़र Next/Prev दबाएगा, तो पुराना टाइमर यहाँ बिना क्रैश किए रुक जाएगा
         pass
+    finally:
+        # काम ख़त्म होने पर डिक्शनरी साफ़ करो
+        SMART_TASKS.pop(bot_msg.id, None)
 
 # ─────────────────────────────────────────────
 # 🔍 COMMAND HANDLERS
@@ -238,12 +248,15 @@ async def spell_check_handler(client, query):
         settings = await get_settings(query.message.chat.id)
         is_simple_mode = settings.get("simple_mode", True)
         
+        # 🎯 स्पेलचेक पर क्लिक होते ही पुराने टाइमर को रिसेट करो
+        if query.message.id in SMART_TASKS:
+            old_task = SMART_TASKS.get(query.message.id)
+            if old_task and not old_task.done(): old_task.cancel()
+
         cap, markup = get_filter_ui(suggestion, files, total, act_src, 0, query.message.chat.id, query.from_user.id, key, next_offset, is_simple_mode)
         await query.message.edit_text(cap, reply_markup=markup, disable_web_page_preview=True)
         
-        if settings.get("auto_delete") and query.message.id in SMART_TASKS:
-            SMART_TASKS[query.message.id].cancel()
-            SMART_TASKS.pop(query.message.id, None) # ✅ Clean Dict entry
+        if settings.get("auto_delete"):
             SMART_TASKS[query.message.id] = asyncio.create_task(smart_delete_msg(query.message, delay=300))
             
     except Exception as e:
@@ -280,11 +293,19 @@ async def pagination_handler(client, query):
     
     cap, markup = get_filter_ui(search, files, total, act_src, offset, query.message.chat.id, req, key, next_off, is_simple_mode)
 
-    try: await query.message.edit_text(cap, reply_markup=markup, disable_web_page_preview=True)
-    except: pass
-    await query.answer()
+    # 🎯 मुख्य फिक्स: नया पेज दिखाने (Edit करने) से ठीक पहले पुराना 5 मिनट का टाइमर रोक (Cancel) दिया गया
+    if query.message.id in SMART_TASKS:
+        old_task = SMART_TASKS.get(query.message.id)
+        if old_task and not old_task.done():
+            old_task.cancel()
 
-    if settings.get("auto_delete") and query.message.id in SMART_TASKS:
-        SMART_TASKS[query.message.id].cancel()
-        SMART_TASKS.pop(query.message.id, None) # ✅ Clean Dict entry
-        SMART_TASKS[query.message.id] = asyncio.create_task(smart_delete_msg(query.message, delay=300))
+    try: 
+        await query.message.edit_text(cap, reply_markup=markup, disable_web_page_preview=True)
+        
+        # ⏳ अब इस नए पेज के लिए एकदम नया फ्रेश 5 मिनट का टाइमर चालू (Reset) करो
+        if settings.get("auto_delete"):
+            SMART_TASKS[query.message.id] = asyncio.create_task(smart_delete_msg(query.message, user_msg=None, delay=300))
+    except: 
+        pass
+        
+    await query.answer()
