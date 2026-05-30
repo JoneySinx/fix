@@ -66,10 +66,17 @@ class WebAuthDB:
 # =========================================
 class Database:
     def __init__(self):
-        self.client = AsyncIOMotorClient(DATABASE_URL, minPoolSize=10, maxPoolSize=50, maxIdleTimeMS=45000, serverSelectionTimeoutMS=5000)
+        # Koyeb Free Tier के लिए स्टेबल कनेक्शन पूल ऑप्टिमाइजेशन
+        self.client = AsyncIOMotorClient(
+            DATABASE_URL, 
+            minPoolSize=5, 
+            maxPoolSize=20, 
+            maxIdleTimeMS=45000, 
+            serverSelectionTimeoutMS=5000
+        )
         self.db = self.client[DATABASE_NAME]
         
-        # 🎯 Collections 
+        # Collections
         self.users, self.groups, self.premium = self.db.Users, self.db.Groups, self.db.Premiums
         self.settings, self.warns = self.db.Settings, self.db.Warns
 
@@ -80,7 +87,22 @@ class Database:
 
     # ⚙️ Default Values
     df_set = {"file_secure": PROTECT_CONTENT, "spell_check": SPELL_CHECK, "auto_delete": AUTO_DELETE, "caption": FILE_CAPTION, "search_enabled": True, "blacklist": [], "dlink": {}, "notes": {}}
-    df_prm = {"expire": "", "trial": False, "plan": "", "premium": False, "reminded_24h": False, "reminded_6h": False, "reminded_1h": False}
+    
+    # ✅ FIX: सारे फ़्लैग्स को premium.py के नए 12h, 6h, 3h, 1h, 30m, 10m टाइमर लॉजिक के साथ सिंक किया गया
+    df_prm = {
+        "expire": "", 
+        "trial": False, 
+        "plan": "", 
+        "premium": False, 
+        "reminded_12h": False, 
+        "reminded_6h": False, 
+        "reminded_3h": False, 
+        "reminded_1h": False, 
+        "reminded_30m": False, 
+        "reminded_10m": False,
+        "last_reminder_id": 0
+    }
+    
     df_ban = {"is_banned": False, "ban_reason": ""}
     df_chat = {"is_disabled": False, "reason": ""}
 
