@@ -12,7 +12,6 @@ CACHE_TTL = 300
 
 async def get_settings(chat_id):
     now = time.time()
-    # 🧹 Auto-clean expired cache (RAM Saver)
     if len(SETTINGS_CACHE) > 500:
         for k in [k for k, (v, ts) in SETTINGS_CACHE.items() if now - ts > CACHE_TTL]:
             del SETTINGS_CACHE[k]
@@ -29,7 +28,6 @@ async def update_settings(chat_id, data):
     await db.update_settings(chat_id, data)
 
 async def is_admin(c, m):
-    # 🔒 SUPER SECURE: Only real anonymous admins of THIS group, not random channels
     if m.sender_chat and m.sender_chat.id == m.chat.id: return True
     if not m.from_user: return False
     try:
@@ -41,7 +39,6 @@ async def is_admin(c, m):
 # =========================
 # 🛡️ ADMIN ACTIONS
 # =========================
-
 @Client.on_message(filters.group & filters.reply & filters.command(["mute", "unmute", "ban", "warn", "resetwarn"]))
 async def admin_action(c, m):
     if not await is_admin(c, m): return
@@ -70,18 +67,22 @@ async def admin_action(c, m):
             await db.clear_warn(tid, cid)
             await m.reply(f"♻️ Warnings reset for {mention}.")
     except Exception:
-        await m.reply("❌ Action failed! Am I admin? Do I have the right permissions?")
+        await m.reply("❌ Action failed! Check permissions.")
 
 # =========================
 # ⚙️ CONFIGURATION (Blacklist & DLink)
 # =========================
-
 @Client.on_message(filters.group & filters.command(["addblacklist", "removeblacklist", "blacklist", "dlink", "removedlink", "dlinklist"]))
 async def config_handler(c, m):
     if not await is_admin(c, m): return
     cmd = m.command[0]
     data = await get_settings(m.chat.id)
-    args = m.text.split(maxsplit=1)[1].lower() if len(m.command) > 1 else ""
+    
+    # ✅ FIX: IndexError से बचने के लिए सेफ स्प्लिट आर्गुमेंट पार्सिंग
+    try:
+        args = m.text.split(maxsplit=1)[1].lower().strip()
+    except IndexError:
+        args = ""
 
     # --- View Lists ---
     if cmd in ["blacklist", "dlinklist"]:
@@ -106,9 +107,14 @@ async def config_handler(c, m):
         if cmd == "dlink":
             parts = args.split()
             delay = 300 # Default 5 mins
-            if len(parts) > 1 and parts[0][-1] in "mh" and parts[0][:-1].isdigit():
-                delay = int(parts[0][:-1]) * (60 if parts[0][-1] == "m" else 3600)
+            
+            # ✅ FIX: 's', 'm', 'h' तीनों टाइमर फ़ॉर्मेट्स को सिंक किया गया
+            if len(parts) > 1 and parts[0][-1] in "smh" and parts[0][:-1].isdigit():
+                unit = parts[0][-1]
+                num = int(parts[0][:-1])
+                delay = num * (1 if unit == "s" else 60 if unit == "m" else 3600)
                 args = " ".join(parts[1:])
+                
             dl[args] = delay
             await m.reply(f"🕒 DLink set: `{args}` -> {delay}s")
         else:
@@ -121,8 +127,6 @@ async def config_handler(c, m):
 # =========================
 # 👁️ SMART WATCHER
 # =========================
-
-# ✅ टाइमर वाला फंक्शन (Background deletion के लिए)
 async def delayed_delete(msg, delay):
     await asyncio.sleep(delay)
     try: await msg.delete()
@@ -133,20 +137,14 @@ async def chat_watcher(c, m):
     text = m.text.lower()
     data = await get_settings(m.chat.id)
     
-    # ----------------------------------------------------
-    # Block A: DLink (APPLIES TO EVERYONE - Even Admins)
-    # ----------------------------------------------------
+    # Block A: DLink
     dlinks = data.get("dlink", {})
     for w, delay in dlinks.items():
-        # Match word exactly OR match word with wildcard prefix 
         if w in text or (w.endswith("*") and text.startswith(w[:-1])):
-            # Task को background में डाल दिया ताकि बॉट रुके नहीं
             asyncio.create_task(delayed_delete(m, delay))
             return 
 
-    # ----------------------------------------------------
-    # Block B: Blacklist (ONLY FOR MEMBERS, Ignore Admins)
-    # ----------------------------------------------------
+    # Block B: Blacklist
     if await is_admin(c, m): return
     
     for w in data.get("blacklist", []):
@@ -158,10 +156,8 @@ async def chat_watcher(c, m):
 # =========================
 # 🤖 ANTI BOT & HELP
 # =========================
-
 @Client.on_message(filters.group & filters.new_chat_members)
 async def anti_bot(c, m):
-    # If the person adding the bot is an admin, allow it. Otherwise, ban the bot.
     if await is_admin(c, m): return
     for u in m.new_chat_members:
         if u.is_bot:
