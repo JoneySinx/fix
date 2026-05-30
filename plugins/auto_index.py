@@ -1,43 +1,36 @@
 import logging
+import re
 from hydrogram import Client, filters
 from info import PRIMARY_CHANNEL, CLOUD_CHANNEL, ARCHIVE_CHANNEL
-from database.ia_filterdb import COLLECTIONS
+from database.ia_filterdb import COLLECTIONS, unpack_new_file_id # ✅ सिंक इम्पोर्ट
 
 logger = logging.getLogger(__name__)
 
-# 🌟 मल्टीपल चैनल मैपिंग लॉजिक (Fix for unhashable type: 'list')
-# हम तीनों सूचियों (Lists) को एक फ्लैट डिक्शनरी में बदल रहे हैं
 CHANNELS = {}
 for cid in PRIMARY_CHANNEL: CHANNELS[cid] = "primary"
 for cid in CLOUD_CHANNEL: CHANNELS[cid] = "cloud"
 for cid in ARCHIVE_CHANNEL: CHANNELS[cid] = "archive"
 
-# उन सभी चैनल्स की एक मास्टर लिस्ट जहाँ बॉट को नजर रखनी है
 INDEX_CHATS = list(CHANNELS.keys())
 
-# ─────────────────────────────────────────────
-# 🛠 HELPER: फाइल की जानकारी निकालना
-# ─────────────────────────────────────────────
 def get_file_info(message):
     media = message.document or message.video or message.audio
-    if not media:
-        return None
+    if not media: return None
     
     file_id = media.file_id
     file_unique_id = media.file_unique_id
     file_size = media.file_size
     
-    # प्राथमिकता: पहले Caption चेक करेगा, अगर नहीं है तो File का असली नाम लेगा
     caption_text = message.caption.html if message.caption else None
     file_name = caption_text or getattr(media, 'file_name', None) or "Unknown_File"
-    file_type = media.__class__.__name__.lower()
     
+    # क्लीन नामकरण (Safe Name Cleaning)
+    try: file_name = re.sub(r"@\w+|(_|\-|\.|\+)", " ", str(file_name)).strip()
+    except: pass
+        
+    file_type = media.__class__.__name__.lower()
     return file_id, file_unique_id, file_size, file_name, file_type
 
-# ─────────────────────────────────────────────
-# 📥 NEW FILE INDEXER & UPDATER
-# ─────────────────────────────────────────────
-# सुरक्षा जांच: यह तभी रजिस्टर होगा जब कम से कम 1 चैनल ID मौजूद हो
 if INDEX_CHATS:
     
     @Client.on_message(filters.chat(INDEX_CHATS) & (filters.document | filters.video | filters.audio))
@@ -46,30 +39,35 @@ if INDEX_CHATS:
         if not file_info: return
             
         file_id, file_unique_id, file_size, file_name, file_type = file_info
+        
+        # ✅ CRITICAL FIX: फ़ाइल की असली शॉर्ट आईडी निकालें ताकि स्ट्रीमिंग क्रैश न हो
+        db_id = unpack_new_file_id(file_id)
+        if not db_id: return logger.warning(f"❌ Failed to unpack file ID during auto-index for: {file_name}")
+
         target_col_name = CHANNELS[message.chat.id]
         collection = COLLECTIONS.get(target_col_name)
-        
         if not collection: return
             
         doc = {
-            "file_id": file_id, "file_ref": file_id, "file_name": file_name,
-            "file_size": file_size, "file_type": file_type,
-            "file_unique_id": file_unique_id, "message_id": message.id,
-            "chat_id": message.chat.id
+            "_id": db_id, # ✅ अब यूनिक शॉर्ट आईडी सिंक लॉक रहेगी
+            "file_ref": file_id, 
+            "file_name": file_name,
+            "file_size": file_size, 
+            "file_type": file_type,
+            "caption": file_name,
+            "thumb_url": None  # थंबनेल सर्च एपीआई खुद डाउनलोड करके TG_ID: लॉक कर देगा
         }
         
-        # डेटाबेस में अपडेट या इंसर्ट (upsert) करें
-        result = await collection.update_one(
-            {"file_unique_id": file_unique_id}, {"$set": doc}, upsert=True
-        )
+        # डेटाबेस में अपडेट या इंसर्ट करें
+        result = await collection.replace_one({"_id": db_id}, doc, upsert=True)
         
         try:
-            if result.upserted_id:
-                await message.react("✅")
-                logger.info(f"✅ Indexed new file into {target_col_name.upper()}: {file_name}")
-            else:
+            if result.matched_count > 0:
                 await message.react("♻️")
                 logger.info(f"♻️ File already exists in {target_col_name.upper()}: {file_name}")
+            else:
+                await message.react("✅")
+                logger.info(f"✅ Indexed new file into {target_col_name.upper()}: {file_name}")
         except: pass
 
     @Client.on_edited_message(filters.chat(INDEX_CHATS) & (filters.document | filters.video | filters.audio))
@@ -77,15 +75,16 @@ if INDEX_CHATS:
         file_info = get_file_info(message)
         if not file_info: return
             
-        _, file_unique_id, _, file_name, _ = file_info
+        file_id, _, _, file_name, _ = file_info
+        db_id = unpack_new_file_id(file_id)
+        if not db_id: return
+
         target_col_name = CHANNELS[message.chat.id]
         collection = COLLECTIONS.get(target_col_name)
-        
         if not collection: return
             
-        # सिर्फ फाइल का नाम (Caption) अपडेट करें
         result = await collection.update_one(
-            {"file_unique_id": file_unique_id}, {"$set": {"file_name": file_name}}
+            {"_id": db_id}, {"$set": {"file_name": file_name, "caption": file_name}}
         )
         
         try:
