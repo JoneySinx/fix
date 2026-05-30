@@ -28,8 +28,10 @@ RUN pip install --upgrade pip setuptools wheel && \
 # 4. Copy Application Code
 COPY . .
 
-# 5. Expose Web Server Port (वेब डैशबोर्ड के लिए ज़रूरी)
+# 5. Expose Web Server Port (कोएब के डायनेमिक पोर्ट को सपोर्ट करने के लिए दोनों 8000 और 80 को रेडी रखते हैं)
 EXPOSE 8000
+EXPOSE 80
 
 # 6. Run with Optimization (-O removes asserts for speed)
+# बोट स्टार्ट करने की सबसे बेस्ट और स्टेबल कमांड
 CMD ["python", "-O", "bot.py"]
