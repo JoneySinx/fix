@@ -1,14 +1,13 @@
 import asyncio
-import io  # फोटो के लिए जोड़ा गया
-from PIL import Image  # फोटो के लिए जोड़ा गया
+import io  
+from PIL import Image  
 from google import genai
 from hydrogram import Client, filters, enums
 from info import GEMINI_API_KEY
 
 # ==========================================
-# 🧠 AI CONFIGURATION (Gemini 3 Flash ⚡)
+# 🧠 AI CONFIGURATION (Gemini 2.5 Flash ⚡)
 # ==========================================
-
 if GEMINI_API_KEY:
     ai_client = genai.Client(api_key=GEMINI_API_KEY)
 else:
@@ -17,7 +16,6 @@ else:
 # ==========================================
 # 🗣️ AI CHAT COMMAND
 # ==========================================
-
 @Client.on_message(filters.command(["ask", "ai"]))
 async def ask_ai(client, message):
     if not ai_client:
@@ -25,7 +23,7 @@ async def ask_ai(client, message):
 
     if len(message.command) < 2 and not message.reply_to_message:
         return await message.reply(
-            "⚡ **Gemini 3 Flash**\n\n"
+            "⚡ **Gemini 2.5 Flash**\n\n"
             "Usage:\n"
             "• `/ask Who is Batman?`\n"
             "• Reply to text/photo with `/ask`"
@@ -45,8 +43,8 @@ async def ask_ai(client, message):
     if message.reply_to_message and message.reply_to_message.photo:
         status_msg = await message.reply("⬇️ Downloading Image...")
         try:
-            # फोटो को मेमोरी में डाउनलोड करें
-            photo_stream = await client.download_media(message.reply_to_message, in_memory=True)
+            # ✅ FIX: सीधे मैसेज के बजाय 'message.reply_to_message.photo' को पास किया ताकि लोकेशन सही मिले
+            photo_stream = await client.download_media(message.reply_to_message.photo, in_memory=True)
             image_input = Image.open(io.BytesIO(photo_stream.getbuffer()))
             await status_msg.delete()
         except Exception as e:
@@ -72,11 +70,11 @@ async def ask_ai(client, message):
     try:
         loop = asyncio.get_event_loop()
         
-        # 🔥 USING YOUR ORIGINAL MODEL (Gemini 3 Flash)
+        # ✅ FIX: मॉडल का नाम 'gemini-2.5-flash' किया गया जो कि एकदम सही और सुपरफ़ास्ट है
         response = await loop.run_in_executor(
             None, 
             lambda: ai_client.models.generate_content(
-                model='gemini-3-flash-preview', # कोई बदलाव नहीं किया गया
+                model='gemini-2.5-flash', 
                 contents=contents_body
             )
         )
@@ -95,4 +93,3 @@ async def ask_ai(client, message):
 
     except Exception as e:
         await status.edit(f"❌ **Error:** `{str(e)}`")
-
