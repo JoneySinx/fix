@@ -20,14 +20,12 @@ from utils import (
 )
 
 # ─────────────────────────────────────────────
-# ✅ MINI APP URL - info.py में https fix के बाद यह automatically सही होगा
-# लेकिन extra safety के लिए यहाँ भी check रखते हैं
+# ✅ MINI APP URL - HTTPS Auto-Fix
 # ─────────────────────────────────────────────
 def _build_mini_app_url(base_url: str) -> str:
     url = base_url.strip() if base_url else ""
     if not url:
         return ""
-    # Double-check: HTTP को HTTPS में convert करो
     if url.startswith("http://"):
         url = "https://" + url[len("http://"):]
     if not url.startswith("https://"):
@@ -116,9 +114,13 @@ async def start(client, message):
                 if IS_STREAM:
                     btn.insert(0, [InlineKeyboardButton("▶️ Watch / Download", callback_data=f"stream#{file_id}")])
 
+                # ✅ CRITICAL FIX: हमेशा डेटाबेस से ओरिजिनल 'file_ref' (लंबी टेलीग्राम आईडी) उठाएं, 
+                # ताकि 'TG_ID:' थंबनेल लॉक होने के बाद भी सेंड मीडिया कभी फेल या क्रैश न हो।
+                target_media = file.get('file_ref') if file.get('file_ref') else file_id
+
                 msg = await client.send_cached_media(
                     message.chat.id,
-                    file.get('file_ref', file_id),
+                    target_media,
                     caption=caption,
                     reply_markup=InlineKeyboardMarkup(btn)
                 )
@@ -326,7 +328,11 @@ async def stream_cb(client, query):
     file_id = query.data.split("#")[1]
     await query.answer("🔗 Generating Links...")
     try:
-        msg = await client.send_cached_media(BIN_CHANNEL, file_id)
+        # ✅ FIX: 'stream#' दबाने पर भी ओरिजिनल file_ref पैच का इस्तेमाल करें
+        file = await get_file_details(file_id)
+        target_media = file.get('file_ref') if file else file_id
+
+        msg = await client.send_cached_media(BIN_CHANNEL, target_media)
         btn = [
             [
                 InlineKeyboardButton("▶️ Watch", url=f"{URL}watch/{msg.id}"),
