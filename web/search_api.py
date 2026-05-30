@@ -111,7 +111,8 @@ async def api_search(req):
         if db_thumb and ("default-movie" in db_thumb or "placehold" in db_thumb or "ibb.co" in db_thumb):
             db_thumb = None
 
-        tg_thumb = db_thumb if db_thumb else f"/api/thumb?file_id={db_id}"
+        # ✅ फ्रंटएंड को हमेशा साफ-सुथरा API यूआरएल दें, चाहे इमेज DB में लॉक हो या न हो
+        tg_thumb = f"/api/thumb?file_id={db_id}"
         
         return {
             "file_id": db_id,
@@ -135,7 +136,7 @@ async def api_search(req):
     })
 
 # ─────────────────────────────────────────────
-# 📸 THUMBNAIL API (Native Telegram System)
+# 📸 THUMBNAIL API (Fixed Busy/Retry Bug)
 # ─────────────────────────────────────────────
 @search_routes.get("/api/thumb")
 async def get_telegram_thumb(req):
@@ -143,36 +144,56 @@ async def get_telegram_thumb(req):
     is_retry = req.query.get("retry", "false").lower() == "true"
     if not fid: return web.Response(status=400)
 
-    headers = {"Content-Disposition": 'inline; filename="poster.jpg"'}
+    # साफ़ सुथरा हेडर रेस्पोंस डिफाइन करें
+    headers = {
+        "Content-Disposition": 'inline; filename="poster.jpg"',
+        "Cache-Control": "max-age=86400"
+    }
     
     if is_retry and fid in thumb_cache:
         if thumb_cache[fid] == "NO_THUMB": thumb_cache.pop(fid, None)
 
+    # 1. रैम (कैशे) मेमोरी चेक करें
     if fid in thumb_cache:
         if thumb_cache[fid] == "NO_THUMB": return web.Response(status=404)
         return web.Response(body=thumb_cache[fid], content_type="image/jpeg", headers=headers)
 
     async with thumb_semaphore:
-        if fid in thumb_cache and thumb_cache[fid] != "NO_THUMB":
+        # कतार से बाहर आने पर दोबारा कैशे चेक करें
+        if fid in thumb_cache:
+            if thumb_cache[fid] == "NO_THUMB": return web.Response(status=404)
             return web.Response(body=thumb_cache[fid], content_type="image/jpeg", headers=headers)
 
-        await asyncio.sleep(0.3)
+        # 🔍 2. डेटाबेस चेक: क्या पहले से ही 'TG_ID:' मौजूद है?
+        saved_thumb_id = None
+        for col_name, col in COLLECTIONS.items():
+            existing = await col.find_one({"$or": [{"_id": fid}, {"file_ref": fid}]})
+            if existing and existing.get("thumb_url") and existing.get("thumb_url").startswith("TG_ID:"):
+                saved_thumb_id = existing.get("thumb_url").replace("TG_ID:", "")
+                break
 
+        # अगर डेटाबेस में पहले से सेव्ड टेलीग्राम आईडी मिल गई, तो सीधे यहीं से डाउनलोड करें
+        if saved_thumb_id:
+            try:
+                logger.info(f"✨ [DB HIT] Serving via internal Telegram ID for: {fid}")
+                file_data = await temp.BOT.download_media(saved_thumb_id, in_memory=True)
+                if file_data:
+                    thumb_bytes = file_data.getvalue()
+                    
+                    if len(thumb_cache) >= MAX_CACHE:
+                        oldest_key = next(iter(thumb_cache))
+                        thumb_cache.pop(oldest_key, None)
+                        
+                    thumb_cache[fid] = thumb_bytes
+                    return web.Response(body=thumb_bytes, content_type="image/jpeg", headers=headers)
+            except Exception as e:
+                logger.error(f"❌ Failed to download stored file_id from DB hit: {e}")
+
+        # 📥 3. फ्रेश फेच (अगर डेटाबेस में सेव नहीं था या पुराना आईडी काम नहीं किया)
+        await asyncio.sleep(0.3)
         for attempt in range(3):
             try:
-                # 🔍 1. DB चेक: अगर टेलीग्राम परमानेंट लिंक पहले से है
-                for col_name, col in COLLECTIONS.items():
-                    existing = await col.find_one({"$or": [{"_id": fid}, {"file_ref": fid}]})
-                    if existing and existing.get("thumb_url") and existing.get("thumb_url").startswith("TG_ID:"):
-                        saved_thumb_id = existing.get("thumb_url").replace("TG_ID:", "")
-                        logger.info(f"✨ [DB HIT] Serving via internal Telegram ID for: {fid}")
-                        file_data = await temp.BOT.download_media(saved_thumb_id, in_memory=True)
-                        thumb_bytes = file_data.getvalue()
-                        thumb_cache[fid] = thumb_bytes
-                        return web.Response(body=thumb_bytes, content_type="image/jpeg", headers=headers)
-
-                # 📥 2. टेलीग्राम से मंगाओ
-                logger.info(f"📥 [TG FETCH] Fetching from Telegram for File ID: {fid}")
+                logger.info(f"📥 [TG FETCH] Fetching from Telegram for File ID: {fid} (Attempt {attempt+1})")
                 msg = await temp.BOT.send_cached_media(chat_id=BIN_CHANNEL, file_id=fid)
                 thumb_id = None
                 
@@ -186,7 +207,7 @@ async def get_telegram_thumb(req):
                     thumb_bytes = file_data.getvalue()
                     thumb_cache[fid] = thumb_bytes
                     
-                    # ✅ डायरेक्ट सेविंग: बिना किसी थर्ड पार्टी वेबसाइट के सीधा DB में लॉक करें
+                    # बिना किसी बाहरी वेबसाइट के सीधे MongoDB में सिंक करें
                     db_save_value = f"TG_ID:{thumb_id}"
                     updated_count = 0
                     for col_name, col in COLLECTIONS.items():
@@ -210,7 +231,7 @@ async def get_telegram_thumb(req):
                 if "FLOOD_WAIT" in err_text or "420" in err_text:
                     match = re.search(r'wait of (\d+) second', err_text)
                     wait_time = int(match.group(1)) if match else 20
-                    logger.warning(f"⏳ [FLOOD WAIT] Waiting {wait_time}s...")
+                    logger.warning(f"⏳ [FLOOD WAIT] Waiting {wait_time}s on attempt {attempt+1}...")
                     await asyncio.sleep(wait_time + 2)
                     continue
                 
