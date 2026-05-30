@@ -13,49 +13,33 @@ search_routes = web.RouteTableDef()
 # ─────────────────────────────────────────────
 MAX_CACHE = 500
 thumb_cache = {}
-# ✅ Concurrency को 1 रखा है ताकि टेलीग्राम और सर्वर पर एक साथ लोड न पड़े
-thumb_semaphore = asyncio.Semaphore(1) 
+thumb_semaphore = asyncio.Semaphore(1) # Concurrency 1 फॉर सेफ्टी
 
 # ─────────────────────────────────────────────
-# 🚀 ULTRA-STABLE MULTIPART CDN UPLOAD HELPER (No More 412 Error)
+# 🚀 STABLE IMGBB API UPLOAD HELPER (No More 412 or DNS Errors)
 # ─────────────────────────────────────────────
 async def upload_to_cdn(image_bytes):
     try:
-        # aiohttp.MultipartWriter का उपयोग करके explicit boundary और fields को सेट किया गया है
-        with aiohttp.MultipartWriter('form-data') as mpwriter:
-            # 1. reqtype फ़ील्ड जोड़ें
-            part_type = mpwriter.append('fileupload')
-            part_type.set_content_disposition('form-data', name='reqtype')
-            
-            # 2. fileToUpload फ़ील्ड (बाइट्स) जोड़ें
-            part_file = mpwriter.append(image_bytes, headers={'Content-Type': 'image/jpeg'})
-            part_file.set_content_disposition('form-data', name='fileToUpload', filename='thumb.jpg')
-            
-            async with aiohttp.ClientSession() as session:
-                async with session.post('https://catbox.moe/user/api.php', data=mpwriter, timeout=15) as resp:
-                    if resp.status == 200:
-                        res_text = await resp.text()
-                        res_text = res_text.strip()
-                        if res_text.startswith("https://"):
-                            return res_text
-                    else:
-                        logger.error(f"Catbox API Error Status: {resp.status}")
-    except Exception as e:
-        logger.error(f"Catbox Upload Exception: {e}")
-    
-    # 🔄 PLAN B FALLBACK: अगर कैटबॉक्स का सर्वर डाउन हो या 412 दे, तो envs.sh CDN का उपयोग करें
-    try:
-        form = aiohttp.FormData()
-        form.add_field('file', image_bytes, filename='thumb.jpg', content_type='image/jpeg')
-        async with aiohttp.ClientSession() as session:
-            async with session.post('https://envs.sh', data=form, timeout=10) as resp:
-                if resp.status == 200:
-                    res_text = await resp.text()
-                    if res_text.strip().startswith("https://"):
-                        return res_text.strip()
-    except Exception as e:
-        logger.error(f"Fallback CDN (envs.sh) Failed: {e}")
+        # 🔥 यहाँ अपनी ImgBB से मिली हुई API Key पेस्ट कर दो भाई
+        IMGBB_API_KEY = "7231f7dc61edd1d358850564df301bf4" 
         
+        if IMGBB_API_KEY == "YOUR_IMGBB_API_KEY" or not IMGBB_API_KEY:
+            logger.error("⚠️ [IMGBB ERROR] Please insert a valid ImgBB API Key!")
+            return None
+
+        form = aiohttp.FormData()
+        form.add_field('image', image_bytes, filename='thumb.jpg', content_type='image/jpeg')
+        
+        async with aiohttp.ClientSession() as session:
+            async with session.post(f'https://api.imgbb.com/1/upload?key={IMGBB_API_KEY}', data=form, timeout=15) as resp:
+                if resp.status == 200:
+                    res_json = await resp.json()
+                    # ImgBB का डायरेक्ट और परमानेंट इमेज यूआरएल निकालें
+                    return res_json['data']['url']
+                else:
+                    logger.error(f"ImgBB API Error Status: {resp.status}")
+    except Exception as e:
+        logger.error(f"ImgBB Upload Exception: {e}")
     return None
 
 # ─────────────────────────────────────────────
@@ -106,7 +90,7 @@ async def get_user_role(req):
     return None, None
 
 # ─────────────────────────────────────────────
-# 🔍 SEARCH API (Fixed ID Mapping & Caching)
+# 🔍 SEARCH API
 # ─────────────────────────────────────────────
 @search_routes.get("/api/search")
 async def api_search(req):
@@ -162,14 +146,13 @@ async def api_search(req):
 
     async def process_doc(d):
         fid = d.get("file_ref", d.get("file_id"))
-        db_id = d.get("_id") # MongoDB की असली यूनिक शॉर्ट आईडी
+        db_id = d.get("_id")
         file_name = d.get("file_name", "Unknown File")
         db_thumb = d.get("thumb_url")
         
-        if db_thumb and ("ibb.co" in db_thumb or "default-movie" in db_thumb or "placehold" in db_thumb):
+        if db_thumb and ("default-movie" in db_thumb or "placehold" in db_thumb):
             db_thumb = None
 
-        # ✅ फ्रंटएंड थंबनेल रिक्वेस्ट के लिए हमेशा 'db_id' भेजेंगे शॉर्ट आईडी के रूप में
         tg_thumb = db_thumb if db_thumb else f"/api/thumb?file_id={db_id}"
         
         return {
@@ -194,11 +177,11 @@ async def api_search(req):
     })
 
 # ─────────────────────────────────────────────
-# 📸 THUMBNAIL API (With Fixed Multi-CDN & Live Logs)
+# 📸 THUMBNAIL API (ImgBB Version with Logs)
 # ─────────────────────────────────────────────
 @search_routes.get("/api/thumb")
 async def get_telegram_thumb(req):
-    fid = req.query.get("file_id") # MongoDB की यूनिक आईडी
+    fid = req.query.get("file_id")
     is_retry = req.query.get("retry", "false").lower() == "true"
     if not fid:
         return web.Response(status=400)
@@ -222,14 +205,13 @@ async def get_telegram_thumb(req):
 
         for attempt in range(3):
             try:
-                # 🔍 लॉग 1: डेटाबेस में पहले से लिंक मौजूद है या नहीं, इसकी जांच
+                # 🔍 लॉग 1: डेटाबेस हिट चेक
                 for col_name, col in COLLECTIONS.items():
                     existing = await col.find_one({"$or": [{"_id": fid}, {"file_ref": fid}]})
-                    if existing and existing.get("thumb_url") and ("catbox.moe" in existing.get("thumb_url") or "envs.sh" in existing.get("thumb_url") or "telegra.ph" in existing.get("thumb_url")):
-                        logger.info(f"✨ [DB HIT] File ID: {fid} | Already has CDN Link: {existing.get('thumb_url')}")
+                    if existing and existing.get("thumb_url") and ("imgbb.com" in existing.get("thumb_url") or "ibb.co" in existing.get("thumb_url")):
+                        logger.info(f"✨ [DB HIT] File ID: {fid} | Already has ImgBB Link: {existing.get('thumb_url')}")
                         raise web.HTTPFound(existing.get("thumb_url"))
 
-                # अगर DB में नहीं है, तो टेलीग्राम से मंगाओ
                 logger.info(f"📥 [TG FETCH] Fetching from Telegram for File ID: {fid} (Attempt {attempt+1})")
                 msg = await temp.BOT.send_cached_media(chat_id=BIN_CHANNEL, file_id=fid)
                 thumb_id = None
@@ -249,15 +231,14 @@ async def get_telegram_thumb(req):
                         
                     thumb_cache[fid] = thumb_bytes
                     
-                    # 🚀 विश्वसनीय CDN पर अपलोड शुरू
-                    logger.info(f"📤 [CDN UPLOAD] Sending bytes to CDN for File ID: {fid}...")
+                    # 🚀 ImgBB अपलोड शुरू
+                    logger.info(f"📤 [CDN UPLOAD] Sending bytes to ImgBB for File ID: {fid}...")
                     perm_thumb_url = await upload_to_cdn(thumb_bytes)
                     
-                    # ✅ लॉग 2: CDN पर डेटा सफलतापूर्वक सेव हुआ या नहीं
-                    if perm_thumb_url and ("catbox.moe" in perm_thumb_url or "envs.sh" in perm_thumb_url):
-                        logger.info(f"🟢 [CDN SUCCESS] Saved successfully on CDN! URL: {perm_thumb_url}")
+                    # ✅ लॉग 2: सक्सेस चेक
+                    if perm_thumb_url and "imgbb.com" in perm_thumb_url:
+                        logger.info(f"🟢 [CDN SUCCESS] Saved successfully on ImgBB! URL: {perm_thumb_url}")
                         
-                        # MongoDB में हमेशा के लिए सिंक करके सेव करना
                         updated_count = 0
                         for col_name, col in COLLECTIONS.items():
                             res = await col.update_many(
@@ -268,7 +249,7 @@ async def get_telegram_thumb(req):
                         
                         logger.info(f"💾 [MONGODB SAVE] Successfully locked in {updated_count} DB documents for File ID: {fid}")
                     else:
-                        logger.error(f"🔴 [CDN FAILED] All CDNs rejected image upload for File ID: {fid}!")
+                        logger.error(f"🔴 [CDN FAILED] ImgBB rejected image upload for File ID: {fid}!")
                     
                     asyncio.create_task(msg.delete())
                     return web.Response(body=thumb_bytes, content_type="image/jpeg", headers=headers)
