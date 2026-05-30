@@ -13,24 +13,30 @@ search_routes = web.RouteTableDef()
 # ─────────────────────────────────────────────
 MAX_CACHE = 500
 thumb_cache = {}
-thumb_semaphore = asyncio.Semaphore(1) # कतार को 1 किया ताकि एक-एक करके सेफ डाउनलोड हो
+# ✅ Concurrency को 1 रखा है ताकि टेलीग्राम और सर्वर पर एक साथ लोड न पड़े
+thumb_semaphore = asyncio.Semaphore(1) 
 
 # ─────────────────────────────────────────────
-# 🚀 TELEGRAPH UPLOAD HELPER (Best Approach)
+# 🚀 ULTRA-STABLE CATBOX CDN UPLOAD HELPER
 # ─────────────────────────────────────────────
-async def upload_to_telegraph(image_bytes):
+async def upload_to_cdn(image_bytes):
     try:
         form = aiohttp.FormData()
-        form.add_field('file', image_bytes, filename='thumb.jpg', content_type='image/jpeg')
+        form.add_field('reqtype', 'fileupload')
+        form.add_field('fileToUpload', image_bytes, filename='thumb.jpg', content_type='image/jpeg')
         
         async with aiohttp.ClientSession() as session:
-            async with session.post('https://telegra.ph/upload', data=form) as resp:
+            # Catbox की ऑफिशियल और सुपरफास्ट API
+            async with session.post('https://catbox.moe/user/api.php', data=form) as resp:
                 if resp.status == 200:
-                    res = await resp.json()
-                    if isinstance(res, list) and len(res) > 0:
-                        return f"https://telegra.ph{res[0]['src']}"
+                    res_text = await resp.text()
+                    res_text = res_text.strip()
+                    if res_text.startswith("https://"):
+                        return res_text
+                else:
+                    logger.error(f"Catbox API Error Status: {resp.status}")
     except Exception as e:
-        logger.error(f"Telegraph Upload Error: {e}")
+        logger.error(f"Catbox Upload Exception: {e}")
     return None
 
 # ─────────────────────────────────────────────
@@ -81,7 +87,7 @@ async def get_user_role(req):
     return None, None
 
 # ─────────────────────────────────────────────
-# 🔍 SEARCH API (Fixed ID Mapping)
+# 🔍 SEARCH API (Fixed ID Mapping & Caching)
 # ─────────────────────────────────────────────
 @search_routes.get("/api/search")
 async def api_search(req):
@@ -137,18 +143,18 @@ async def api_search(req):
 
     async def process_doc(d):
         fid = d.get("file_ref", d.get("file_id"))
-        db_id = d.get("_id") # डेटाबेस की असली यूनिक शॉर्ट आईडी
+        db_id = d.get("_id") # MongoDB की असली यूनिक शॉर्ट आईडी
         file_name = d.get("file_name", "Unknown File")
         db_thumb = d.get("thumb_url")
         
         if db_thumb and ("ibb.co" in db_thumb or "default-movie" in db_thumb or "placehold" in db_thumb):
             db_thumb = None
 
-        # ✅ FIX: थंबनेल रिक्वेस्ट के लिए हमेशा 'db_id' भेजें, लंबी टेलीग्राम आईडी नहीं!
+        # ✅ फ्रंटएंड थंबनेल रिक्वेस्ट के लिए हमेशा 'db_id' भेजेंगे शॉर्ट आईडी के रूप में
         tg_thumb = db_thumb if db_thumb else f"/api/thumb?file_id={db_id}"
         
         return {
-            "file_id": db_id, # फ्रंटएंड को यूनिक शॉर्ट आईडी पास करें
+            "file_id": db_id,
             "name": file_name,
             "size": get_size(d.get("file_size", 0)),
             "type": d.get("file_type", "document").upper(),
@@ -169,7 +175,7 @@ async def api_search(req):
     })
 
 # ─────────────────────────────────────────────
-# 📸 Thumnail API (Detailed Caching Logs Added)
+# 📸 THUMBNAIL API (With Catbox CDN & Live Logs)
 # ─────────────────────────────────────────────
 @search_routes.get("/api/thumb")
 async def get_telegram_thumb(req):
@@ -200,8 +206,8 @@ async def get_telegram_thumb(req):
                 # 🔍 लॉग 1: डेटाबेस में पहले से लिंक मौजूद है या नहीं, इसकी जांच
                 for col_name, col in COLLECTIONS.items():
                     existing = await col.find_one({"$or": [{"_id": fid}, {"file_ref": fid}]})
-                    if existing and existing.get("thumb_url") and "telegra.ph" in existing.get("thumb_url"):
-                        logger.info(f"✨ [DB HIT] File ID: {fid} | Already has Telegraph Link: {existing.get('thumb_url')}")
+                    if existing and existing.get("thumb_url") and ("catbox.moe" in existing.get("thumb_url") or "telegra.ph" in existing.get("thumb_url")):
+                        logger.info(f"✨ [DB HIT] File ID: {fid} | Already has CDN Link: {existing.get('thumb_url')}")
                         raise web.HTTPFound(existing.get("thumb_url"))
 
                 # अगर DB में नहीं है, तो टेलीग्राम से मंगाओ
@@ -224,15 +230,15 @@ async def get_telegram_thumb(req):
                         
                     thumb_cache[fid] = thumb_bytes
                     
-                    # 🚀 टेलीग्राफ पर अपलोड शुरू
-                    logger.info(f"📤 [TELEGRAPH UPLOAD] Sending bytes to Telegraph for File ID: {fid}...")
-                    perm_thumb_url = await upload_to_telegraph(thumb_bytes)
+                    # 🚀 विश्वसनीय Catbox CDN पर अपलोड शुरू
+                    logger.info(f"📤 [CDN UPLOAD] Sending bytes to Catbox for File ID: {fid}...")
+                    perm_thumb_url = await upload_to_cdn(thumb_bytes)
                     
-                    # ✅ लॉग 2: टेलीग्राफ पर डेटा सेव हुआ कि नहीं, इसकी पूरी जांच
-                    if perm_thumb_url and "telegra.ph" in perm_thumb_url:
-                        logger.info(f"🟢 [TELEGRAPH SUCCESS] Saved successfully on Telegraph! URL: {perm_thumb_url}")
+                    # ✅ लॉग 2: CDN पर डेटा सफलतापूर्वक सेव हुआ या नहीं
+                    if perm_thumb_url and "catbox.moe" in perm_thumb_url:
+                        logger.info(f"🟢 [CDN SUCCESS] Saved successfully on Catbox! URL: {perm_thumb_url}")
                         
-                        # MongoDB में हमेशा के लिए लॉक करना
+                        # MongoDB में हमेशा के लिए सिंक करके सेव करना
                         updated_count = 0
                         for col_name, col in COLLECTIONS.items():
                             res = await col.update_many(
@@ -243,7 +249,7 @@ async def get_telegram_thumb(req):
                         
                         logger.info(f"💾 [MONGODB SAVE] Successfully locked in {updated_count} DB documents for File ID: {fid}")
                     else:
-                        logger.error(f"🔴 [TELEGRAPH FAILED] Telegraph rejected image upload for File ID: {fid}!")
+                        logger.error(f"🔴 [CDN FAILED] Catbox rejected image upload for File ID: {fid}!")
                     
                     asyncio.create_task(msg.delete())
                     return web.Response(body=thumb_bytes, content_type="image/jpeg", headers=headers)
