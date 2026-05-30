@@ -63,7 +63,7 @@ async def ban_system(c, m):
             await m.reply(f"✅ User `{tgt_id}` Unbanned.")
         else:
             await db.ban_user(tgt_id, rsn)
-            temp.BANNED_USERS.append(tgt_id)
+            if tgt_id not in temp.BANNED_USERS: temp.BANNED_USERS.append(tgt_id)
             await m.reply(f"✅ User `{tgt_id}` Banned.\nReason: {rsn}")
     else:
         if 'unban' in cmd:
@@ -72,13 +72,13 @@ async def ban_system(c, m):
             await m.reply(f"✅ Chat `{tgt_id}` re-enabled.")
         else:
             await db.disable_chat(tgt_id, rsn)
-            temp.BANNED_CHATS.append(tgt_id)
+            if tgt_id not in temp.BANNED_CHATS: temp.BANNED_CHATS.append(tgt_id)
             await m.reply(f"✅ Chat `{tgt_id}` disabled.\nReason: {rsn}")
             try: await c.leave_chat(tgt_id)
             except: pass
 
 # ======================================================
-# 📜 DATABASE EXPORT & STATS (Merged & Optimized)
+# 📜 DATABASE EXPORT & STATS (Fixed & Optimized)
 # ======================================================
 @Client.on_message(filters.command(['users', 'chats']) & filters.user(ADMINS))
 async def export_db(c, m):
@@ -88,16 +88,16 @@ async def export_db(c, m):
     msg = await m.reply(f'🔄 Generating {typ} List...')
     cnt = 0
     with open(fn, 'w') as f:
-        # ✅ Optimized Database Calls 
-        cursor = await db.get_all_users() if is_user else await db.get_all_chats()
+        # ✅ FIX: कर्सर को यहाँ सीधे कॉल किया गया है बिना await लगाए (चूंकि find synchronous है)
+        cursor = db.users.find({}) if is_user else db.groups.find({})
         async for x in cursor:
             f.write(f"ID: {x['id']} | Name/Title: {x.get('name' if is_user else 'title', 'N/A')}\n")
             cnt += 1
             
     if cnt == 0:
-        os.remove(fn)
+        if os.path.exists(fn): os.remove(fn)
         return await msg.edit("📭 Database Empty.")
 
     await m.reply_document(fn, caption=f"👥 Total {typ}s: {cnt}")
     await msg.delete()
-    os.remove(fn)
+    if os.path.exists(fn): os.remove(fn)
