@@ -1,4 +1,5 @@
 import time
+import html
 from hydrogram import Client, filters, enums
 from database.users_chats_db import db
 
@@ -18,7 +19,6 @@ async def get_notes(chat_id):
     return data
 
 async def is_admin(c, m):
-    # Security: Anonymous Admin और NoneType Error से बचाएगा
     if m.sender_chat and m.sender_chat.id == m.chat.id: return True 
     if not m.from_user: return False
     try:
@@ -40,7 +40,7 @@ async def save_note(c, m):
     name = m.command[1].lower()
     reply = m.reply_to_message
     
-    # 🎯 Smart Media Detection (लंबे if-elif की छुट्टी)
+    # 🎯 Smart Media Detection
     note_type, file_id = "text", None
     for t in ["photo", "video", "document", "sticker", "animation"]:
         media = getattr(reply, t, None)
@@ -48,11 +48,12 @@ async def save_note(c, m):
             note_type, file_id = t, media.file_id
             break
     
+    # ✅ FIX: .markdown स्ट्रिंग क्रैश बग को पूरी तरह से साफ किया गया
     note_data = {
         "type": note_type,
         "file_id": file_id,
-        "caption": reply.caption.markdown if reply.caption else "", # Markdown सुरक्षित
-        "text": reply.text.markdown if reply.text else ""
+        "caption": reply.caption if reply.caption else "", 
+        "text": reply.text if reply.text else ""
     }
 
     data = await get_notes(m.chat.id)
@@ -90,7 +91,7 @@ async def list_notes(c, m):
 
 @Client.on_message(filters.group & filters.regex(r"^#[\w]+"), group=11)
 async def get_note(c, m):
-    msg_text = m.text or m.caption # Text और Caption दोनों सपोर्टेड
+    msg_text = m.text or m.caption
     if not msg_text: return
     
     name = msg_text.split()[0][1:].lower()
@@ -98,16 +99,23 @@ async def get_note(c, m):
     if name not in data: return
     
     note = data[name]
-    # Context-Aware Reply System
     reply_id = m.reply_to_message.id if m.reply_to_message else m.id
     
     if note["type"] == "text":
-        await m.reply(note["text"], reply_to_message_id=reply_id)
+        # पार्सिंग स्टाइलिंग को सेफ रखने के लिए डिफ़ॉल्ट रूप से HTML इनेबल्ड रखा है
+        await c.send_message(m.chat.id, note["text"], reply_to_message_id=reply_id, parse_mode=enums.ParseMode.HTML)
     else:
-        # 🎯 Dynamic Function Call (बिना 5 if-else लगाए मीडिया भेजेगा)
-        send_method = getattr(m, f"reply_{note['type']}") 
-        kwargs = {"reply_to_message_id": reply_id}
+        # ✅ FIX: डायनामिक फंक्शन कॉल को म्यूट मैसेज 'm' से हटाकर क्लाइंट 'c' ऑब्जेक्ट पर सिंक किया गया
+        send_method = getattr(c, f"send_{note['type']}") 
+        
+        # आर्गुमेंट्स डिक्शनरी को सेफली बिल्ड करें
+        kwargs = {
+            "chat_id": m.chat.id,
+            "reply_to_message_id": reply_id
+        }
+        
         if note["type"] != "sticker": 
             kwargs["caption"] = note["caption"]
-        
-        await send_method(note["file_id"], **kwargs)
+            kwargs["parse_mode"] = enums.ParseMode.HTML
+            
+        await send_method(file_id=note["file_id"], **kwargs)
