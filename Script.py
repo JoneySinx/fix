@@ -47,11 +47,11 @@ Total - <code>{}</code>"""
 
     NOT_FILE_TXT = """👋 Hello {},
 
-I can't find the <b>{}</b> in my database! 🥲
+I can't find <b>{}</b> in my database! 🥲
 
-👉 Google Search and check your spelling is correct.
+👉 Google Search and check if your spelling is correct.
 👉 Please read the Instructions to get better results.
-👉 Or not been released yet."""
+👉 Or maybe it hasn't been released yet."""
 
     # ✅ अब सिर्फ फाइल का नाम बोल्ड में दिखेगा
     FILE_CAPTION = """<b>{file_name}</b>"""
@@ -60,7 +60,7 @@ I can't find the <b>{}</b> in my database! 🥲
 
     HELP_TXT = """<b>👋 Hello {},
     
-I can filter movie and series you want.
+I can filter any movie and series you want.
 Just type the movie or series name in my PM or add me into your group!
 
 I have many more features for you.
@@ -84,22 +84,21 @@ Please check the commands below 👇</b>"""
 /dlink | /removedlink - Manage auto-delete words
 /dlinklist - View auto-delete words</b>"""
     
-    PLAN_TXT = """Activate any premium plan to get exclusive features.
+    # ✅ FIX: 'pre day' को 'per day' किया और टेक्स्ट को आकर्षक बनाया गया
+    PLAN_TXT = """💎 <b>Fast Finder Premium Plans</b> 💎
 
-You can activate any premium plan and then you can get exclusive features.
+Activate a premium plan to unlock exclusive, high-speed features!
 
-- INR {} for pre day -
+⚡ <b>Price:</b> <code>₹{} / Per Day</code> ⚡
 
-Basic premium features:
-Ad free experience
-Online watch and fast download
-No need joind channels
-No need verify
-No shortlink
-Admins support
-And more...
+🚀 <b>Premium Features Include:</b>
+» 🍿 Ad-Free Experience (No interruptions)
+» 🎬 Online Streaming & Superfast Downloads
+» 🔓 No Need to Join Extra Channels (No FSUB)
+» ⚡ Zero Verification / Shortlinks Required
+» 👑 Dedicated Admin Support
 
-Support: {}"""
+👨‍🚒 <b>Support & Verification:</b> {}"""
 
     USER_COMMAND_TXT = """<b>👨‍💻 <u>Bot User Commands:</u> 👇
 
