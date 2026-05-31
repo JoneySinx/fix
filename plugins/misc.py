@@ -6,7 +6,7 @@ from utils import temp, get_readable_time
 from info import IS_PREMIUM
 
 # ======================================================
-# 📂 GET MEDIA FILE ID HELPER
+# 📂 GET MEDIA FILE ID HELPER (Hydrogram Optimized)
 # ======================================================
 def get_media_file_id(msg):
     """मैसेज से मीडिया ऑब्जेक्ट ढूंढकर उसकी file_id और file_ref निकालता है"""
@@ -14,9 +14,7 @@ def get_media_file_id(msg):
     for attr in ["photo", "video", "document", "audio", "voice", "animation", "sticker"]:
         media = getattr(msg, attr, None)
         if media:
-            if attr == "photo":
-                # फोटो लिस्ट के रूप में होती है, सबसे लास्ट वाली (हाई क्वालिटी) की आईडी लें
-                return media[-1].file_id, getattr(media[-1], "file_ref", "N/A")
+            # Hydrogram में photo लिस्ट नहीं बल्कि सीधे एक Photo ऑब्जेक्ट होता है
             return media.file_id, getattr(media, "file_ref", "N/A")
     return None, None
 
