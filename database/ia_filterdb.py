@@ -83,6 +83,7 @@ async def save_file(media, collection_type="primary"):
 
         doc = {
             "_id":       file_id,     
+            "file_id":   file_id,     # ✅ FIX: इसे अलग से भी रखें ताकि एडमिन पैनल की क्वेरीज़ कभी फेल न हों
             "file_ref":  media.file_id, 
             "file_name": f_name,
             "file_size": media.file_size,
@@ -93,7 +94,7 @@ async def save_file(media, collection_type="primary"):
 
         col = COLLECTIONS.get(collection_type, primary)
         
-        # ✅ CLEAN FIX: फालतू की साइट्स हटाईं, सिर्फ हमारे 'TG_ID:' वाले परमानेंट थंबनेल को सेफ रखेंगे
+        # ✅ CLEAN FIX: सिर्फ हमारे 'TG_ID:' वाले परमानेंट थंबनेल को सेफ रखेंगे
         existing_doc = await col.find_one({"_id": file_id})
         if existing_doc and existing_doc.get("thumb_url"):
             old_thumb = existing_doc.get("thumb_url")
@@ -216,45 +217,6 @@ async def get_search_results(query, max_results=MAX_BTN, offset=0, lang=None, co
     return results, next_offset, total, actual_src
 
 # ─────────────────────────────────────────────────────────
-# 💻 WEB API SEARCH (For Web Dashboard)
-# ─────────────────────────────────────────────────────────
-async def get_web_search_results(query, offset=0, limit=20):
-    if not query:
-        return []
-        
-    raw_query = str(query).strip()
-    clean_query = raw_query.replace('"', '').replace("'", "")
-    strict_query = " ".join(f'"{word}"' for word in clean_query.split())
-    
-    regex = _build_regex(raw_query)
-    text_flt = {"$text": {"$search": strict_query}}
-    reg_flt = {"file_name": regex}
-    
-    results = []
-    try:
-        for col in [primary, cloud, archive]:
-            count = await col.count_documents(text_flt)
-            
-            if count > 0:
-                cursor = col.find(text_flt, {"score": {"$meta": "textScore"}}).sort([("score", {"$meta": "textScore"})])
-            else:
-                cursor = col.find(reg_flt).sort('_id', -1)
-                
-            cursor.skip(offset).limit(limit)
-            docs = await cursor.to_list(length=limit)
-            for doc in docs:
-                doc["file_id"] = doc["_id"]
-                results.append(doc)
-                
-            if len(results) >= limit:
-                break
-                
-        return results[:limit]
-    except Exception as e:
-        logger.error(f"Web Search Error: {e}")
-        return []
-
-# ─────────────────────────────────────────────────────────
 # 🗑 DELETE FILES
 # ─────────────────────────────────────────────────────────
 async def delete_files(query, collection_type="all"):
@@ -283,13 +245,14 @@ async def delete_files(query, collection_type="all"):
         logger.error(f"delete_files error: {e}")
         return deleted
 
-# ─────────────────────────────────────────────────────────
-# 📂 GET FILE DETAILS
-# ─────────────────────────────────────────────────────────
+# ─────────────────────────────────────────────
+# 📂 GET FILE DETAILS (Fixed $or Query System)
+# ─────────────────────────────────────────────
 async def get_file_details(file_id):
     try:
+        # ✅ FIX: अब यह _id, file_id, या ओरिजिनल टेलीग्राम file_ref तीनों में से किसी से भी खोज लेगा
         for col in [primary, cloud, archive]:
-            doc = await col.find_one({"_id": file_id})
+            doc = await col.find_one({"$or": [{"_id": file_id}, {"file_id": file_id}, {"file_ref": file_id}]})
             if doc:
                 doc["file_id"] = doc["_id"]  
                 return doc
