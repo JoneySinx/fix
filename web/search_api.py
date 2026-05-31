@@ -111,7 +111,7 @@ async def api_search(req):
         if db_thumb and ("default-movie" in db_thumb or "placehold" in db_thumb or "ibb.co" in db_thumb):
             db_thumb = None
 
-        # ✅ फ्रंटएंड को हमेशा साफ-सुथरा API यूआरएल दें, चाहे इमेज DB में लॉक हो या न हो
+        # ✅ फ्रंटएंड को हमेशा साफ-सुथरा API यूआरएल दें, चाहे इमेज DB में锁 हो या न हो
         tg_thumb = f"/api/thumb?file_id={db_id}"
         
         return {
@@ -167,7 +167,7 @@ async def get_telegram_thumb(req):
         # 🔍 2. डेटाबेस चेक: क्या पहले से ही 'TG_ID:' मौजूद है?
         saved_thumb_id = None
         for col_name, col in COLLECTIONS.items():
-            existing = await col.find_one({"$or": [{"_id": fid}, {"file_ref": fid}]})
+            existing = await col.find_one({"$or": [{"_id": fid}, {"file_ref": fid}, {"file_id": fid}]})
             if existing and existing.get("thumb_url") and existing.get("thumb_url").startswith("TG_ID:"):
                 saved_thumb_id = existing.get("thumb_url").replace("TG_ID:", "")
                 break
@@ -212,7 +212,7 @@ async def get_telegram_thumb(req):
                     updated_count = 0
                     for col_name, col in COLLECTIONS.items():
                         res = await col.update_many(
-                            {"$or": [{"_id": fid}, {"file_ref": fid}]},
+                            {"$or": [{"_id": fid}, {"file_ref": fid}, {"file_id": fid}]},
                             {"$set": {"thumb_url": db_save_value}}
                         )
                         updated_count += res.modified_count
@@ -245,6 +245,9 @@ async def _auto_del_msg(msg, delay):
     try: await msg.delete()
     except: pass
 
+# ─────────────────────────────────────────────
+# 🎥 STREAM SETUP SYSTEM (Supports GET & POST)
+# ─────────────────────────────────────────────
 @search_routes.get("/setup_stream")
 async def setup_stream(req):
     role, _ = await get_user_role(req)
@@ -258,15 +261,40 @@ async def setup_stream(req):
         return web.HTTPFound(f"/{'download' if mode == 'download' else 'watch'}/{msg.id}")
     except Exception as e: return web.Response(text=f"❌ Error: {e}", status=500)
 
+@search_routes.post("/setup_stream")
+async def setup_stream_post(req):
+    role, _ = await get_user_role(req)
+    if not role: return web.json_response({"error": "Unauthorized Access!"}, status=403)
+    try:
+        data = await req.json()
+        fid = data.get("file_id")
+        mode = data.get("mode", "watch")
+    except:
+        fid = req.query.get("file_id")
+        mode = req.query.get("mode", "watch")
+        
+    if not fid: return web.json_response({"error": "Missing file_id!"}, status=400)
+    try:
+        msg = await temp.BOT.send_cached_media(chat_id=BIN_CHANNEL, file_id=fid)
+        asyncio.create_task(_auto_del_msg(msg, 3600))
+        return web.json_response({"url": f"/{'download' if mode == 'download' else 'watch'}/{msg.id}"})
+    except Exception as e: return web.json_response({"error": str(e)}, status=500)
+
+# ─────────────────────────────────────────────
+# ⚙️ ADMIN CONTROLS: EDIT & DELETE
+# ─────────────────────────────────────────────
 @search_routes.post("/api/delete")
 async def api_delete(req):
     role, _ = await get_user_role(req)
     if role != "admin": return web.json_response({"error": "Admin only!"}, status=403)
     try:
         data = await req.json()
+        fid = data.get("file_id")
         col = data.get("collection", "primary").lower()
         if col not in COLLECTIONS: return web.json_response({"error": "Invalid collection!"}, status=400)
-        res = await COLLECTIONS[col].delete_one({"$or": [{"file_id": data.get("file_id")}, {"file_ref": data.get("file_id")}]})
+        
+        # ✅ Fixed: Added _id match constraint
+        res = await COLLECTIONS[col].delete_one({"$or": [{"_id": fid}, {"file_id": fid}, {"file_ref": fid}]})
         return web.json_response({"success": bool(res.deleted_count)})
     except Exception as e: return web.json_response({"error": str(e)}, status=500)
 
@@ -276,11 +304,37 @@ async def api_edit(req):
     if role != "admin": return web.json_response({"error": "Admin only!"}, status=403)
     try:
         data = await req.json()
+        fid = data.get("file_id")
         col = data.get("collection", "primary").lower()
         if col not in COLLECTIONS: return web.json_response({"error": "Invalid collection!"}, status=400)
+        
+        update_data = {}
+        
+        # 1. नाम अपडेट करने का लॉजिक
         new_name = data.get("new_name", "").strip()
-        if not new_name: return web.json_response({"error": "New name cannot be empty!"}, status=400)
-        res = await COLLECTIONS[col].update_one({"$or": [{"file_id": data.get("file_id")}, {"file_ref": data.get("file_id")}]}, {"$set": {"file_name": new_name}})
+        if new_name:
+            update_data["file_name"] = new_name
+            
+        # 2. थंबनेल अपडेट करने का लॉजिक
+        new_thumb = data.get("new_thumb", "").strip()
+        if new_thumb:
+            if not new_thumb.startswith(("http://", "https://", "TG_ID:")):
+                new_thumb = f"TG_ID:{new_thumb}"
+            update_data["thumb_url"] = new_thumb
+
+        if not update_data:
+            return web.json_response({"error": "Nothing to update! Provide name or thumbnail."}, status=400)
+
+        # ✅ Fixed: Added _id match constraint
+        res = await COLLECTIONS[col].update_one(
+            {"$or": [{"_id": fid}, {"file_id": fid}, {"file_ref": fid}]}, 
+            {"$set": update_data}
+        )
+        
+        # 3. कैशे क्लियर करना ताकि पुराना पोस्टर तुरंत रिप्लेस हो जाए
+        if res.modified_count and fid in thumb_cache:
+            thumb_cache.pop(fid, None)
+            
         return web.json_response({"success": bool(res.modified_count)})
     except Exception as e: return web.json_response({"error": str(e)}, status=500)
 
