@@ -111,6 +111,7 @@ async def api_search(req):
         if db_thumb and ("default-movie" in db_thumb or "placehold" in db_thumb or "ibb.co" in db_thumb):
             db_thumb = None
 
+        # ✅ फ्रंटएंड को हमेशा साफ-सुथरा API यूआरएल दें, चाहे इमेज DB में鎖 हो या न हो
         tg_thumb = f"/api/thumb?file_id={db_id}"
         
         return {
@@ -143,6 +144,7 @@ async def get_telegram_thumb(req):
     is_retry = req.query.get("retry", "false").lower() == "true"
     if not fid: return web.Response(status=400)
 
+    # साफ़ सुथरा हेडर रेस्पोंस डिफाइन करें
     headers = {
         "Content-Disposition": 'inline; filename="poster.jpg"',
         "Cache-Control": "max-age=86400"
@@ -151,15 +153,18 @@ async def get_telegram_thumb(req):
     if is_retry and fid in thumb_cache:
         if thumb_cache[fid] == "NO_THUMB": thumb_cache.pop(fid, None)
 
+    # 1. रैम (कैशे) मेमोरी चेक करें
     if fid in thumb_cache:
         if thumb_cache[fid] == "NO_THUMB": return web.Response(status=404)
         return web.Response(body=thumb_cache[fid], content_type="image/jpeg", headers=headers)
 
     async with thumb_semaphore:
+        # कतार से बाहर आने पर दोबारा कैशे चेक करें
         if fid in thumb_cache:
             if thumb_cache[fid] == "NO_THUMB": return web.Response(status=404)
             return web.Response(body=thumb_cache[fid], content_type="image/jpeg", headers=headers)
 
+        # 🔍 2. डेटाबेस चेक: क्या पहले से ही 'TG_ID:' मौजूद है?
         saved_thumb_id = None
         for col_name, col in COLLECTIONS.items():
             existing = await col.find_one({"$or": [{"_id": fid}, {"file_ref": fid}, {"file_id": fid}]})
@@ -167,20 +172,24 @@ async def get_telegram_thumb(req):
                 saved_thumb_id = existing.get("thumb_url").replace("TG_ID:", "")
                 break
 
+        # अगर डेटाबेस में पहले से सेव्ड टेलीग्राम आईडी मिल गई, तो सीधे यहीं से डाउनलोड करें
         if saved_thumb_id:
             try:
                 logger.info(f"✨ [DB HIT] Serving via internal Telegram ID for: {fid}")
                 file_data = await temp.BOT.download_media(saved_thumb_id, in_memory=True)
                 if file_data:
                     thumb_bytes = file_data.getvalue()
+                    
                     if len(thumb_cache) >= MAX_CACHE:
                         oldest_key = next(iter(thumb_cache))
                         thumb_cache.pop(oldest_key, None)
+                        
                     thumb_cache[fid] = thumb_bytes
                     return web.Response(body=thumb_bytes, content_type="image/jpeg", headers=headers)
             except Exception as e:
                 logger.error(f"❌ Failed to download stored file_id from DB hit: {e}")
 
+        # 📥 3. फ्रेश फेच (अगर डेटाबेस में सेव नहीं था या पुराना आईडी काम नहीं किया)
         await asyncio.sleep(0.3)
         for attempt in range(3):
             try:
@@ -198,6 +207,7 @@ async def get_telegram_thumb(req):
                     thumb_bytes = file_data.getvalue()
                     thumb_cache[fid] = thumb_bytes
                     
+                    # बिना किसी बाहरी वेबसाइट के सीधे MongoDB में सिंक करें
                     db_save_value = f"TG_ID:{thumb_id}"
                     updated_count = 0
                     for col_name, col in COLLECTIONS.items():
@@ -271,7 +281,7 @@ async def setup_stream_post(req):
     except Exception as e: return web.json_response({"error": str(e)}, status=500)
 
 # ─────────────────────────────────────────────
-# ⚙️ ADMIN CONTROLS: DELETE & EDIT SEPARATE
+# ⚙️ ADMIN CONTROLS: EDIT & DELETE
 # ─────────────────────────────────────────────
 @search_routes.post("/api/delete")
 async def api_delete(req):
@@ -287,101 +297,145 @@ async def api_delete(req):
         return web.json_response({"success": bool(res.deleted_count)})
     except Exception as e: return web.json_response({"error": str(e)}, status=500)
 
-# 📝 ONLY FILE NAME EDIT API
-@search_routes.post("/api/edit_name")
-async def api_edit_name(req):
+# ─────────────────────────────────────────────
+# 🖼️ UPLOAD THUMBNAIL (Image → Auto TG_ID Save)
+# ─────────────────────────────────────────────
+@search_routes.post("/api/upload_thumb")
+async def api_upload_thumb(req):
+    role, _ = await get_user_role(req)
+    if role != "admin":
+        return web.json_response({"error": "Admin only!"}, status=403)
+    try:
+        reader = await req.multipart()
+        fid = None
+        col = "primary"
+        image_bytes = None
+
+        async for field in reader:
+            if field.name == "file_id":
+                fid = await field.read(decode=True)
+                fid = fid.decode().strip()
+            elif field.name == "collection":
+                col = (await field.read(decode=True)).decode().strip().lower()
+            elif field.name == "image":
+                image_bytes = await field.read(decode=False)
+
+        if not fid or not image_bytes:
+            return web.json_response({"error": "file_id aur image dono zaroori hain!"}, status=400)
+        if col not in COLLECTIONS:
+            return web.json_response({"error": "Invalid collection!"}, status=400)
+
+        # 1. Image ko BIN_CHANNEL mein upload karo (permanent TG file_id milega)
+        import io
+        photo_msg = await temp.BOT.send_photo(
+            chat_id=BIN_CHANNEL,
+            photo=io.BytesIO(image_bytes)
+        )
+        # Sabse badi size ka photo lo
+        tg_photo = photo_msg.photo[-1] if photo_msg.photo else None
+        if not tg_photo:
+            asyncio.create_task(photo_msg.delete())
+            return web.json_response({"error": "Photo upload fail hua!"}, status=500)
+
+        tg_file_id = tg_photo.file_id
+        db_save_value = f"TG_ID:{tg_file_id}"
+
+        # 2. RAM cache clear karo
+        thumb_cache.pop(fid, None)
+
+        # 3. MongoDB mein save karo + cross-ref IDs ka cache bhi clear karo
+        doc_before = None
+        for col_name, col_obj in COLLECTIONS.items():
+            if doc_before is None:
+                doc_before = await col_obj.find_one({"$or": [{"_id": fid}, {"file_ref": fid}, {"file_id": fid}]})
+
+        updated_count = 0
+        for col_name, col_obj in COLLECTIONS.items():
+            res = await col_obj.update_many(
+                {"$or": [{"_id": fid}, {"file_ref": fid}, {"file_id": fid}]},
+                {"$set": {"thumb_url": db_save_value}}
+            )
+            updated_count += res.modified_count
+
+        if doc_before:
+            if doc_before.get("file_ref"): thumb_cache.pop(doc_before["file_ref"], None)
+            if doc_before.get("file_id"):  thumb_cache.pop(doc_before["file_id"],  None)
+
+        # 4. Preview ke liye image bytes bhi return karo (base64)
+        import base64
+        file_data = await temp.BOT.download_media(tg_file_id, in_memory=True)
+        thumb_bytes = file_data.getvalue()
+        # RAM cache mein bhi daal do nayi image
+        if len(thumb_cache) >= MAX_CACHE:
+            thumb_cache.pop(next(iter(thumb_cache)), None)
+        thumb_cache[fid] = thumb_bytes
+
+        logger.info(f"✅ [UPLOAD THUMB] Saved TG_ID for {fid}, updated {updated_count} docs")
+        asyncio.create_task(photo_msg.delete())  # BIN_CHANNEL clean rakho
+
+        return web.json_response({
+            "success": True,
+            "tg_file_id": tg_file_id,
+            "preview": "data:image/jpeg;base64," + base64.b64encode(thumb_bytes).decode()
+        })
+
+    except Exception as e:
+        logger.error(f"upload_thumb error: {e}")
+        return web.json_response({"error": str(e)}, status=500)
+
+
+@search_routes.post("/api/edit")
+async def api_edit(req):
     role, _ = await get_user_role(req)
     if role != "admin": return web.json_response({"error": "Admin only!"}, status=403)
     try:
         data = await req.json()
         fid = data.get("file_id")
         col = data.get("collection", "primary").lower()
-        new_name = data.get("new_name", "").strip()
+        if col not in COLLECTIONS: return web.json_response({"error": "Invalid collection!"}, status=400)
         
-        if not fid or col not in COLLECTIONS or not new_name:
-            return web.json_response({"error": "Missing input data!"}, status=400)
+        update_data = {}
+        
+        # 1. नाम अपडेट करने का लॉजिक
+        new_name = data.get("new_name", "").strip()
+        if new_name:
+            update_data["file_name"] = new_name
             
+        # 2. थंबनेल अपडेट करने का लॉजिक
+        new_thumb = data.get("new_thumb", "").strip()
+        if new_thumb:
+            if not new_thumb.startswith(("http://", "https://", "TG_ID:")):
+                new_thumb = f"TG_ID:{new_thumb}"
+            update_data["thumb_url"] = new_thumb
+
+        if not update_data:
+            return web.json_response({"error": "Nothing to update! Provide name or thumbnail."}, status=400)
+
+        # डेटाबेस में अपडेट करें
         res = await COLLECTIONS[col].update_one(
             {"$or": [{"_id": fid}, {"file_id": fid}, {"file_ref": fid}]}, 
-            {"$set": {"file_name": new_name}}
+            {"$set": update_data}
         )
-        print(f"📝 [NAME UPDATE] Updated file name to: {new_name} for ID: {fid}", flush=True)
+        
+        # ─────────────────────────────────────────────
+        # ⚡ 3. कैशे क्लियरिंग (Cache Busting Fix)
+        # ─────────────────────────────────────────────
+        if res.modified_count:
+            # मुख्य फ़ाइल आईडी का कैशे हटाएं
+            thumb_cache.pop(fid, None)
+            
+            # सुरक्षित रहने के लिए डॉक्यूमेंट से संबंधित अन्य क्रॉस-रेफरेंस IDs का भी कैशे डिलीट करें
+            doc = await COLLECTIONS[col].find_one({"_id": fid})
+            if doc:
+                old_ref = doc.get("file_ref")
+                old_id = doc.get("file_id")
+                if old_ref: thumb_cache.pop(old_ref, None)
+                if old_id: thumb_cache.pop(old_id, None)
+                
+            logger.info(f"♻️ Cache memory fully buster/cleared for updated file: {fid}")
+            
         return web.json_response({"success": bool(res.modified_count)})
     except Exception as e: return web.json_response({"error": str(e)}, status=500)
-
-# 📥 NATIVE THUMBNAIL UPLOAD & CACHE BUSTER API
-@search_routes.post("/api/upload_thumb")
-async def api_upload_thumb(req):
-    role, _ = await get_user_role(req)
-    if role != "admin": 
-        return web.json_response({"error": "Admin only!"}, status=403)
-        
-    try:
-        reader = await req.multipart()
-        file_id_field = None
-        collection_field = None
-        image_bytes = None
-        
-        while True:
-            part = await reader.next()
-            if part is None: break
-            if part.name == 'file_id':
-                file_id_field = (await part.read()).decode().strip()
-            elif part.name == 'collection':
-                collection_field = (await part.read()).decode().strip().lower()
-            elif part.name == 'image':
-                image_bytes = await part.read()
-
-        if not file_id_field or not collection_field or not image_bytes:
-            return web.json_response({"error": "Missing required fields!"}, status=400)
-        if collection_field not in COLLECTIONS:
-            return web.json_response({"error": "Invalid collection!"}, status=400)
-
-        # ⚡ [RAM CACHE CLEANING] - पुराना थंबनेल रैम कैशे से तुरंत बाहर फेंकें
-        from web.search_api import thumb_cache
-        thumb_cache.pop(file_id_field, None)
-        
-        doc = await COLLECTIONS[collection_field].find_one({"_id": file_id_field})
-        if doc:
-            if doc.get("file_ref"): thumb_cache.pop(doc["file_ref"], None)
-            if doc.get("file_id"): thumb_cache.pop(doc["file_id"], None)
-
-        # 🚀 टेलीग्राम के BIN_CHANNEL में नई फ़ोटो सेंड करें
-        logger.info(f"📤 [TG UPLOAD] Uploading latest poster bytes to BIN_CHANNEL for ID: {file_id_field}")
-        import io
-        img_buffer = io.BytesIO(image_bytes)
-        img_buffer.name = "poster.jpg"
-        
-        msg = await temp.BOT.send_photo(chat_id=BIN_CHANNEL, photo=img_buffer)
-        if not msg or not msg.photo:
-            return web.json_response({"error": "Telegram failed to generate Photo ID!"}, status=500)
-            
-        # ✅ FIX ACTIVE: Hydrogram में फोटो ऑब्जेक्ट से सबसे बड़े साइज का file_id निकालने का सही तरीका
-        try:
-            if hasattr(msg.photo, "sizes") and msg.photo.sizes:
-                new_thumb_id = msg.photo.sizes[-1].file_id
-            else:
-                new_thumb_id = msg.photo.file_id
-        except Exception as py_err:
-            logger.error(f"Fallback to direct file_id due to: {py_err}")
-            new_thumb_id = msg.photo.file_id
-            
-        db_save_value = f"TG_ID:{new_thumb_id}"
-        
-        # 💾 [DB OVERRIDE] मोंगोडीबी में पुराने थंबनेल को हटाकर नया TG_ID लॉक करें
-        await COLLECTIONS[collection_field].update_one(
-            {"$or": [{"_id": file_id_field}, {"file_id": file_id_field}, {"file_ref": file_id_field}]},
-            {"$set": {"thumb_url": db_save_value}}
-        )
-        
-        print(f"💾 [NATIVE SAVE] Successfully cleared old cache & locked new TG_ID in DB for: {file_id_field}", flush=True)
-        asyncio.create_task(msg.delete())
-        
-        return web.json_response({"success": True})
-        
-    except Exception as e:
-        logger.error(f"❌ Upload thumb endpoint crash: {e}")
-        return web.json_response({"error": str(e)}, status=500)
 
 @search_routes.get("/miniapp")
 async def miniapp_page(req):
