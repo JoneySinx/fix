@@ -62,7 +62,7 @@ async def get_spell_suggestion(query):
     return None
 
 # ─────────────────────────────────────────────
-# 🎨 UI HELPER FUNCTION (Locked to 12 Results via MAX_BOT_RESULTS)
+# 🎨 UI HELPER FUNCTION (Minimalist Layout Lock)
 # ─────────────────────────────────────────────
 def get_filter_ui(search, files, total, act_src, offset, chat_id, req_id, key, next_off, simple_mode=True):
     list_items = [
@@ -80,6 +80,7 @@ def get_filter_ui(search, files, total, act_src, offset, chat_id, req_id, key, n
     btn = []
     act_src_short = SRC_TO_SHORT.get(act_src, "pri")
 
+    # नेविगेशन बटन्स (Prev/Next) की लिस्ट तैयार करना
     nav = []
     prev_off = int(offset) - MAX_BOT_RESULTS
     if prev_off >= 0: 
@@ -91,17 +92,22 @@ def get_filter_ui(search, files, total, act_src, offset, chat_id, req_id, key, n
     if nav: 
         btn.append(nav)
 
+    # 🎯 आपके कड़े निर्देशानुसार कस्टमाइज्ड लेआउट इंजन लॉक:
     if not simple_mode:
+        # FULL MODE: इसमें सोर्स बटन्स और क्लोज बटन दोनों हमेशा दिखेंगे
         col_btn = []
         for c in ["primary", "cloud", "archive"]:
             tick = "✅" if c == act_src else "📂"
             col_btn.append(InlineKeyboardButton(f"{tick} {c.title()}", callback_data=f"coll_{req_id}_{key}_{SRC_TO_SHORT[c]}"))
         btn.append(col_btn)
-        btn.append([InlineKeyboardButton("❌ Close", callback_data=f"close_{req_id}")])
-    else:
         btn.append([InlineKeyboardButton("❌ Close Result", callback_data=f"close_{req_id}")])
+    else:
+        # SIMPLE MODE: क्लोज बटन को यहाँ से पूरी तरह डिलीट कर दिया गया है!
+        # अगर कुल रिजल्ट्स 12 या उससे कम होंगे, तो 'nav' खाली रहेगा और 'btn' भी खाली रहेगा।
+        # बोट बिना किसी बटन (No Buttons) का एकदम क्लीन और क्रिस्टल क्लियर टेक्स्ट मैसेज भेजेगा।
+        pass
     
-    return cap, InlineKeyboardMarkup(btn)
+    return cap, InlineKeyboardMarkup(btn) if btn else None
 
 # ─────────────────────────────────────────────
 # ⚙️ INLINE GROUP SETTINGS UI CENTER
@@ -251,9 +257,10 @@ async def auto_filter(client, msg, collection_type="all", settings=None):
     cap, markup = get_filter_ui(search, files, total, act_src, 0, msg.chat.id, msg.from_user.id, key, next_offset, is_simple_mode)
 
     try:
-        m = await msg.reply(cap, reply_markup=markup, disable_web_page_preview=True, quote=True)
+        # ✅ FIX: अगर सिंपल मोड में 12 से कम रिजल्ट हैं, तो markup की जगह None पास होगा जिससे टेलीग्राम बिना बटन का क्लीन मैसेज भेजेगा
+        await msg.reply(cap, reply_markup=markup, disable_web_page_preview=True, quote=True)
         if settings.get("auto_delete"):
-            await db.add_to_delete_queue(m.chat.id, m.id, DELETE_TIME)
+            await db.add_to_delete_queue(msg.chat.id, msg.id + 1, DELETE_TIME)
     except Exception as e: 
         logger.error(f"Auto filter response error: {e}")
 
@@ -345,22 +352,18 @@ async def pagination_handler(client, query):
     
     cap, markup = get_filter_ui(search, files, total, act_src, offset, query.message.chat.id, req, key, next_off, is_simple_mode)
 
-    # ⏰ १. पुराने लगे हुए टाइमर कतार (Delete Queue) को पहले डेटाबेस से साफ करो
     if settings.get("auto_delete"):
         await db.remove_from_delete_queue(query.message.chat.id, query.message.id)
 
     try: 
-        # २. टेलीग्राम पर नया पेज/रिज़ल्ट सफलतापूर्वक फ्लैश करें
         await query.message.edit_text(cap, reply_markup=markup, disable_web_page_preview=True)
         
-        # ✅ FIX: आपके कड़े निर्देशानुसार टेक्स्ट एडिट होने के तुरंत बाद नया ५ मिनट का फ्रेश कतार टाइमर अलॉट कर दिया गया है
         if settings.get("auto_delete"):
             await db.add_to_delete_queue(query.message.chat.id, query.message.id, DELETE_TIME)
     except Exception as e:
         logger.error(f"Pagination delivery failure: {e}")
-        # फॉलबैक सुरक्षा पास: यदि एडिट फेल हो जाए तो टाइमर को वापस कतार में लगा दो
         if settings.get("auto_delete"):
             await db.add_to_delete_queue(query.message.chat.id, query.message.id, DELETE_TIME)
         
     await query.answer()
-    gc.collect() # ओओएम कंटेनर सुरक्षा फ्लश
+    gc.collect()
