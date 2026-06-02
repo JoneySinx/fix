@@ -85,8 +85,10 @@ def get_filter_ui(search, files, total, act_src, offset, chat_id, req_id, key, n
     if next_off: 
         nav.append(InlineKeyboardButton("Next ▶️", callback_data=f"nav_{req_id}_{key}_{next_off}_{act_src_short}"))
     
-    if nav: btn.append(nav)
+    if nav: 
+        btn.append(nav)
 
+    # ✅ FIX: यदि सिंपल मोड बंद (False) है, केवल तभी सोर्स बटन्स और ❌ Close बटन नीचे जुड़ेंगे
     if not simple_mode:
         col_btn = []
         for c in ["primary", "cloud", "archive"]:
@@ -94,8 +96,8 @@ def get_filter_ui(search, files, total, act_src, offset, chat_id, req_id, key, n
             col_btn.append(InlineKeyboardButton(f"{tick} {c.title()}", callback_data=f"coll_{req_id}_{key}_{SRC_TO_SHORT[c]}"))
         btn.append(col_btn)
         
-    # ✅ ❌ Close बटन हमेशा बॉट के रिज़ल्ट लेआउट के नीचे एम्बेड रहेगा
-    btn.append([InlineKeyboardButton("❌ Close", callback_data=f"close_{req_id}")])
+        # ❌ Close बटन अब केवल फुल मोड (Full Mode) में ही दिखाई देगा
+        btn.append([InlineKeyboardButton("❌ Close", callback_data=f"close_{req_id}")])
     
     return cap, InlineKeyboardMarkup(btn)
 
@@ -209,15 +211,13 @@ async def auto_filter(client, msg, collection_type="all", settings=None):
 # ─────────────────────────────────────────────
 @Client.on_callback_query(filters.regex(r"^close_"))
 async def close_callback(client, query):
-    """✅ FIX: क्लोज बटन पर मुख्य रिज़ल्ट मैसेज और कतार नोटिस (1h Delete Notice) दोनों एक साथ साफ़ करें"""
+    """✅ क्लोज बटन पर मुख्य रिज़ल्ट मैसेज और कतार नोटिस (1h Delete Notice) दोनों एक साथ साफ़ करें"""
     try:
         chat_id = query.message.chat.id
         current_msg_id = query.message.id
         
-        # मुख्य मैसेज, उसका पिछला और अगला कतार नोटिस साफ करने के लिए पाइपलाइन कतार इंजेक्शन
         msg_ids_to_clean = [current_msg_id, current_msg_id - 1, current_msg_id + 1]
         
-        # कतार रिकॉर्ड्स को डेटाबेस से डिलीट करें ताकि बैकएंड इंजन उसे दुबारा साफ करने की कोशिश न करे
         for mid in msg_ids_to_clean:
             await db.remove_from_delete_queue(chat_id, mid)
             
