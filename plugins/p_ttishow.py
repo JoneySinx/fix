@@ -1,9 +1,14 @@
-import os, sys, random
+import os
+import sys
+import random
+import logging
 from hydrogram import Client, filters, enums
 from info import ADMINS, LOG_CHANNEL, PICS
 from database.users_chats_db import db
 from utils import temp
 from Script import script
+
+logger = logging.getLogger(__name__)
 
 # ======================================================
 # 👋 WELCOME MESSAGE & LOGGER
@@ -22,12 +27,13 @@ async def welcome(c, m):
                 await db.add_chat(m.chat.id, m.chat.title)
 
 # ======================================================
-# 🔄 RESTART, LEAVE & INVITE (Merged)
+# 🔄 RESTART, LEAVE & INVITE
 # ======================================================
 @Client.on_message(filters.command('restart') & filters.user(ADMINS))
 async def restart_bot(c, m):
     msg = await m.reply("🔄 Restarting...")
-    with open('restart.txt', 'w') as f: f.write(f"{m.chat.id} {msg.id}")
+    with open('restart.txt', 'w') as f: 
+        f.write(f"{m.chat.id} {msg.id}")
     os.execl(sys.executable, sys.executable, "bot.py")
 
 @Client.on_message(filters.command(['leave', 'invite_link']) & filters.user(ADMINS))
@@ -41,17 +47,20 @@ async def chat_actions(c, m):
         else:
             link = await c.create_chat_invite_link(cid)
             await m.reply(f"🔗 Invite Link: {link.invite_link}")
-    except Exception as e: await m.reply(f"❌ Error: {e}")
+    except Exception as e: 
+        await m.reply(f"❌ Error: {e}")
 
 # ======================================================
-# 🚫 BAN / UNBAN SYSTEM (Users & Groups Merged)
+# 🚫 BAN / UNBAN SYSTEM (Runtime List Protected)
 # ======================================================
 @Client.on_message(filters.command(['ban_grp', 'unban_grp', 'ban_user', 'unban_user']) & filters.user(ADMINS))
 async def ban_system(c, m):
     cmd = m.command[0]
     if len(m.command) < 2: return await m.reply(f'Usage: `/{cmd} id [reason]`')
-    try: tgt_id = int(m.command[1])
-    except: return await m.reply("❌ Invalid ID")
+    try: 
+        tgt_id = int(m.command[1])
+    except: 
+        return await m.reply("❌ Invalid ID")
     
     rsn = " ".join(m.command[2:]) or "Violation of Rules / Admin Action"
     
@@ -78,7 +87,7 @@ async def ban_system(c, m):
             except: pass
 
 # ======================================================
-# 📜 DATABASE EXPORT & STATS (Fixed & Optimized)
+# 📜 DATABASE EXPORT & STATS (Projection Enabled - RAM Safe)
 # ======================================================
 @Client.on_message(filters.command(['users', 'chats']) & filters.user(ADMINS))
 async def export_db(c, m):
@@ -87,17 +96,30 @@ async def export_db(c, m):
     
     msg = await m.reply(f'🔄 Generating {typ} List...')
     cnt = 0
-    with open(fn, 'w') as f:
-        # ✅ FIX: कर्सर को यहाँ सीधे कॉल किया गया है बिना await लगाए (चूंकि find synchronous है)
-        cursor = db.users.find({}) if is_user else db.groups.find({})
-        async for x in cursor:
-            f.write(f"ID: {x['id']} | Name/Title: {x.get('name' if is_user else 'title', 'N/A')}\n")
-            cnt += 1
-            
-    if cnt == 0:
-        if os.path.exists(fn): os.remove(fn)
-        return await msg.edit("📭 Database Empty.")
+    try:
+        with open(fn, 'w') as f:
+            if is_user:
+                # ✅ FIX: अनावश्यक भारी फील्ड्स लोड करने से बचने के लिए केवल 'id' और 'name' प्रोजेक्ट किया गया
+                cursor = db.users.find({}, {"id": 1, "name": 1})
+                async for x in cursor:
+                    f.write(f"ID: {x['id']} | Name: {x.get('name', 'N/A')}\n")
+                    cnt += 1
+            else:
+                # ✅ FIX: केवल 'id' और 'title' प्रोजेक्ट किया गया
+                cursor = db.groups.find({}, {"id": 1, "title": 1})
+                async for x in cursor:
+                    f.write(f"ID: {x['id']} | Title: {x.get('title', 'N/A')}\n")
+                    cnt += 1
+                
+        if cnt == 0:
+            if os.path.exists(fn): os.remove(fn)
+            return await msg.edit(f"📭 {typ} Database Empty.")
 
-    await m.reply_document(fn, caption=f"👥 Total {typ}s: {cnt}")
-    await msg.delete()
-    if os.path.exists(fn): os.remove(fn)
+        await m.reply_document(fn, caption=f"👥 Total {typ}s: {cnt}")
+        await msg.delete()
+    except Exception as e:
+        logger.error(f"Error exporting database: {e}")
+        await msg.edit(f"❌ Failed to generate list: {e}")
+    finally:
+        if os.path.exists(fn): 
+            os.remove(fn)
