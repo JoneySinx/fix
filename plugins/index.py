@@ -2,13 +2,14 @@ import re
 import time
 import asyncio
 import logging
+import gc
 from hydrogram import Client, filters, enums
 from hydrogram.errors import FloodWait
-from info import ADMINS
-# मुख्य सिंक इम्पोर्ट
+from info import ADMINS, LOG_CHANNEL
 from database.ia_filterdb import save_file
 from hydrogram.types import InlineKeyboardMarkup, InlineKeyboardButton
 from utils import temp, get_readable_time
+from Script import script
 
 logger = logging.getLogger(__name__)
 lock = asyncio.Lock()
@@ -19,7 +20,6 @@ async def index_files(bot, query):
     ident = data_parts[1]
     
     if ident == 'yes':
-        # कलेक्शन सिलेक्शन बटन दिखाएं
         chat = data_parts[2]
         lst_msg_id = data_parts[3]
         skip = data_parts[4]
@@ -46,7 +46,6 @@ async def index_files(bot, query):
         )
         
     elif ident == 'ask_skip':
-        # कस्टम स्किप सिलेक्शन
         chat = data_parts[2]
         lst_msg_id = data_parts[3]
         
@@ -55,7 +54,7 @@ async def index_files(bot, query):
         try:
             msg = await bot.listen(chat_id=query.message.chat.id, user_id=query.from_user.id, timeout=60)
             skip = int(msg.text)
-            await msg.delete() # यूज़र का मैसेज डिलीट करें
+            await msg.delete()
         except:
             return await query.message.edit("❌ Invalid number or Timeout. Try again.")
             
@@ -99,7 +98,6 @@ async def index_files(bot, query):
         await query.message.edit("Trying to cancel Indexing...")
 
 
-# जब कोई फॉरवर्डेड मैसेज या चैनल लिंक भेजा जाए
 @Client.on_message(filters.private & filters.user(ADMINS) & (filters.forwarded | filters.text))
 async def auto_index(bot, message):
     if message.text and not message.text.startswith("https://t.me"):
@@ -109,12 +107,10 @@ async def auto_index(bot, message):
     if lock.locked():
         return await message.reply('⏳ Wait until previous indexing process completes.')
     
-    # फॉरवर्डेड मैसेजेस को हैंडल करें
     if message.forward_from_chat and message.forward_from_chat.type == enums.ChatType.CHANNEL:
         last_msg_id = message.forward_from_message_id
         chat_id = message.forward_from_chat.username or message.forward_from_chat.id
     
-    # चैनल लिंक्स को हैंडल करें
     elif message.text and message.text.startswith("https://t.me"):
         try:
             msg_link = message.text.split("/")
@@ -157,7 +153,7 @@ async def auto_index(bot, message):
 
 async def index_files_to_db(lst_msg_id, chat, msg, bot, skip, collection_type="primary"):
     start_time = time.time()
-    last_update_time = time.time() # फ्लडवेट प्रोटेक्शन टाइमर ट्रैकर
+    last_update_time = time.time()
     
     total_files = 0
     duplicate = 0
@@ -168,6 +164,15 @@ async def index_files_to_db(lst_msg_id, chat, msg, bot, skip, collection_type="p
     badfiles = 0
     current = skip
     
+    # लॉगर इन्फो के लिए चैनल टाइटल निकालें
+    try:
+        chat_obj = await bot.get_chat(chat)
+        chat_title = chat_obj.title
+        chat_id_str = str(chat_obj.id)
+    except:
+        chat_title = "Unknown Channel"
+        chat_id_str = str(chat)
+
     async with lock:
         try:
             async for message in bot.iter_messages(chat, lst_msg_id, skip):
@@ -175,7 +180,7 @@ async def index_files_to_db(lst_msg_id, chat, msg, bot, skip, collection_type="p
                 
                 if temp.CANCEL:
                     temp.CANCEL = False
-                    await msg.edit(
+                    status_cap = (
                         f"<b>✅ Successfully Cancelled!</b>\n"
                         f"📚 Collection: <code>{collection_type.upper()}</code>\n"
                         f"⏱ Completed in: <code>{time_taken}</code>\n\n"
@@ -187,11 +192,21 @@ async def index_files_to_db(lst_msg_id, chat, msg, bot, skip, collection_type="p
                         f"❗ Errors: <code>{errors}</code>\n"
                         f"🚫 Bad Files: <code>{badfiles}</code>"
                     )
+                    await msg.edit(status_cap)
+                    
+                    # ✅ FIX: कैंसिल होने पर भी LOG_CHANNEL में पूरी रिपोर्ट पुश करें
+                    if LOG_CHANNEL:
+                        try:
+                            await bot.send_message(
+                                LOG_CHANNEL,
+                                script.LOG_INDEX_TXT.format(chat_title, chat_id_str, collection_type.upper(), current, total_files, duplicate, unsupported, errors) + f"\n\n⚠️ <b>Status:</b> <code>Cancelled by Admin 🛑</code>"
+                            )
+                        except: pass
                     return
                 
                 current += 1
                 
-                # ✅ FIX: टेलीग्राम फ्लड प्रिवेंटर — हर 50 मैसेज + न्यूनतम 4 सेकंड का टाइम इंटरवल गैप अनिवार्य है
+                # टेलीग्राम फ्लड प्रिवेंटर — हर 50 मैसेज + न्यूनतम 4 सेकंड का टाइम इंटरवल गैप
                 if current % 50 == 0 and (time.time() - last_update_time > 4):
                     last_update_time = time.time()
                     btn = [[
@@ -216,6 +231,9 @@ async def index_files_to_db(lst_msg_id, chat, msg, bot, skip, collection_type="p
                         await asyncio.sleep(e.value)
                     except Exception:
                         pass
+                    
+                    # कोएब रैम कैशे क्लीनअप सिंक
+                    gc.collect()
                 
                 if message.empty:
                     deleted += 1
@@ -232,21 +250,18 @@ async def index_files_to_db(lst_msg_id, chat, msg, bot, skip, collection_type="p
                     unsupported += 1
                     continue
                 
-                # फाइल साइज चेक करें - 2 MB से छोटी फाइलों को स्किप करें
                 file_size = getattr(media, 'file_size', 0)
-                if file_size < 2097152:  # बाइट्स में 2 MB
+                if file_size < 2097152:  
                     badfiles += 1
                     continue
                 
                 media.caption = message.caption
-                # नाम को साफ़ और स्वच्छ करना (Safe Name Cleaning)
                 try:
                     if getattr(media, 'file_name', None):
                         media.file_name = re.sub(r"@\w+|(_|\-|\.|\+)", " ", str(media.file_name)).strip()
                 except:
                     pass
                 
-                # सिलेक्टेड कलेक्शन में सेव करें
                 sts = await save_file(media, collection_type=collection_type)
                 
                 if sts == 'suc':
@@ -273,3 +288,24 @@ async def index_files_to_db(lst_msg_id, chat, msg, bot, skip, collection_type="p
                 f'❗ Errors: <code>{errors}</code>\n'
                 f'🚫 Bad Files: <code>{badfiles}</code>'
             )
+            
+            # 📢 ✅ FIX: इंडेक्सिंग सफलतापूर्वक ख़त्म होते ही LOG_CHANNEL में सुपर रिपोर्ट भेजें
+            if LOG_CHANNEL:
+                try:
+                    await bot.send_message(
+                        LOG_CHANNEL,
+                        script.LOG_INDEX_TXT.format(
+                            chat_title, 
+                            chat_id_str, 
+                            collection_type.upper(), 
+                            current, 
+                            total_files, 
+                            duplicate, 
+                            unsupported, 
+                            errors
+                        )
+                    )
+                except Exception as log_err:
+                    logger.error(f"Failed to send indexing log to LOG_CHANNEL: {log_err}")
+        finally:
+            gc.collect() # अंतिम इन-मेमोरी क्लीनअप पैश ताकि कोएब रैम खाली रहे
