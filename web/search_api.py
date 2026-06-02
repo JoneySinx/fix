@@ -1,19 +1,21 @@
 from aiohttp import web
 import time, re, asyncio, os, json, hmac, hashlib, urllib.parse, aiohttp, logging
+import io
 from utils import temp, get_size, is_rate_limited, is_premium
 from info import BIN_CHANNEL, ADMINS, BOT_TOKEN
 from database.ia_filterdb import COLLECTIONS
+from database.users_chats_db import db
 
 logger = logging.getLogger(__name__)
 
 search_routes = web.RouteTableDef()
 
 # ─────────────────────────────────────────────
-# 📸 THUMBNAIL CONCURRENCY & CACHE
+# 📸 THUMBNAIL CONCURRENCY & CACHE (Koyeb Optimized)
 # ─────────────────────────────────────────────
-MAX_CACHE = 500
+MAX_CACHE = 400             # ✅ FIX: कोएब के सीमित रैम एनवायरनमेंट के अनुसार ऑप्टिमाइज़्ड
 thumb_cache = {}
-thumb_semaphore = asyncio.Semaphore(1) 
+thumb_semaphore = asyncio.Semaphore(5) # ✅ FIX: डेडलॉक से बचने के लिए सेमाफोर काउंट बढ़ाया गया
 
 # ─────────────────────────────────────────────
 # 🔒 STRICT SECURITY: Telegram initData HMAC Verification
@@ -97,7 +99,8 @@ async def api_search(req):
             remaining_skip -= count
             continue
         local_limit = lim - len(all_m)
-        docs = await c.find(col_filters[n]).sort("_id", -1).skip(remaining_skip).limit(local_limit).to_list(length=local_limit)
+        # ✅ FIX: अनावश्यक भारी डेटा लोडिंग कर्सर को रोकने के लिए प्रोजेक्शन जोड़ा गया
+        docs = await c.find(col_filters[n], {"_id": 1, "file_name": 1, "file_size": 1, "file_type": 1, "file_ref": 1, "thumb_url": 1}).sort("_id", -1).skip(remaining_skip).limit(local_limit).to_list(length=local_limit)
         for d in docs: d["source_col"] = n.lower()
         all_m.extend(docs)
         remaining_skip = 0
@@ -106,11 +109,7 @@ async def api_search(req):
         fid = d.get("file_ref", d.get("file_id"))
         db_id = d.get("_id")
         file_name = d.get("file_name", "Unknown File")
-        db_thumb = d.get("thumb_url")
         
-        if db_thumb and ("default-movie" in db_thumb or "placehold" in db_thumb or "ibb.co" in db_thumb):
-            db_thumb = None
-
         tg_thumb = f"/api/thumb?file_id={db_id}"
         
         return {
@@ -135,7 +134,7 @@ async def api_search(req):
     })
 
 # ─────────────────────────────────────────────
-# 📸 THUMBNAIL API (Fixed Busy/Retry Bug)
+# 📸 THUMBNAIL API (RAM Leak Proofed)
 # ─────────────────────────────────────────────
 @search_routes.get("/api/thumb")
 async def get_telegram_thumb(req):
@@ -156,13 +155,17 @@ async def get_telegram_thumb(req):
         return web.Response(body=thumb_cache[fid], content_type="image/jpeg", headers=headers)
 
     async with thumb_semaphore:
+        # डबल चेकिंग लॉजिक
+        if len(thumb_cache) >= MAX_CACHE:
+            thumb_cache.clear() # ✅ FIX: कोएब रैम क्रैश (OOM) से बचने के लिए एग्रेसिव वाइपआउट
+
         if fid in thumb_cache:
             if thumb_cache[fid] == "NO_THUMB": return web.Response(status=404)
             return web.Response(body=thumb_cache[fid], content_type="image/jpeg", headers=headers)
 
         saved_thumb_id = None
         for col_name, col in COLLECTIONS.items():
-            existing = await col.find_one({"$or": [{"_id": fid}, {"file_ref": fid}, {"file_id": fid}]})
+            existing = await col.find_one({"$or": [{"_id": fid}, {"file_ref": fid}, {"file_id": fid}]}, {"thumb_url": 1})
             if existing and existing.get("thumb_url") and existing.get("thumb_url").startswith("TG_ID:"):
                 saved_thumb_id = existing.get("thumb_url").replace("TG_ID:", "")
                 break
@@ -173,9 +176,6 @@ async def get_telegram_thumb(req):
                 file_data = await temp.BOT.download_media(saved_thumb_id, in_memory=True)
                 if file_data:
                     thumb_bytes = file_data.getvalue()
-                    if len(thumb_cache) >= MAX_CACHE:
-                        oldest_key = next(iter(thumb_cache))
-                        thumb_cache.pop(oldest_key, None)
                     thumb_cache[fid] = thumb_bytes
                     return web.Response(body=thumb_bytes, content_type="image/jpeg", headers=headers)
             except Exception as e:
@@ -199,21 +199,19 @@ async def get_telegram_thumb(req):
                     thumb_cache[fid] = thumb_bytes
                     
                     db_save_value = f"TG_ID:{thumb_id}"
-                    updated_count = 0
                     for col_name, col in COLLECTIONS.items():
-                        res = await col.update_many(
+                        await col.update_many(
                             {"$or": [{"_id": fid}, {"file_ref": fid}, {"file_id": fid}]},
                             {"$set": {"thumb_url": db_save_value}}
                         )
-                        updated_count += res.modified_count
                     
-                    logger.info(f"💾 [NATIVE SAVE] Successfully locked in DB documents ({updated_count}) for File ID: {fid}")
-                    asyncio.create_task(msg.delete())
+                    # ✅ NEW: पुराना इन-मेमोरी डिलीट हटाकर कतार को मोंगोडीबी ऑटो-डिलीट कतार में सुरक्षित डाला
+                    await db.add_to_delete_queue(BIN_CHANNEL, msg.id, 5)
                     return web.Response(body=thumb_bytes, content_type="image/jpeg", headers=headers)
                 else:
                     logger.warning(f"🚫 [NO THUMB] No embedded thumb: {fid}")
                     thumb_cache[fid] = "NO_THUMB"
-                    asyncio.create_task(msg.delete())
+                    await db.add_to_delete_queue(BIN_CHANNEL, msg.id, 5)
                     return web.Response(status=404)
 
             except Exception as e:
@@ -230,13 +228,8 @@ async def get_telegram_thumb(req):
         
         return web.Response(status=429)
 
-async def _auto_del_msg(msg, delay):
-    await asyncio.sleep(delay)
-    try: await msg.delete()
-    except: pass
-
 # ─────────────────────────────────────────────
-# 🎥 STREAM SETUP SYSTEM (Supports GET & POST)
+# 🎥 STREAM SETUP SYSTEM (Persistent Delete Queues Enabled)
 # ─────────────────────────────────────────────
 @search_routes.get("/setup_stream")
 async def setup_stream(req):
@@ -247,7 +240,8 @@ async def setup_stream(req):
     if not fid: return web.Response(text="❌ Missing file_id!", status=400)
     try:
         msg = await temp.BOT.send_cached_media(chat_id=BIN_CHANNEL, file_id=fid)
-        asyncio.create_task(_auto_del_msg(msg, 3600))
+        # ✅ NEW: रैम टाइमर हटाकर संदेश को मोंगोडीबी ऑटो-डिलीट कतार में 1 घंटे (3600s) के लिए डाला
+        await db.add_to_delete_queue(BIN_CHANNEL, msg.id, 3600)
         return web.HTTPFound(f"/{'download' if mode == 'download' else 'watch'}/{msg.id}")
     except Exception as e: return web.Response(text=f"❌ Error: {e}", status=500)
 
@@ -266,7 +260,7 @@ async def setup_stream_post(req):
     if not fid: return web.json_response({"error": "Missing file_id!"}, status=400)
     try:
         msg = await temp.BOT.send_cached_media(chat_id=BIN_CHANNEL, file_id=fid)
-        asyncio.create_task(_auto_del_msg(msg, 3600))
+        await db.add_to_delete_queue(BIN_CHANNEL, msg.id, 3600)
         return web.json_response({"url": f"/{'download' if mode == 'download' else 'watch'}/{msg.id}"})
     except Exception as e: return web.json_response({"error": str(e)}, status=500)
 
@@ -287,7 +281,6 @@ async def api_delete(req):
         return web.json_response({"success": bool(res.deleted_count)})
     except Exception as e: return web.json_response({"error": str(e)}, status=500)
 
-# 📝 ONLY FILE NAME EDIT API
 @search_routes.post("/api/edit_name")
 async def api_edit_name(req):
     role, _ = await get_user_role(req)
@@ -305,7 +298,6 @@ async def api_edit_name(req):
             {"$or": [{"_id": fid}, {"file_id": fid}, {"file_ref": fid}]}, 
             {"$set": {"file_name": new_name}}
         )
-        print(f"📝 [NAME UPDATE] Updated file name to: {new_name} for ID: {fid}", flush=True)
         return web.json_response({"success": bool(res.modified_count)})
     except Exception as e: return web.json_response({"error": str(e)}, status=500)
 
@@ -337,18 +329,13 @@ async def api_upload_thumb(req):
         if collection_field not in COLLECTIONS:
             return web.json_response({"error": "Invalid collection!"}, status=400)
 
-        # ⚡ [RAM CACHE CLEANING] - पुराना थंबनेल रैम कैशे से तुरंत बाहर फेंकें
-        from web.search_api import thumb_cache
+        # ⚡ [RAM CACHE CLEANING]
         thumb_cache.pop(file_id_field, None)
-        
-        doc = await COLLECTIONS[collection_field].find_one({"_id": file_id_field})
+        doc = await COLLECTIONS[collection_field].find_one({"_id": file_id_field}, {"file_ref": 1, "file_id": 1})
         if doc:
             if doc.get("file_ref"): thumb_cache.pop(doc["file_ref"], None)
             if doc.get("file_id"): thumb_cache.pop(doc["file_id"], None)
 
-        # 🚀 टेलीग्राम के BIN_CHANNEL में नई फ़ोटो सेंड करें
-        logger.info(f"📤 [TG UPLOAD] Uploading latest poster bytes to BIN_CHANNEL for ID: {file_id_field}")
-        import io
         img_buffer = io.BytesIO(image_bytes)
         img_buffer.name = "poster.jpg"
         
@@ -356,7 +343,7 @@ async def api_upload_thumb(req):
         if not msg or not msg.photo:
             return web.json_response({"error": "Telegram failed to generate Photo ID!"}, status=500)
             
-        # ✅ FIX ACTIVE: Hydrogram में फोटो ऑब्जेक्ट से सबसे बड़े साइज का file_id निकालने का सही तरीका
+        # ✅ FIX: Hydrogram / Pyrogram में फ़ोटो के सबसे बड़े आकार से फ़ाइल आईडी सुरक्षित रूप से निकालना
         try:
             if hasattr(msg.photo, "sizes") and msg.photo.sizes:
                 new_thumb_id = msg.photo.sizes[-1].file_id
@@ -368,15 +355,12 @@ async def api_upload_thumb(req):
             
         db_save_value = f"TG_ID:{new_thumb_id}"
         
-        # 💾 [DB OVERRIDE] मोंगोडीबी में पुराने थंबनेल को हटाकर नया TG_ID लॉक करें
         await COLLECTIONS[collection_field].update_one(
             {"$or": [{"_id": file_id_field}, {"file_id": file_id_field}, {"file_ref": file_id_field}]},
             {"$set": {"thumb_url": db_save_value}}
         )
         
-        print(f"💾 [NATIVE SAVE] Successfully cleared old cache & locked new TG_ID in DB for: {file_id_field}", flush=True)
-        asyncio.create_task(msg.delete())
-        
+        await db.add_to_delete_queue(BIN_CHANNEL, msg.id, 5)
         return web.json_response({"success": True})
         
     except Exception as e:
