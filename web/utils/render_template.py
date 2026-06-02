@@ -1,16 +1,19 @@
-import urllib.parse, html, logging
+import urllib.parse
+import html
+import logging
+import gc # रैम को फ़ोर्स क्लीन रखने के लिए गारबेज कलेक्टर सिंक
 from info import BIN_CHANNEL, URL
 from utils import temp
 
 logger = logging.getLogger(__name__)
 
-# ─────────────────────────────────────────────
-# 🎬 FAST FINDER OPTIMIZED STREAM TEMPLATE (KeyError Fixed)
-# ─────────────────────────────────────────────
+# ─────────────────────────────────────────────────────────
+# 🎬 FAST FINDER ULTRA-SMOOTH PLAYER TEMPLATE
+# ─────────────────────────────────────────────────────────
 watch_tmplt = """<!DOCTYPE html>
 <html lang="en">
 <head>
-<meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1.0"><title>{heading}</title>
+<meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1.0,maximum-scale=1.0,user-scalable=no"><title>{heading}</title>
 <link href="https://fonts.googleapis.com/css2?family=DM+Sans:wght@400;500;700;900&display=swap" rel="stylesheet">
 <link rel="stylesheet" href="https://cdn.plyr.io/3.7.8/plyr.css"/>
 <style>
@@ -37,9 +40,9 @@ body{{background:linear-gradient(to bottom,var(--bg1),var(--bg2));font-family:'D
 .hero-container{{width:100%;max-width:1350px;margin:auto;padding:110px 20px 40px;}}
 .player-box{{width:100%;border-radius:12px;background:var(--box);border:1px solid var(--box-bd);position:relative;box-shadow:0 0 20px rgba(255,0,0,.1),0 20px 60px rgba(0,0,0,.5);overflow:hidden;transition:background .3s,border-color .3s;}}
 video{{width:100%;height:auto;display:block;}}
-.skip-zone{{position:absolute;top:0;bottom:25%;width:40%;z-index:20;display:flex;align-items:center;justify-content:center;cursor:pointer;-webkit-tap-highlight-color:transparent;touch-action:manipulation;}}
+.skip-zone{{position:absolute;top:0;bottom:15%;width:40%;z-index:20;display:flex;align-items:center;justify-content:center;cursor:pointer;-webkit-tap-highlight-color:transparent;touch-action:manipulation;}}
 .skip-zone.left{{left:0;}} .skip-zone.right{{right:0;}}
-.skip-ripple{{position:absolute;inset:0;background:rgba(255,255,255,.12);opacity:0;transition:opacity .3s;display:flex;flex-direction:column;align-items:center;justify-content:center;pointer-events:none;}}
+.skip-ripple{{position:absolute;inset:0;background:rgba(255,255,255,.12);opacity:0;transition:opacity .3s;display:flex;flex-direction:column;align-items:center;justify-content:center;pointer-events:none;backdrop-filter:blur(2px);}}
 html.light .skip-ripple{{background:rgba(0,0,0,.1);}}
 .skip-zone.left .skip-ripple{{border-radius:0 50% 50% 0/0 100% 100% 0;transform-origin:left center;}}
 .skip-zone.right .skip-ripple{{border-radius:50% 0 0 50%/100% 0 0 100%;transform-origin:right center;}}
@@ -56,7 +59,6 @@ html.light .skip-ripple{{background:rgba(0,0,0,.1);}}
 .plyr__control--overlaid,.plyr__control:hover{{background:rgba(229,9,20,.9)!important;}} .plyr__controls{{z-index:30!important;}}
 #toast{{visibility:hidden;min-width:220px;background:var(--red);color:#fff;text-align:center;border-radius:6px;padding:15px;position:fixed;right:30px;bottom:30px;z-index:9999;font-weight:700;box-shadow:0 10px 30px rgba(0,0,0,.45);}}
 #toast.show{{visibility:visible;animation:fi .4s,fo .4s 2.6s;}}
-@keyframes fi{{from{{opacity:0;bottom:0;}}to{{opacity:1;bottom:30px;}}}} @keyframes fo{{from{{opacity:1;bottom:30px;}}to{{opacity:0;bottom:0;}}}}
 @media(max-width:768px){{.hero-container{{padding-top:95px;}} .logo{{font-size:20px;}} .nf-icon{{font-size:20px;padding:2px 6px;}} .title{{font-size:1.3rem;}} .controls-row{{flex-direction:column;}} .btn{{width:100%;justify-content:center;}}}}
 </style>
 </head>
@@ -85,6 +87,7 @@ themeBtn.addEventListener('click',()=>{{
 
 const player=new Plyr('#player',{{controls:['play-large','play','progress','current-time','mute','settings','pip','fullscreen'],settings:['quality','speed'],autoplay:!1,doubleClick:{{togglesFullscreen:!1}}}});
 
+// 🔄 नेटिव लैंडस्केप ओरिएंटेशन लॉक सिंक
 player.on('enterfullscreen', ()=>{{
     if(screen.orientation && screen.orientation.lock) {{
         screen.orientation.lock('landscape').catch(e => console.log(e));
@@ -112,7 +115,8 @@ player.on('ready',()=>{{
         if(tc===1){{
             tmr=setTimeout(()=>{{tc=0; cur=null;}},250);
         }}else{{
-            let t=tc*5; z.querySelector('.skip-text').innerText=t+'s';
+            // ✅ FIX: ओरिजिनल यूट्यूब/नेटफ्लिक्स प्रोग्रेसिव स्किप एल्गोरिदम (Perfect Sync: 10s, 20s, 30s)
+            let t=(tc-1)*10; z.querySelector('.skip-text').innerText=t+'s';
             z.classList.remove('active'); void z.offsetWidth; z.classList.add('active');
             tmr=setTimeout(()=>{{player.currentTime+=side==='l'?-t:t; z.classList.remove('active'); tc=0; cur=null;}},600);
         }}
@@ -125,9 +129,9 @@ function copyLink(){{navigator.clipboard.writeText("{src}"); let t=document.getE
 </script>
 </body></html>"""
 
-# ─────────────────────────────────────────────
-# 🎬 MEDIA WATCH FUNCTION
-# ─────────────────────────────────────────────
+# ─────────────────────────────────────────────────────────
+# 🎬 MEDIA WATCH CORE ROUTE (RAM Protected)
+# ─────────────────────────────────────────────────────────
 async def media_watch(message_id):
     try:
         msg = await temp.BOT.get_messages(BIN_CHANNEL, message_id)
@@ -141,11 +145,20 @@ async def media_watch(message_id):
 
         if mime.split('/')[0].strip() == 'video':
             fn = html.escape(getattr(media, 'file_name', "Fast Finder Movie"))
-            return watch_tmplt.format(heading=f"Watch {fn}", file_name=fn, src=src, mime_type=mime)
+            
+            # इन-मेमोरी कचरा बफर रोकने के लिए वेरिएबल्स को सेफली डिलीट कर रैम खाली करें
+            html_content = watch_tmplt.format(heading=f"Watch {fn}", file_name=fn, src=src, mime_type=mime)
+            del msg, media
+            gc.collect()
+            
+            return html_content
         
-        # ✅ FIX: CSS और HTML एस्केप को और सुरक्षित किया ताकि रेंडरिंग एरर न आए
-        return f'<body style="background:#000;color:#fff;display:flex;align-items:center;justify-content:center;height:100vh;font-family:\'DM Sans\',sans-serif;"><div style="text-align:center;background:#141414;padding:40px;border-radius:12px;border:1px solid rgba(255,255,255,.08);"><h2>⚠️ Unsupported File</h2><br><a href="{src}" style="background:#e50914;color:#fff;padding:12px 24px;border-radius:6px;text-decoration:none;font-weight:bold;">Download Direct</a></div></body>'
+        # अनसपोर्टेड फाइल्स के लिए सेफ फॉलबैक इंटरफेस
+        del msg, media
+        gc.collect()
+        return f'<body style="background:#000;color:#fff;display:flex;align-items:center;justify-content:center;height:100vh;font-family:\'DM Sans\',sans-serif;"><div style="text-align:center;background:#141414;padding:40px;border-radius:12px;border:1px solid rgba(255,255,255,.08);"><h2>⚠️ Unsupported File Format</h2><br><p style="color:#808080;font-size:14px;">This file type cannot be streamed online inside the browser.</p><br><br><a href="{src}" style="background:#e50914;color:#fff;padding:12px 24px;border-radius:6px;text-decoration:none;font-weight:bold;box-shadow:0 0 15px rgba(229,9,20,.4);">Download Direct</a></div></body>'
 
     except Exception as e:
         logger.error(f"Watch Error: {e}")
+        gc.collect()
         return f"<h2 style='color:red;text-align:center;'>Server Error: {e}</h2>"
