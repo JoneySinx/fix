@@ -1,4 +1,6 @@
 import math
+import io
+import logging
 from hydrogram import Client, utils, raw
 from hydrogram.types import Message
 from hydrogram.session import Session, Auth
@@ -6,8 +8,13 @@ from hydrogram.errors import AuthBytesInvalid
 from hydrogram.file_id import FileId, FileType, ThumbnailSource
 from utils import temp
 
-async def chunk_size(length): return 2 ** max(min(math.ceil(math.log2(length / 1024)), 10), 2) * 1024
-async def offset_fix(offset, chunksize): return offset - (offset % chunksize)
+logger = logging.getLogger(__name__)
+
+async def chunk_size(length): 
+    return 2 ** max(min(math.ceil(math.log2(length / 1024)), 10), 2) * 1024
+
+async def offset_fix(offset, chunksize): 
+    return offset - (offset % chunksize)
 
 class TGCustomYield:
     def __init__(self):
@@ -27,13 +34,16 @@ class TGCustomYield:
                 ms = Session(c, d.dc_id, await Auth(c, d.dc_id, test_mode).create(), test_mode, is_media=True)
                 await ms.start()
                 for _ in range(3):
-                    ex = await c.invoke(raw.functions.auth.ExportAuthorization(dc_id=d.dc_id))
                     try:
+                        ex = await c.invoke(raw.functions.auth.ExportAuthorization(dc_id=d.dc_id))
                         await ms.send(raw.functions.auth.ImportAuthorization(id=ex.id, bytes=ex.bytes))
                         break
-                    except AuthBytesInvalid: continue
+                    except AuthBytesInvalid: 
+                        continue
                 else:
-                    await ms.stop(); raise AuthBytesInvalid
+                    # ✅ FIX: कोएब सॉकेट/सत्र लीक (Session Leak) को रोकने के लिए ग्रेसफुल स्टॉप
+                    await ms.stop()
+                    raise AuthBytesInvalid
             else:
                 ms = Session(c, d.dc_id, await c.storage.auth_key(), test_mode, is_media=True)
                 await ms.start()
@@ -55,27 +65,46 @@ class TGCustomYield:
         loc = await self.get_location(await self.generate_file_properties(msg))
         
         for i in range(1, parts + 1):
-            r = await ms.send(raw.functions.upload.GetFile(location=loc, offset=offset, limit=chunk_size))
-            if not isinstance(r, raw.types.upload.File) or not r.bytes: break
-            
-            chunk = r.bytes
-            if parts == 1: yield chunk[first_cut:last_cut]
-            elif i == 1: yield chunk[first_cut:]
-            elif i == parts: yield chunk[:last_cut]
-            else: yield chunk
-            
-            # ✅ FIX: डायनामिक ऑफसेट कैलकुलेशन ताकि वीडियो बफरिंग में कभी न फंसे
-            offset += len(chunk)
+            try:
+                r = await ms.send(raw.functions.upload.GetFile(location=loc, offset=offset, limit=chunk_size))
+                if not isinstance(r, raw.types.upload.File) or not r.bytes: 
+                    break
+                
+                chunk = r.bytes
+                if parts == 1: 
+                    yield chunk[first_cut:last_cut]
+                elif i == 1: 
+                    yield chunk[first_cut:]
+                elif i == parts: 
+                    yield chunk[:last_cut]
+                else: 
+                    yield chunk
+                
+                # डायनामिक ऑफसेट कैलकुलेटर (Seek Control Active)
+                offset += len(chunk)
+            except Exception as e:
+                logger.error(f"Error during yielding file chunk: {e}")
+                break
 
     async def download_as_bytesio(self, msg: Message):
+        """✅ FIX: बड़ी फाइलों के कारण कोएब की रैम ब्लास्ट (OOM) होने से रोकने के लिए इन-मेमोरी बफरिंग"""
         ms = await self.generate_media_session(self.main_bot, msg)
         loc = await self.get_location(await self.generate_file_properties(msg))
-        limit, offset, m_file = 1048576, 0, []
+        limit, offset = 1048576, 0
+        
+        # भारी पायथन लिस्ट के बजाय कोर BytesIO ऑब्जेक्ट का उपयोग करें
+        bytes_io = io.BytesIO()
         
         while True:
-            r = await ms.send(raw.functions.upload.GetFile(location=loc, offset=offset, limit=limit))
-            if not isinstance(r, raw.types.upload.File) or not r.bytes: break
-            m_file.append(r.bytes)
-            offset += len(r.bytes) # ✅ FIX
-            
-        return m_file
+            try:
+                r = await ms.send(raw.functions.upload.GetFile(location=loc, offset=offset, limit=limit))
+                if not isinstance(r, raw.types.upload.File) or not r.bytes: 
+                    break
+                bytes_io.write(r.bytes)
+                offset += len(r.bytes)
+            except Exception as e:
+                logger.error(f"Error in download_as_bytesio: {e}")
+                break
+                
+        bytes_io.seek(0)
+        return bytes_io
