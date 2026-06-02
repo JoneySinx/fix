@@ -1,6 +1,6 @@
 class script(object):
 
-    # 🍿 आपके लाइव फीचर्स के अनुसार पूरी तरह बदला गया स्टार्ट टेक्स्ट
+    # 🍿 आपके लाइव फीचर्स और प्रीमियम मॉडल के अनुसार स्टार्ट टेक्स्ट (DM locked logic ready)
     START_TXT = """<b>ʜᴇʏ {}, <i>{}</i>
     
 ɪ ᴀᴍ ᴀ ᴘᴏᴡᴇʀғᴜʟ & ꜱᴍᴀʀᴛ ᴀᴜᴛᴏ ғɪʟᴛᴇʀ ʙᴏᴛ! ɪ ᴄᴀɴ ᴘʀᴏᴠɪᴅᴇ ᴍᴏᴠɪᴇꜱ ᴀɴᴅ ꜱᴇʀɪᴇꜱ ᴡɪᴛʜ ᴅɪʀᴇᴄᴛ ꜱᴛʀᴇᴀᴍ & ᴅᴏᴡɴʟᴏᴀᴅ ʟɪɴᴋꜱ. 🚀
@@ -11,52 +11,48 @@ class script(object):
 • 🎬 ɪɴ-ʙᴜɪʟᴛ ᴘʟᴀʏᴇʀ ᴡɪᴛʜ 10ꜱ ᴅᴏᴜʙʟᴇ-ᴛᴀᴘ ꜱᴋɪᴘ
 • ⚡ ꜱᴜᴘᴇʀғᴀꜱᴛ ᴅɪʀᴇᴄᴛ ᴅᴏᴡɴʟᴏᴀᴅ ʟɪɴᴋꜱ
 • 🧠 ɢᴇᴍɪɴɪ 2.5 ғʟᴀsʜ ᴀɪ ᴄʜᴀᴛ ᴀssɪsᴛᴀɴᴛ
-• 🛡️ ᴀᴜᴛᴏ-ᴅᴇʟᴇᴛᴇ ᴛɪᴍᴇʀ ꜰᴏʀ ꜱᴛorage sᴀꜰᴇᴛʏ
+• 🛡️ ᴀᴜᴛᴏ-ᴅᴇʟᴇᴛᴇ ǫᴜᴇᴜᴇ (ʀᴇꜱᴛᴀʀᴛ-ᴘʀᴏᴏғ)
 
-ᴊᴜꜱᴛ ᴀᴅᴅ ᴍᴇ ᴛᴏ ʏᴏᴜʀ ɢʀᴏᴜᴘ ᴀꜱ ᴀᴅᴍɪɴ ᴏʀ ᴛʏᴘᴇ ʏᴏᴜʀ ϙᴜᴇʀʏ ʜᴇʀᴇ ᴛᴏ sᴛᴀʀᴛ! ✨</b>"""
+✨ <i>ᴊᴏɪɴ ᴏᴜʀ ᴘʀᴇᴍɪᴜᴍ ꜰᴏʀ ᴀɴ ᴀᴅ-ꜰʀᴇᴇ ᴇxᴘᴇʀɪᴇɴᴄᴇ!</i></b>"""
 
-    STATUS_TXT = """📊 <b>Bot Statistics</b>
+    # ✅ FIX: एडमिन स्टैट्स में फाइलों के साथ-साथ किस स्टोरेज में कितने थंबनेल लॉक हैं, उसका लाइव मैट्रिक्स सिंक
+    STATUS_TXT = """📊 <b><u>FAST FINDER SYSTEM STATS</u></b>
 
 🦹 <b>Total Users:</b> <code>{}</code>
-👫 <b>Total Groups:</b> <code>{}</code>
-💰 <b>Premium Users:</b> <code>{}</code>
+👫 <b>Connected Groups:</b> <code>{}</code>
+💎 <b>Premium Members:</b> <code>{}</code>
 
-🗂️ <b>Total Files:</b> <code>{}</code>
- • ⚡ Primary: <code>{}</code>
- • ☁️ Cloud: <code>{}</code>
- • ♻️ Archive: <code>{}</code>
+🗂️ <b>Database Library:</b>
+» Total Titles Locked: <code>{}</code>
+» Primary Storage: <code>{}</code> (🖼️ Thumbs: <code>{}</code>)
+» Cloud Library: <code>{}</code>    (🖼️ Thumbs: <code>{}</code>)
+» Archive Backup: <code>{}</code>   (🖼️ Thumbs: <code>{}</code>)
 
-⏰ <b>Uptime:</b> <code>{}</code>"""
+🖼️ <b>Total Cached Thumbs:</b> <code>{}</code>
+⏰ <b>System Live Uptime:</b> <code>{}</code>"""
 
-    # ✅ सिर्फ प्रीमियम यूज़र्स के लिए लिमिटेड स्टेट्स
-    USER_STATUS_TXT = """📊 <b>Bot Statistics</b>
+    # ✅ सिर्फ प्रीमियम यूज़र्स के लिए ग्लोबल लाइब्रेरी स्टैट्स
+    USER_STATUS_TXT = """📊 <b><u>FAST FINDER GLOBAL DATABASE</u></b>
 
-🗂️ <b>Total Files:</b> <code>{}</code>
- • ⚡ Primary: <code>{}</code>
- • ☁️ Cloud: <code>{}</code>
- • ♻️ Archive: <code>{}</code>
+🗂️ <b>Available Library:</b>
+» Total Titles Locked: <code>{}</code>
+» Primary Storage: <code>{}</code>
+» Cloud Library: <code>{}</code>
+» Archive Backup: <code>{}</code>
 
-⏰ <b>Uptime:</b> <code>{}</code>"""
+⏰ <b>System Running Since:</b> <code>{}</code>"""
 
-    NEW_GROUP_TXT = """#NewGroup
-Title - {}
-ID - <code>{}</code>
-Username - {}
-Total - <code>{}</code>"""
+    NEW_GROUP_TXT = """<b>#NewGroup 👥\n\n• Title: {}\n• ID: <code>{}</code>\n• Username: {}\n• Total Members: <code>{}</code></b>"""
 
-    NEW_USER_TXT = """#NewUser
-★ Name: {}
-★ ID: <code>{}</code>"""
+    NEW_USER_TXT = """<b>#NewUser 👤\n\n• Name: {}\n• ID: <code>{}</code></b>"""
 
-    NOT_FILE_TXT = """👋 Hello {},
+    NOT_FILE_TXT = """<b>❌ ʜᴇʏ {}, "{}" ɪꜱ ɴᴏᴛ ꜰᴏᴜɴᴅ ɪɴ ᴍʏ ᴅᴀᴛᴀʙᴀꜱᴇ. 
 
-I can't find <b>{}</b> in my database! 🥲
+💡 <u>ᴘʟᴇᴀꜱᴇ ᴄʜᴇᴄᴋ:</u>
+» sᴘᴇʟʟɪɴɢ sʜᴏᴜʟᴅ ʙᴇ ᴄᴏʀʀᴇᴄᴛ (ᴄʜᴇᴄᴋ ɢᴏᴏɢʟᴇ)
+» sᴇᴀʀᴄʜ ᴡɪᴛʜ ᴍᴏᴠɪᴇ ɴᴀᴍᴇ ᴏɴʟʏ ( things like 4k, Bluray, Season, Year हटा दें)</b>"""
 
-👉 Google Search and check if your spelling is correct.
-👉 Please read the Instructions to get better results.
-👉 Or maybe it hasn't been released yet."""
-
-    # ✅ अब सिर्फ फाइल का नाम बोल्ड में दिखेगा
+    # ✅ सिर्फ फाइल का नाम बोल्ड में क्लीन दिखेगा (No unwanted parameters)
     FILE_CAPTION = """<b>{file_name}</b>"""
 
     WELCOME_TEXT = """👋 Hello {mention}, Welcome to {title} group! 💞"""
@@ -69,20 +65,23 @@ Just type the movie or series name in my PM, open our Mini App, or add me into y
 I have many more features for you.
 Please check the commands below 👇</b>"""
 
-    ADMIN_COMMAND_TXT = """<b>👮‍♂️ <u>Bot Admin Commands:</u> 👇
+    # ✅ ब्रॉडकास्ट हटाकर बिल्कुल साफ एडमिन लिस्ट और ग्रुप कंट्रोल्स का सिंक
+    ADMIN_COMMAND_TXT = """<b>👑 <u>Bot Admin Commands:</u> 👇
 
-• /stats - Get bot statistics (Users, Files, Uptime)
-• /delete - Delete specific files from DB
-• /delete_all - Clear an entire collection (Primary/Cloud/Archive)
-• /link - Generate direct stream/download links
-• /add_prm - Add premium days to a user (e.g. /add_prm id days)
-• /rm_prm - Remove premium access from a user
-• /prm_list - View list of all active premium users
+• /stats - View detailed database & user population statistics
+• /delete - Delete specific files from collections
+• /delete_all - Wipe out an entire storage collection
+• /add_prm - Grant premium access to a user manually
+• /rm_prm - Revoke premium status from a user
+• /prm_list - Export document list of all active premium users
 • /web_users - View list of users registered on Web Dashboard
+• /warmup_thumbs - Lock missing thumbnails into Database
+• /restart - Hard restart the bot application session
 
-🛠️ <u>Group Admin Commands:</u> 👇
+⚙️ <u>Group Management Guide:</u> 👇
 
 • /search on | off - Toggle Auto Filter on/off in group
+• /settings - Open Inline Button UI Center for Group Settings 
 • /button_style - Switch results between Simple and Full mode
 • /mute | /unmute - Restrict user from sending messages
 • /ban - Ban user permanently from group
@@ -92,7 +91,7 @@ Please check the commands below 👇</b>"""
 • /dlink | /removedlink - Manage timed auto-delete words
 • /dlinklist - View persistent auto-delete triggers</b>"""
     
-    # ✅ pre day को per day किया गया
+    # ✅ प्रीमियम प्लान की डिटेल्स (Price / Per Day fixed)
     PLAN_TXT = """💎 <b>Fast Finder Premium Plans</b> 💎
 
 Activate a premium plan to unlock exclusive, high-speed features!
@@ -113,5 +112,25 @@ Activate a premium plan to unlock exclusive, high-speed features!
 • /start - Check if bot is alive and open Main Menu
 • /plan - View premium membership plan details
 • /myplan - Check your remaining premium duration
-• /id - Extract User ID, Chat ID, and Telegram File ID
-• /ai | /ask - Conversational Gemini 2.5 Flash AI Assistant (with 10m memory)</b>"""
+• /id - Extract User ID, Chat ID, and message details
+• /fileid - Reply to media to extract its Telegram File ID
+• /ask or /ai - Chat with Gemini 2.5 Flash AI Assistant (10m Memory)</b>"""
+
+    # 📢 ✅ NEW: आपके नियमानुसार इंडेक्सिंग खत्म होने पर LOG_CHANNEL में भेजी जाने वाली सुपर रिपोर्ट टेम्पलेट
+    LOG_INDEX_TXT = """📢 <b>#Indexing_Report 📊</b>
+
+<b>📂 Storage Parameters:</b>
+» Chat Title: <code>{}</code>
+» Chat ID: <code>{}</code>
+» Collection Targeted: <code>{}</code>
+
+<b>📈 Execution Statistics:</b>
+» Total Processed: <code>{}</code> Files
+» Successfully Saved: <code>{}</code> Files
+» Duplicates Skipped: <code>{}</code> Files
+» Unsupported Format: <code>{}</code> Files
+» Errors Intercepted: <code>{}</code> Files
+
+<b>⏱️ Engine Performance:</b>
+» Status: <code>Completed Successfully ✅</code>
+» Triggered By: <code>Authorized Bot Admin 👮‍♂️</code>"""
