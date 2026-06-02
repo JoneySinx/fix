@@ -1,8 +1,11 @@
 import time
 import html
 import logging
+import gc # रैम को फ़ोर्स क्लीन रखने के लिए गारबेज कलेक्टर सिंक
 from hydrogram import Client, filters, enums
 from database.users_chats_db import db
+from plugins.premium import is_premium # प्रीमियम वैलिडेशन इंजन सिंक
+from info import ADMINS, IS_PREMIUM
 from utils import is_check_admin
 
 logger = logging.getLogger(__name__)
@@ -16,10 +19,11 @@ CACHE_TTL = 300
 async def get_notes(chat_id):
     now = time.time()
     
-    # ✅ FIX: कोएब रैम ओवरयूज़ (OOM) क्रैश रोकने के लिए एग्रेसिव कैशे क्लीनर लागू
-    if len(NOTES_CACHE) > 400:
+    # ✅ FIX: कोएब रैम ओवरयूज़ (OOM) क्रैश रोकने के लिए एग्रेसिव कैशे क्लीनर विथ गारबेज कलेक्शन सिंक
+    if len(NOTES_CACHE) > 300:
         NOTES_CACHE.clear()
-        logger.info("🧹 RAM Cleaner Triggered: Notes local dictionary cache cleared safely.")
+        gc.collect()
+        logger.info("🧹 RAM Cleaner Triggered: Notes local dictionary cache flushed safely.")
 
     if chat_id in NOTES_CACHE and (now - NOTES_CACHE[chat_id][1]) < CACHE_TTL:
         return NOTES_CACHE[chat_id][0]
@@ -36,19 +40,19 @@ async def is_admin(c, m):
     return await is_check_admin(c, m.chat.id, m.from_user.id)
 
 # =========================================
-# 📝 SAVE, DELETE & LIST
+# 📝 SAVE, DELETE & LIST (Admin Protected)
 # =========================================
 
 @Client.on_message(filters.group & filters.command(["save", "addnote"]))
 async def save_note(c, m):
     if not await is_admin(c, m): return
     if len(m.command) < 2 or not m.reply_to_message:
-        return await m.reply("❗ Use: `/save <name>` (Reply to a message)")
+        return await m.reply("❗ <b>Usage format error!</b>\nReply to any message with <code>/save note_name</code>")
     
     name = m.command[1].lower()
     reply = m.reply_to_message
     
-    # 🎯 Smart Media Detection
+    # 🎯 Smart Media Engine Detection
     note_type, file_id = "text", None
     for t in ["photo", "video", "document", "sticker", "animation"]:
         media = getattr(reply, t, None)
@@ -68,12 +72,13 @@ async def save_note(c, m):
     NOTES_CACHE[m.chat.id] = (data, time.time())
     await db.save_note(m.chat.id, name, note_data)
     
-    await m.reply(f"✅ Note **#{name}** saved!")
+    await m.reply(f"✅ <b>Note trigger</b> <code>#{name}</code> <b>saved successfully!</b>")
+    gc.collect()
 
 @Client.on_message(filters.group & filters.command(["clear", "rmnote"]))
 async def delete_note(c, m):
     if not await is_admin(c, m): return
-    if len(m.command) < 2: return await m.reply("❗ Use: `/clear <name>`")
+    if len(m.command) < 2: return await m.reply("❗ <b>Usage format error!</b>\nUse: <code>/clear note_name</code>")
     
     name = m.command[1].lower()
     data = await get_notes(m.chat.id)
@@ -82,22 +87,34 @@ async def delete_note(c, m):
         del data[name]
         NOTES_CACHE[m.chat.id] = (data, time.time())
         await db.delete_note(m.chat.id, name)
-        await m.reply(f"🗑️ Note **#{name}** deleted.")
+        await m.reply(f"🗑️ <b>Note trigger</b> <code>#{name}</code> <b>wiped from group library.</b>")
     else:
-        await m.reply(f"❌ Note **#{name}** not found.")
+        await m.reply(f"❌ <b>Note trigger</b> <code>#{name}</code> <b>not found in database.</b>")
+    gc.collect()
 
 @Client.on_message(filters.group & filters.command("notes"))
 async def list_notes(c, m):
+    # ✅ FIX: ग्रुप्स में फालतू यूज़र्स को सेटिंग्स/नोट्स लिस्ट देखने से रोकने का प्रीमियम सुरक्षा पास
+    if IS_PREMIUM and m.from_user.id not in ADMINS and not await is_premium(m.from_user.id, c): return
+
     data = await get_notes(m.chat.id)
-    if not data: return await m.reply("📭 No notes saved.")
-    await m.reply("📝 **Saved Notes:**\n" + "\n".join(f"• `#{n}`" for n in data))
+    if not data: return await m.reply("📭 <b>No custom notes or triggers saved in this group chat.</b>")
+    
+    await m.reply("📝 <b>Available Group Notes & Triggers List:</b>\n\n" + "\n".join(f"• <code>#{n}</code>" for n in data))
+    gc.collect()
 
 # =========================================
-# 🔎 NOTE FETCHER (Smart Filter)
+# 🔎 NOTE TRIGGER FETCHER — Strict Premium Guarded
 # =========================================
 
 @Client.on_message(filters.group & filters.regex(r"^#[\w]+"), group=11)
 async def get_note(c, m):
+    if not m.from_user: return
+    
+    # ✅ FIX: सख्त सुरक्षा लॉक - केवल प्रीमियम यूज़र्स के ही नोट्स हैशटैग ट्रिगर पर बॉट रिस्पॉन्स करेगा
+    if IS_PREMIUM and m.from_user.id not in ADMINS and not await is_premium(m.from_user.id, c): 
+        return
+
     msg_text = m.text or m.caption
     if not msg_text: return
     
@@ -111,7 +128,7 @@ async def get_note(c, m):
     if note["type"] == "text":
         await c.send_message(m.chat.id, note["text"], reply_to_message_id=reply_id, parse_mode=enums.ParseMode.HTML)
     else:
-        # ✅ FIX: क्लाइंट ऑब्जेक्ट पर डायनामिक फंक्शन कॉल और सही आर्ग्यूमेंट बाइंडिंग रूटीन सिंक किया गया
+        # क्लाइंट ऑब्जेक्ट पर डायनामिक फंक्शन कॉल और सही आर्ग्यूमेंट बाइंडिंग
         send_method = getattr(c, f"send_{note['type']}") 
         
         # आर्गुमेंट्स डिक्शनरी को सेफली बिल्ड करें
@@ -120,7 +137,7 @@ async def get_note(c, m):
             "reply_to_message_id": reply_id
         }
         
-        # हाइड्रोग्राम में डायनामिक सेंड करने के लिए फ़ाइल आईडी को सही कीवर्ड नाम (जैसे photo, video) के साथ पास करें
+        # हाइड्रोग्राम टोकन सिंक पैच
         media_key = "animation" if note["type"] == "animation" else note["type"]
         kwargs[media_key] = note["file_id"]
         
@@ -132,3 +149,5 @@ async def get_note(c, m):
             await send_method(**kwargs)
         except Exception as e:
             logger.error(f"Failed to send note #{name}: {e}")
+        finally:
+            gc.collect()
