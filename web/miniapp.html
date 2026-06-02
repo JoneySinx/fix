@@ -41,18 +41,18 @@
         .filter-btn{background:var(--card);border:1px solid var(--border);padding:8px 16px;font-weight:700;color:var(--muted);cursor:pointer;border-radius:20px;font-size:13px;transition:0.2s;}
         .filter-btn.active{background:var(--text);color:var(--bg);border-color:var(--text);}
         
-        /* Grid Engine */
+        /* Grid Engine — Rebuilt 21 Layout Matrix */
         .main{padding:15px 4% 0;max-width:1400px;margin:0 auto}
         .res-grid{display:grid;grid-template-columns:1fr;gap:15px;}
-        @media(min-width:600px){.res-grid{grid-template-columns:repeat(2,1fr);}}
-        @media(min-width:900px){.res-grid{grid-template-columns:repeat(3,1fr);}}
+        @media(min-width:480px){.res-grid{grid-template-columns:repeat(2,1fr);}}
+        @media(min-width:768px){.res-grid{grid-template-columns:repeat(3,1fr);}}
 
         .file-card{display:flex;flex-direction:column;background:var(--card);border-radius:10px;border:1px solid var(--border);overflow:hidden;position:relative;}
         .poster-box{width:100%;position:relative;background:var(--bg2);padding-top:56.25%;} 
         .mode-none .poster-box{display:none}
         .fc-poster{position:absolute;top:0;left:0;width:100%;height:100%;object-fit:cover;transition:0.3s;}
         
-        .badge{position:absolute;top:8px;left:8px;background:rgba(0,0,0,0.85);font-size:10px;font-weight:900;padding:3px 7px;border-radius:4px;border:1px solid;z-index:2;}
+        .badge{position:absolute;top:8px;left:8px;background:rgba(0,0,0,0.85);font-size:10px;font-weight:900;padding:3px 7px;border-radius:4px;border:1px solid z-index:2;}
         .badge.primary{color:var(--accent);border-color:var(--accent);}
         .badge.cloud{color:#3399ff;border-color:#3399ff;}
         .badge.archive{color:#aaaaaa;border-color:#aaaaaa;}
@@ -64,6 +64,7 @@
         .fc-actions{margin-top:auto;display:flex;gap:8px;}
         .btn{flex:1;text-align:center;padding:12px 0;border-radius:6px;font-size:13px;font-weight:700;cursor:pointer;border:none;display:flex;align-items:center;justify-content:center;gap:4px;}
         .btn-play{background:var(--text);color:var(--bg);}
+        .btn-play:hover{opacity:0.9;}
         .btn-dl{background:rgba(128,128,128,0.15);color:var(--text);border:1px solid var(--border);}
 
         /* Engine States */
@@ -167,7 +168,7 @@
             const box = document.getElementById(`poster-box-${fileId}`);
             if (box) {
                 box.innerHTML = `
-                    <div style="position:absolute; inset:0; display:flex; flex-direction:column; align-items:center; justify-content:center; background:rgba(0,0,0,0.3); gap:6px; padding:10px;">
+                    <div style="position:absolute; inset:0; display:flex; flex-direction:column; align-items:center; justify-content:center; background:rgba(0,0,0,0.5); gap:6px; padding:10px; backdrop-filter:blur(5px);">
                         <span style="font-size:11px; color:var(--muted); text-align:center;">थंबनेल लोड नहीं हुआ (Busy)</span>
                         <button onclick="reloadThumb('${fileId}')" id="btn-rl-${fileId}" 
                                 style="background:var(--accent); color:#fff; border:none; padding:6px 12px; border-radius:4px; font-size:11px; font-weight:bold; cursor:pointer; outline:none;">
@@ -189,10 +190,10 @@
 
         function showError(type, extra = '') {
             const grid = document.getElementById('results');
-            tg.MainButton.hide(); # एरर आने पर नेटिव बटन छुपाएं
+            tg.MainButton.hide(); 
             
             let icon = '❌', title = 'Error', msg = extra;
-            if (type === 'auth') { icon = '🔒'; title = 'Access Denied'; msg = 'Premium membership is required to access files.<br>Kindly use /plan command in bot.'; }
+            if (type === 'auth') { icon = '🔒'; title = 'Access Denied'; msg = 'Premium membership is required to access files.<br>Kindly use /plan command in bot PM.'; }
             else if (type === 'rate') { icon = '⏳'; title = 'Too Fast!'; msg = 'Searching throttled. Please wait a moment.'; }
             else if (type === 'init') { icon = '⚠️'; title = 'Security Intercept'; msg = 'This application only functions inside Official Telegram Client App.'; }
             
@@ -204,8 +205,8 @@
                 </div>`;
         }
 
-        // 🔍 ENGINE QUERY DATA FETCHING
-        async def doSearch(offset) {
+        // 🔍 ENGINE QUERY DATA FETCHING (FIXED JavaScript Syntax)
+        async function doSearch(offset) {
             let q = document.getElementById('q').value.trim();
             if (!q) return showToast("Enter keyword first!");
 
@@ -216,7 +217,6 @@
             document.getElementById('results').innerHTML = '<div class="empty">Searching database...</div>';
             document.getElementById('pageBox').style.display = 'none';
             
-            # नेटिव प्रोग्रेस लोड बार चालू करें
             tg.MainButton.setText("🔍 SCANNING METADATA...");
             tg.MainButton.show();
             tg.MainButton.showProgress();
