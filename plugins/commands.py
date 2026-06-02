@@ -98,7 +98,6 @@ async def start(client, message):
                     file_size=get_size(file.get('file_size', 0))
                 )
 
-                # ✅ FIX: 'close_{req_id}' को 'close_{req_id}_{msg_id}' पैटर्न दिया ताकि यूनीकली लिंक मैसेजेस क्लीन हों
                 btn = [[InlineKeyboardButton('❌ Close', callback_data=f'close_{message.from_user.id}')]]
                 if IS_STREAM:
                     btn.insert(0, [InlineKeyboardButton("▶️ Watch / Download", callback_data=f"stream#{file_id}")])
@@ -123,13 +122,20 @@ async def start(client, message):
                     
                     if not hasattr(temp, 'PM_FILES'):
                         temp.PM_FILES = {}
-                    # दोनों संदेश कड़ियों को मैप करें
                     temp.PM_FILES[msg.id] = {'file_msg': msg.id, 'note_msg': del_msg.id}
+                
+                # ✅ UI DUP FIX: रिटर्न को यहाँ इफ-ब्लॉक के कोर रूट पर रखा गया है
+                # ताकि फ़ाइल भेजने के बाद स्क्रिप्ट यहीं पर स्टॉप हो जाए।
                 return
+                
         except Exception as e:
             logger.error(f"Start File Extraction Error: {e}")
+            return
 
-    # 4. DEFAULT START MESSAGE (Fix: Text duplication completely resolved)
+        # यदि ऊपर का ट्राई-पार्ट सफलतापूर्वक चलता है, तो डिफ़ॉल्ट संदेश को ब्लॉक करने के लिए सेफ एग्जिट
+        return
+
+    # 4. DEFAULT START MESSAGE
     btn = [
         [InlineKeyboardButton("🍿 Open Mini App", web_app=WebAppInfo(url=MINI_APP_URL))],
         [InlineKeyboardButton("+ Add to Group +", url=f"https://t.me/{temp.U_NAME}?startgroup=start")],
@@ -351,12 +357,11 @@ async def close_cb(c, q):
         chat_id = q.message.chat.id
         current_msg_id = q.message.id
 
-        # ✅ FIX: मुख्य रिज़ल्ट मैसेज आईडी और उसके इर्द-गिर्द की कतार नोटिस आईडी को एक साथ ढूँढकर मिटाना
+        # मुख्य रिज़ल्ट मैसेज आईडी और उसके इर्द-गिर्द की कतार नोटिस आईडी को एक साथ ढूंढकर मिटाना
         msg_ids_to_clean = [current_msg_id, current_msg_id - 1, current_msg_id + 1]
 
         # इन-मेमोरी रेंडरर बकेट क्लीनअप पैच
         if hasattr(temp, 'PM_FILES'):
-            # मुख्य रिज़ल्ट आईडी या बकेट के अंदर मौजूद मैप्ड वैल्यूज को चेक करें
             target_key = None
             for k, v in temp.PM_FILES.items():
                 if v.get('file_msg') == current_msg_id or k == current_msg_id:
