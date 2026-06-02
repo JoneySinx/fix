@@ -1,16 +1,19 @@
 class script(object):
 
+    # 🍿 आपके लाइव फीचर्स के अनुसार पूरी तरह बदला गया स्टार्ट टेक्स्ट
     START_TXT = """<b>ʜᴇʏ {}, <i>{}</i>
     
 ɪ ᴀᴍ ᴀ ᴘᴏᴡᴇʀғᴜʟ & ꜱᴍᴀʀᴛ ᴀᴜᴛᴏ ғɪʟᴛᴇʀ ʙᴏᴛ! ɪ ᴄᴀɴ ᴘʀᴏᴠɪᴅᴇ ᴍᴏᴠɪᴇꜱ ᴀɴᴅ ꜱᴇʀɪᴇꜱ ᴡɪᴛʜ ᴅɪʀᴇᴄᴛ ꜱᴛʀᴇᴀᴍ & ᴅᴏᴡɴʟᴏᴀᴅ ʟɪɴᴋꜱ. 🚀
 
-🌟 <u>ᴍʏ ᴍᴀɪɴ ғᴇᴀᴛᴜʀᴇꜱ:</u>
-• ꜱᴍᴀʀᴛ ᴀᴜᴛᴏ ғɪʟᴛᴇʀ ɪɴ ɢʀᴏᴜᴘꜱ
-• ᴅɪʀᴇᴄᴛ ᴡᴀᴛᴄʜ / ᴅᴏᴡɴʟᴏᴀᴅ ʟɪɴᴋꜱ
-• ɢʀᴏᴜᴘ ᴍᴀɴᴀɢᴇᴍᴇɴᴛ (ᴍᴜᴛᴇ/ʙᴀɴ)
-• ꜱᴜᴘᴇʀғᴀꜱᴛ ꜱᴇᴀʀᴄʜ
+🍿 <u>ᴍʏ ᴍᴀɪɴ ғᴇᴀᴛᴜʀᴇꜱ:</u>
+• ꜱᴍᴀʀᴛ ᴀᴜᴛᴏ ғɪʟᴛᴇʀ ɪɴ ᴄʜᴀᴛ ɢʀᴏᴜᴘꜱ
+• 📱 ᴀᴅᴠᴀɴᴄᴇᴅ ᴍɪɴɪ ᴀᴘᴘ ꜰᴏʀ ᴄɪɴᴇᴍᴀᴛɪᴄ ꜱᴇᴀʀᴄʜ
+• 🎬 ɪɴ-ʙᴜɪʟᴛ ᴘʟᴀʏᴇʀ ᴡɪᴛʜ 10ꜱ ᴅᴏᴜʙʟᴇ-ᴛᴀᴘ ꜱᴋɪᴘ
+• ⚡ ꜱᴜᴘᴇʀғᴀꜱᴛ ᴅɪʀᴇᴄᴛ ᴅᴏᴡɴʟᴏᴀᴅ ʟɪɴᴋꜱ
+• 🧠 ɢᴇᴍɪɴɪ 2.5 ғʟᴀsʜ ᴀɪ ᴄʜᴀᴛ ᴀssɪsᴛᴀɴᴛ
+• 🛡️ ᴀᴜᴛᴏ-ᴅᴇʟᴇᴛᴇ ᴛɪᴍᴇʀ ꜰᴏʀ ꜱᴛorage sᴀꜰᴇᴛʏ
 
-ᴊᴜꜱᴛ ᴀᴅᴅ ᴍᴇ ᴛᴏ ʏᴏᴜʀ ɢʀᴏᴜᴘ ᴀꜱ ᴀᴅᴍɪɴ ᴀɴᴅ ꜱᴇᴇ ᴛʜᴇ ᴍᴀɢɪᴄ! ✨</b>"""
+ᴊᴜꜱᴛ ᴀᴅᴅ ᴍᴇ ᴛᴏ ʏᴏᴜʀ ɢʀᴏᴜᴘ ᴀꜱ ᴀᴅᴍɪɴ ᴏʀ ᴛʏᴘᴇ ʏᴏᴜʀ ϙᴜᴇʀʏ ʜᴇʀᴇ ᴛᴏ sᴛᴀʀᴛ! ✨</b>"""
 
     STATUS_TXT = """📊 <b>Bot Statistics</b>
 
@@ -61,30 +64,35 @@ I can't find <b>{}</b> in my database! 🥲
     HELP_TXT = """<b>👋 Hello {},
     
 I can filter any movie and series you want.
-Just type the movie or series name in my PM or add me into your group!
+Just type the movie or series name in my PM, open our Mini App, or add me into your group!
 
 I have many more features for you.
 Please check the commands below 👇</b>"""
 
     ADMIN_COMMAND_TXT = """<b>👮‍♂️ <u>Bot Admin Commands:</u> 👇
 
-/stats - Get bot statistics (Users, Files, Uptime)
-/delete - Delete specific files from DB
-/delete_all - Clear an entire collection
-/web - Generate Dashboard Magic Link
-/link - Generate direct stream/download links
+• /stats - Get bot statistics (Users, Files, Uptime)
+• /delete - Delete specific files from DB
+• /delete_all - Clear an entire collection (Primary/Cloud/Archive)
+• /link - Generate direct stream/download links
+• /add_prm - Add premium days to a user (e.g. /add_prm id days)
+• /rm_prm - Remove premium access from a user
+• /prm_list - View list of all active premium users
+• /web_users - View list of users registered on Web Dashboard
 
 🛠️ <u>Group Admin Commands:</u> 👇
 
-/search on | off - Toggle Auto Filter in group
-/mute | /unmute | /ban - Manage users
-/warn | /resetwarn - Manage user warnings
-/addblacklist | /removeblacklist - Manage blocked words
-/blacklist - View blacklisted words
-/dlink | /removedlink - Manage auto-delete words
-/dlinklist - View auto-delete words</b>"""
+• /search on | off - Toggle Auto Filter on/off in group
+• /button_style - Switch results between Simple and Full mode
+• /mute | /unmute - Restrict user from sending messages
+• /ban - Ban user permanently from group
+• /warn | /resetwarn - Manage warnings (Auto-Ban on 3/3 warns)
+• /addblacklist | /removeblacklist - Manage blocked words
+• /blacklist - View group's blacklisted keywords
+• /dlink | /removedlink - Manage timed auto-delete words
+• /dlinklist - View persistent auto-delete triggers</b>"""
     
-    # ✅ FIX: 'pre day' को 'per day' किया और टेक्स्ट को आकर्षक बनाया गया
+    # ✅ pre day को per day किया गया
     PLAN_TXT = """💎 <b>Fast Finder Premium Plans</b> 💎
 
 Activate a premium plan to unlock exclusive, high-speed features!
@@ -102,6 +110,8 @@ Activate a premium plan to unlock exclusive, high-speed features!
 
     USER_COMMAND_TXT = """<b>👨‍💻 <u>Bot User Commands:</u> 👇
 
-/start - Check if bot is alive and get main menu
-/plan - View premium plan details
-/myplan - Check your premium status</b>"""
+• /start - Check if bot is alive and open Main Menu
+• /plan - View premium membership plan details
+• /myplan - Check your remaining premium duration
+• /id - Extract User ID, Chat ID, and Telegram File ID
+• /ai | /ask - Conversational Gemini 2.5 Flash AI Assistant (with 10m memory)</b>"""
