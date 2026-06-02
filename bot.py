@@ -2,13 +2,14 @@ import logging
 import asyncio
 import os
 import time
-import signal
+import sys
+import gc
 from typing import Union, AsyncGenerator
 from datetime import datetime
 import pytz
 
 # ==========================================================
-# 🔥 UVLOOP (High Performance Event Loop)
+# 🔥 UVLOOP (High Performance C-Based Event Loop Engine)
 # ==========================================================
 try:
     import uvloop
@@ -17,7 +18,7 @@ except ImportError:
     pass
 
 # ==========================================================
-# LOGGING SETUP
+# 📊 LOGGING CENTER
 # ==========================================================
 logging.basicConfig(
     level=logging.INFO,
@@ -31,7 +32,7 @@ logging.getLogger('aiohttp.server').setLevel(logging.WARNING)
 logger = logging.getLogger(__name__)
 
 # ==========================================================
-# IMPORTS
+# CORE IMPORTS
 # ==========================================================
 from aiohttp import web
 from hydrogram import Client, types, StopPropagation, idle 
@@ -40,7 +41,7 @@ from hydrogram.handlers import MessageHandler
 from web import web_app
 from info import (
     API_ID, API_HASH, BOT_TOKEN, PORT, ADMINS, 
-    LOG_CHANNEL, DATABASE_URL, DATABASE_NAME
+    LOG_CHANNEL, TIME_ZONE
 )
 from utils import temp
 from database.users_chats_db import db
@@ -48,7 +49,7 @@ from database.ia_filterdb import ensure_indexes
 from plugins.premium import check_premium_expired
 
 # ==========================================================
-# 🛠️ HEALTH CHECK ENDPOINT (Koyeb Optimized)
+# 🛠️ HEALTH CHECK ENDPOINT (Koyeb Dynamic Health Check OK)
 # ==========================================================
 routes = web.RouteTableDef()
 
@@ -58,36 +59,38 @@ async def health_check(request):
     return web.json_response({"status": "healthy", "uptime": f"{uptime:.2f}s"})
 
 # ==========================================================
-# ⏳ SMART AUTO-DELETE BACKGROUND WORKER
+# ⏳ SMART AUTO-DELETE BACKGROUND WORKER (RAM Protected)
 # ==========================================================
 async def auto_delete_worker(bot):
-    """रीस्टार्ट-प्रूफ मोंगोडीबी आधारित ऑटो-डिलीट इंजन जो हर 30 सेकंड में कतार साफ़ करता है।"""
+    """रीस्टार्ट-प्रूफ मोंगोडीबी आधारित ऑटो-डिलीट इंजन - रैम और कैशे लीक प्रूफ पैच के साथ"""
     while True:
         try:
-            # उन टास्क को प्राप्त करें जिनका डिलीट टाइम पूरा हो चुका है
             cursor = await db.get_expired_delete_tasks()
+            deleted_any = False
             
             async for task in cursor:
                 chat_id = task["chat_id"]
                 message_id = task["message_id"]
                 
                 try:
-                    # टेलीग्राम से संदेश डिलीट करने का प्रयास करें
                     await bot.delete_messages(chat_id, message_id)
+                    deleted_any = True
                 except Exception as tg_err:
-                    # ✅ FIX: यदि यूजर या एडमिन ने संदेश मैनुअली पहले ही हटा दिया है, तो क्रैश न हों
                     logger.debug(f"Message already deleted or unavailable in {chat_id}: {tg_err}")
                 
-                # चाहे डिलीट सफल हो या संदेश पहले से गायब हो, कतार (DB) से रिकॉर्ड हटा दें
                 await db.remove_from_delete_queue(chat_id, message_id)
+            
+            # ✅ FIX: यदि कोई मैसेज डिलीट हुआ है, तो रैम को तुरंत साफ़ (Flush) करें ताकि कोएब पर OOM क्रैश न हो
+            if deleted_any:
+                gc.collect()
                 
         except Exception as e:
             logger.error(f"Error in auto_delete_worker loop: {e}")
             
-        await asyncio.sleep(30)
+        await asyncio.sleep(15) # आपके नियमानुसार कतार चेकिंग का सुपरफास्ट इंटरवल
 
 # ==========================================================
-# BOT CLASS
+# BOT CLIENT CLASS
 # ==========================================================
 class Bot(Client):
     def __init__(self):
@@ -100,19 +103,19 @@ class Bot(Client):
         )
         self._runner = None 
         self._premium_task = None 
-        self._delete_task = None  # ✅ NEW: ऑटो-डिलीट टास्क ट्रैकर
+        self._delete_task = None  
 
     async def start(self):
-        # 1. Start Client
+        # 1. Start Pyrogram/Hydrogram Client Instance
         await super().start()
         temp.START_TIME = time.time()
 
-        # 2. Initialize Database Indexes
+        # 2. Database Indexes Sync (Makkhan DB Tuning)
         await ensure_indexes()
         await db._ensure_indexes() 
-        logger.info("✅ Database Indexes Checked/Created")
+        logger.info("✅ Database Connections & Indexes Fully Synced")
 
-        # 3. Load banned users & chats (Safe Loading)
+        # 3. Load banned users & chats into Runtime Buckets
         try:
             b_users, b_chats = await db.get_banned()
             temp.BANNED_USERS = [int(x) for x in b_users]
@@ -121,7 +124,7 @@ class Bot(Client):
         except Exception as e:
             logger.error(f"Error loading banned list: {e}")
 
-        # 4. Global Ban Middleware (The Security Guard)
+        # 4. Global Ban Middleware (The Strict Gatekeeper Security Guard)
         async def ban_check_middleware(client, message):
             uid = message.from_user.id if message.from_user else None
             cid = message.chat.id if message.chat else None
@@ -129,51 +132,52 @@ class Bot(Client):
                 raise StopPropagation
         
         self.add_handler(MessageHandler(ban_check_middleware), group=-1)
-        logger.info("🛡️ Global Ban Middleware Activated")
+        logger.info("🛡️ Premium Global Security Guard Activated")
 
-        # 5. Restart Handler
+        # 5. Persistent Hard Restart Logic Sync
         if os.path.exists("restart.txt"):
             try:
                 with open("restart.txt", "r") as f:
                     content = f.read().strip().split()
                     if len(content) == 2:
                         chat_id, msg_id = map(int, content)
-                        await self.edit_message_text(chat_id=chat_id, message_id=msg_id, text="✅ Restarted Successfully!")
+                        await self.edit_message_text(chat_id=chat_id, message_id=msg_id, text="<b>✅ Bot Restructured Session Rebuilt & Active!</b>")
             except Exception as e:
                 logger.error(f"Restart message error: {e}")
             finally:
                 try: os.remove("restart.txt")
                 except: pass
 
-        # 6. Set Bot Identity
+        # 6. Set Centralized Context Registry Identity
         temp.BOT = self
         me = await self.get_me()
         temp.ME = me.id
         temp.U_NAME = me.username
         temp.B_NAME = me.first_name
 
-        # 7. Start Web Server with Health Routes
+        # 7. Start Web Server with Health Routes (Combined Non-Blocking Engine Loop)
         web_app.add_routes(routes)
         self._runner = web.AppRunner(web_app, access_log=None)
         await self._runner.setup()
         await web.TCPSite(self._runner, "0.0.0.0", PORT).start()
-        logger.info(f"✅ Web Server & Health Endpoint Started on Port {PORT}")
+        logger.info(f"🌐 Web Server & Mini App Stream Live on Port {PORT}")
 
-        # 8. Start Background Tasks (Premium Checker & Smart Queue Engine)
+        # 8. Start Background Automation Tasks (Premium Engine & Auto-Delete Sync)
         self._premium_task = asyncio.create_task(check_premium_expired(self))
-        self._delete_task = asyncio.create_task(auto_delete_worker(self)) # ✅ NEW: ऑटो-डिलीट इंजन चालू
-        logger.info("⏳ Persistent Auto-Delete Engine Activated")
+        self._delete_task = asyncio.create_task(auto_delete_worker(self)) 
+        logger.info("⏳ Persistent Auto-Delete RAM Guard Activated")
 
-        # 9. Send Startup Logs
-        ist = pytz.timezone("Asia/Kolkata")
-        now = datetime.now(ist)
+        # 9. Send Startup Logs (Perfect info.py TIME_ZONE Sync)
+        # ✅ FIX: हार्डकोडिंग हटाकर सीधे आपके कस्टमाइज्ड टाइमज़ोन इंजन से बाइंड किया गया
+        local_tz = pytz.timezone(TIME_ZONE)
+        now = datetime.now(local_tz)
         startup_msg = (
-            f"🤖 <b>Bot Started Successfully!</b>\n\n"
+            f"🤖 <b>Fast Finder Bot Engine Online!</b>\n\n"
             f"📅 <b>Date:</b> {now.strftime('%d %B %Y')}\n"
             f"🕐 <b>Time:</b> {now.strftime('%I:%M:%S %p')}\n"
-            f"🌏 <b>Timezone:</b> IST (Asia/Kolkata)\n"
-            f"🚀 <b>Speed:</b> Koyeb Optimized\n"
-            f"✅ <b>Status:</b> Online"
+            f"🌏 <b>Timezone:</b> {TIME_ZONE}\n"
+            f"🛡️ <b>Security:</b> Strict Admin & Premium Only\n"
+            f"⚡ <b>Performance Engine:</b> uvloop + Motor Mode"
         )
 
         async def _safe_send(admin_id):
@@ -189,37 +193,34 @@ class Bot(Client):
 
         if LOG_CHANNEL:
             try:
-                await self.send_message(LOG_CHANNEL, f"<b>{me.mention} restarted successfully 🤖</b>")
+                await self.send_message(LOG_CHANNEL, f"<b>⚡ {me.mention} System Rebuilt & Synced Successfully on {TIME_ZONE}! 🚀</b>")
             except Exception as e:
                 logger.warning(f"Failed to send log to LOG_CHANNEL: {e}")
 
-        logger.info(f"@{me.username} is Online & Ready!")
+        logger.info(f"@{me.username} is Smoothly Operational!")
 
-    # ✅ GRACEFUL SHUTDOWN
+    # ✅ GRACEFUL SHUTDOWN (Protects Database Pools & Containers)
     async def stop(self, *args):
+        logger.info("Initiating Graceful Shutdown Pipeline...")
+        
         if getattr(self, '_runner', None):
             await self._runner.cleanup()
-            logger.info("✅ Web Server Cleanup Complete")
+            logger.info("✅ Web App Runner Cleaned Up")
         
         if getattr(self, '_premium_task', None):
             self._premium_task.cancel()
-            try:
-                await self._premium_task 
-            except asyncio.CancelledError:
-                pass
-            logger.info("✅ Premium Task Safely Stopped")
+            try: await self._premium_task 
+            except asyncio.CancelledError: pass
+            logger.info("✅ Premium Expiry Engine Stopped")
 
-        # ✅ NEW: रीस्टार्ट-प्रूफ डिलीट टास्क का ग्रेसफुल शटडाउन
         if getattr(self, '_delete_task', None):
             self._delete_task.cancel()
-            try:
-                await self._delete_task
-            except asyncio.CancelledError:
-                pass
-            logger.info("✅ Auto-Delete Engine Safely Stopped")
+            try: await self._delete_task
+            except asyncio.CancelledError: pass
+            logger.info("✅ Auto-Delete Engine Flushed & Stopped")
 
         await super().stop()
-        logger.info("Bot stopped Gracefully. Bye 👋")
+        logger.info("System Halted Gracefully. All Memory Freed ✅")
 
     async def iter_messages(self, chat_id: Union[int, str], limit: int, offset: int = 0) -> AsyncGenerator["types.Message", None]:
         current = offset
@@ -236,20 +237,24 @@ class Bot(Client):
                 return
 
 # ==========================================================
-# MAIN EXECUTION
+# KICKSTART LIFE-CYCLE LOOP
 # ==========================================================
 async def main():
     bot = Bot()
+    
+    # ✅ FIX: कोएब कंटेनर बंद/रीस्टार्ट करते समय कनेक्शन क्रैश रोकने के लिए सिग्नल्स बाइंडिंग
+    loop = asyncio.get_running_loop()
+    for sig in (signal.SIGINT, signal.SIGTERM):
+        try:
+            loop.add_signal_handler(sig, lambda: asyncio.create_task(bot.stop()))
+        except NotImplementedError:
+            pass # Windows डेवलपमेंट फॉलबैक के लिए
+            
     await bot.start()
-    
-    # बोट को बैकग्राउंड में २४/७ बिना बंद हुए चालू रखने के लिए idle() लॉक कर दिया
     await idle()
-    
-    # जब बोट बंद किया जाएगा तब ग्रेसफुल स्टॉप ट्रिगर होगा
-    await bot.stop()
 
 if __name__ == "__main__":
     try:
         asyncio.run(main())
-    except KeyboardInterrupt:
-        pass
+    except (KeyboardInterrupt, SystemExit):
+        logger.info("Process Interrupted Externally.")
