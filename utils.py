@@ -1,4 +1,7 @@
-import logging, asyncio, re, time
+import logging
+import asyncio
+import re
+import time
 from datetime import datetime, timedelta
 from zoneinfo import ZoneInfo
 from hydrogram.errors import FloodWait
@@ -10,7 +13,7 @@ from database.users_chats_db import db
 logger = logging.getLogger(__name__)
 
 # ─────────────────────────────────────────────
-# 🧠 TEMP RUNTIME STORAGE (Cleaned)
+# 🧠 TEMP RUNTIME STORAGE
 # ─────────────────────────────────────────────
 class temp(object):
     START_TIME = 0
@@ -20,19 +23,21 @@ class temp(object):
     ADMIN_TOKENS, ADMIN_SESSIONS, FILES, PM_FILES = {}, {}, {}, {}
 
 # ─────────────────────────────────────────────
-# 🛡️ RATE LIMITER UTILITY (Anti-Abuse & Memory Leak Fixed)
+# 🛡️ RATE LIMITER UTILITY (Memory Leak Fixed)
 # ─────────────────────────────────────────────
 _rate_limits = {}
 
 def is_rate_limited(user_id, action, seconds):
-    """हैवी कमांड्स जैसे /ask, spell check, और /link पर स्पैम रोकता है।"""
+    """हैवी कमांड्स पर स्पैम रोकता है और रैम लीक से सुरक्षित रखता है।"""
     key = f"{user_id}:{action}"
     now = time.time()
     
-    if len(_rate_limits) > 1000:
-        cutoff = now - 3600 
-        for k in [k for k, v in _rate_limits.items() if v < cutoff]:
-            del _rate_limits[k]
+    # स्मार्ट पीरियोडिक क्लीनअप (Koyeb RAM Safe)
+    if len(_rate_limits) > 500:
+        cutoff = now - 60 
+        expired_keys = [k for k, v in _rate_limits.items() if v < cutoff]
+        for k in expired_keys:
+            _rate_limits.pop(k, None)
             
     if key in _rate_limits and now - _rate_limits[key] < seconds:
         return True
@@ -45,32 +50,42 @@ def is_rate_limited(user_id, action, seconds):
 # ─────────────────────────────────────────────
 async def is_check_admin(bot, chat_id, user_id):
     try:
-        return (await bot.get_chat_member(chat_id, user_id)).status in (enums.ChatMemberStatus.ADMINISTRATOR, enums.ChatMemberStatus.OWNER)
-    except: return False
+        return (await bot.get_chat_member(chat_id, user_id)).status in (
+            enums.ChatMemberStatus.ADMINISTRATOR, 
+            enums.ChatMemberStatus.OWNER
+        )
+    except: 
+        return False
 
 # ─────────────────────────────────────────────
-# 💎 PREMIUM SYSTEM (Centralized & Crash-Proof)
+# 💎 PREMIUM SYSTEM (Timezone Synchronized)
 # ─────────────────────────────────────────────
 async def is_premium(user_id, bot=None):
-    if not IS_PREMIUM or user_id in ADMINS: return True
+    if not IS_PREMIUM or user_id in ADMINS: 
+        return True
+        
     mp = await db.get_plan(user_id)
-    if not mp.get("premium"): return False
+    if not mp.get("premium"): 
+        return False
     
     expire = mp.get("expire")
     if expire:
         if isinstance(expire, str):
-            try: expire = datetime.strptime(expire, "%Y-%m-%d %H:%M:%S")
-            except: expire = None
+            try: 
+                expire = datetime.strptime(expire, "%Y-%m-%d %H:%M:%S")
+            except: 
+                expire = None
         
-        # ✅ FIX: टाइमज़ोन क्रैश से बचने के लिए समय को बिना टाइमज़ोन (Naive) फॉर्मेट में सिंक किया
+        # सर्वरलेस आर्किटेक्चर और डेटाबेस सिंकिंग के लिए टाइमज़ोन मुक्त शुद्ध लोकल कॉम्पैरिजन
         now_ist = datetime.now(ZoneInfo("Asia/Kolkata")).replace(tzinfo=None)
         if not expire or expire < now_ist:
             if bot:
                 try: 
                     await bot.send_message(user_id, f"❌ Your premium {mp.get('plan')} plan has expired.\n\nUse /plan to renew.")
-                except: pass
+                except: 
+                    pass
             
-            # प्रिमियम खत्म होने पर सारे रिमाइंडर फ्लैग्स को भी साफ़ करो
+            # प्रीमियम खत्म होने पर सारे रिमाइंडर फ्लैग्स और डेटा को रीसेट करें
             await db.update_plan(user_id, {
                 "expire": "", 
                 "plan": "", 
@@ -87,29 +102,35 @@ async def is_premium(user_id, bot=None):
     return True
 
 # ─────────────────────────────────────────────
-# 📢 BROADCAST
+# 📢 BROADCAST UTILITY
 # ─────────────────────────────────────────────
 async def broadcast_messages(chat_id, message, pin=False, is_group=False):
     try:
         msg = await message.copy(chat_id=chat_id)
         if pin:
-            try: await msg.pin(both_sides=not is_group)
-            except: pass
+            try: 
+                await msg.pin(both_sides=not is_group)
+            except: 
+                pass
         return "Success"
     except FloodWait as e:
         await asyncio.sleep(e.value)
         return await broadcast_messages(chat_id, message, pin, is_group)
     except Exception:
+        # कतार लोड को नियंत्रित रखते हुए मोंगोडीबी पर केवल आवश्यक एरर फ्लैग्स अपडेट करना
         if is_group:
             try:
-                # ✅ FIX: सीधे क्लास ऑब्जेक्ट की जगह सही कलेक्शन (db.groups) को कॉल किया
                 await db.groups.update_one(
                     {"id": int(chat_id)},
                     {"$set": {"chat_status": {"is_disabled": True, "reason": "Bot removed from group"}}}
                 )
-            except: pass
+            except: 
+                pass
         else:
-            await db.delete_user(int(chat_id))
+            try:
+                await db.delete_user(int(chat_id))
+            except:
+                pass
         return "Error"
 
 # ─────────────────────────────────────────────
@@ -155,11 +176,12 @@ def get_readable_time(seconds):
 
 def get_wish():
     h = datetime.now(ZoneInfo("Asia/Kolkata")).hour
-    return "ɢᴏᴏᴅ ᴍᴏʀɴɪɴɢ 🌞" if h < 12 else "ɢᴏᴏᴅ ᴀꜰᴛᴇʀɴᴏᴏɴ 🌗" if h < 18 else "ɢᴏᴏᴅ ᴇᴠᴇɴɪɴɢ 🌘"
+    return "ɢᴏᴏᴅ ᴍᴏʀɴɪɴɢ 🌞" if h < 12 else "ɢᴏᴏᴅ ᴀꜰᴛᴇʀɴᴏᴏ afternoon 🌗" if h < 18 else "ɢᴏᴏᴅ ᴇᴠᴇɴɪɴɢ 🌘"
 
 async def get_seconds(time_string):
     match = re.match(r"(\d+)(s|min|hour|day|month|year)", time_string)
-    if not match: return 0
+    if not match: 
+        return 0
     return int(match.group(1)) * {
         "s": 1, "min": 60, "hour": 3600, "day": 86400,
         "month": 2592000, "year": 31536000
@@ -167,13 +189,18 @@ async def get_seconds(time_string):
 
 # 🛠️ Helpers for premium and cleanup
 def parse_expire_time(e):
-    if isinstance(e, datetime): return e
-    try: return datetime.strptime(e, "%Y-%m-%d %H:%M:%S") if e else None
-    except: return None
+    if isinstance(e, datetime): 
+        return e
+    try: 
+        return datetime.strptime(e, "%Y-%m-%d %H:%M:%S") if e else None
+    except: 
+        return None
 
 def get_ist_str(dt):
     return (dt + timedelta(hours=5, minutes=30)).strftime("%d %B %Y, %I:%M %p") if dt else "Unknown"
 
 async def safe_del(c, cid, mids):
-    try: await c.delete_messages(cid, mids)
-    except: pass
+    try: 
+        await c.delete_messages(cid, mids)
+    except: 
+        pass
