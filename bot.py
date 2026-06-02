@@ -34,7 +34,7 @@ logger = logging.getLogger(__name__)
 # IMPORTS
 # ==========================================================
 from aiohttp import web
-from hydrogram import Client, types, StopPropagation, idle  # ✅ FIX: idle को इम्पोर्ट किया
+from hydrogram import Client, types, StopPropagation, idle 
 from hydrogram.errors import FloodWait 
 from hydrogram.handlers import MessageHandler 
 from web import web_app
@@ -58,6 +58,35 @@ async def health_check(request):
     return web.json_response({"status": "healthy", "uptime": f"{uptime:.2f}s"})
 
 # ==========================================================
+# ⏳ SMART AUTO-DELETE BACKGROUND WORKER
+# ==========================================================
+async def auto_delete_worker(bot):
+    """रीस्टार्ट-प्रूफ मोंगोडीबी आधारित ऑटो-डिलीट इंजन जो हर 30 सेकंड में कतार साफ़ करता है।"""
+    while True:
+        try:
+            # उन टास्क को प्राप्त करें जिनका डिलीट टाइम पूरा हो चुका है
+            cursor = await db.get_expired_delete_tasks()
+            
+            async for task in cursor:
+                chat_id = task["chat_id"]
+                message_id = task["message_id"]
+                
+                try:
+                    # टेलीग्राम से संदेश डिलीट करने का प्रयास करें
+                    await bot.delete_messages(chat_id, message_id)
+                except Exception as tg_err:
+                    # ✅ FIX: यदि यूजर या एडमिन ने संदेश मैनुअली पहले ही हटा दिया है, तो क्रैश न हों
+                    logger.debug(f"Message already deleted or unavailable in {chat_id}: {tg_err}")
+                
+                # चाहे डिलीट सफल हो या संदेश पहले से गायब हो, कतार (DB) से रिकॉर्ड हटा दें
+                await db.remove_from_delete_queue(chat_id, message_id)
+                
+        except Exception as e:
+            logger.error(f"Error in auto_delete_worker loop: {e}")
+            
+        await asyncio.sleep(30)
+
+# ==========================================================
 # BOT CLASS
 # ==========================================================
 class Bot(Client):
@@ -71,6 +100,7 @@ class Bot(Client):
         )
         self._runner = None 
         self._premium_task = None 
+        self._delete_task = None  # ✅ NEW: ऑटो-डिलीट टास्क ट्रैकर
 
     async def start(self):
         # 1. Start Client
@@ -85,7 +115,6 @@ class Bot(Client):
         # 3. Load banned users & chats (Safe Loading)
         try:
             b_users, b_chats = await db.get_banned()
-            # ✅ FIX: क्रेडेंशियल्स को नंबर (int) फॉर्मेट में सुरक्षित स्टोर किया
             temp.BANNED_USERS = [int(x) for x in b_users]
             temp.BANNED_CHATS = [int(x) for x in b_chats]
             logger.info(f"✅ Loaded {len(b_users)} banned users and {len(b_chats)} banned chats")
@@ -130,8 +159,10 @@ class Bot(Client):
         await web.TCPSite(self._runner, "0.0.0.0", PORT).start()
         logger.info(f"✅ Web Server & Health Endpoint Started on Port {PORT}")
 
-        # 8. Start Premium Checker Task
+        # 8. Start Background Tasks (Premium Checker & Smart Queue Engine)
         self._premium_task = asyncio.create_task(check_premium_expired(self))
+        self._delete_task = asyncio.create_task(auto_delete_worker(self)) # ✅ NEW: ऑटो-डिलीट इंजन चालू
+        logger.info("⏳ Persistent Auto-Delete Engine Activated")
 
         # 9. Send Startup Logs
         ist = pytz.timezone("Asia/Kolkata")
@@ -178,6 +209,15 @@ class Bot(Client):
                 pass
             logger.info("✅ Premium Task Safely Stopped")
 
+        # ✅ NEW: रीस्टार्ट-प्रूफ डिलीट टास्क का ग्रेसफुल शटडाउन
+        if getattr(self, '_delete_task', None):
+            self._delete_task.cancel()
+            try:
+                await self._delete_task
+            except asyncio.CancelledError:
+                pass
+            logger.info("✅ Auto-Delete Engine Safely Stopped")
+
         await super().stop()
         logger.info("Bot stopped Gracefully. Bye 👋")
 
@@ -202,7 +242,7 @@ async def main():
     bot = Bot()
     await bot.start()
     
-    # ✅ FIX: बोट को बैकग्राउंड में २४/७ बिना बंद हुए चालू रखने के लिए idle() लॉक कर दिया
+    # बोट को बैकग्राउंड में २४/७ बिना बंद हुए चालू रखने के लिए idle() लॉक कर दिया
     await idle()
     
     # जब बोट बंद किया जाएगा तब ग्रेसफुल स्टॉप ट्रिगर होगा
