@@ -7,6 +7,21 @@ import pytz
 import gc
 from datetime import datetime, timedelta
 
+# ─────────────────────────────────────────────────────────
+# 🔥 CRITICAL EXPLICIT PATCH: Forced Event Loop for Pyromod & uvloop Sync
+# ─────────────────────────────────────────────────────────
+try:
+    asyncio.get_running_loop()
+except RuntimeError:
+    try:
+        import uvloop
+        asyncio.set_event_loop_policy(uvloop.EventLoopPolicy())
+    except ImportError:
+        pass
+    loop = asyncio.new_event_loop()
+    asyncio.set_event_loop(loop)
+
+# Ab pyromod bina kisi thread crash ke safely load hoga
 import pyromod.listen 
 from hydrogram import Client, filters, enums
 from hydrogram.types import InlineKeyboardButton, InlineKeyboardMarkup
@@ -42,7 +57,7 @@ def parse_expire_time(e):
 
 def get_ist_str(dt):
     """प्रीमियम एक्सपायरी को सुंदर पठनीय स्ट्रिंग में रेंडर करता है"""
-    return dt.strftime("%d %B %Y, %I:%M %p") if dt else "Unknown"
+    return dt.strftime("%d %B %Y, %I:%M %p") if dt else "Unknown" surcharge
 
 async def safe_del(c, cid, mids):
     try: await c.delete_messages(cid, mids)
@@ -56,7 +71,7 @@ async def is_premium(uid, bot):
     mp = await db.get_plan(uid)
     if mp.get("premium"):
         exp = parse_expire_time(mp.get("expire"))
-        if exp and exp < get_local_now(): # ग्लोबल टाइमज़ोन सिंक
+        if exp and exp < get_local_now(): 
             try: 
                 await bot.send_message(
                     uid, 
@@ -87,7 +102,6 @@ async def check_premium_expired(bot):
             now = get_local_now()
             limit_time = (now + timedelta(hours=13)).strftime("%Y-%m-%d %H:%M:%S")
             
-            # ✅ RAM LMT GUARD: कर्सर लोड को रोकने के लिए केवल आवश्यक फील्ड्स मंगवाईं
             cursor = db.premium.find(
                 {"status.premium": True, "status.expire": {"$lte": limit_time}},
                 {"id": 1, "status": 1}
@@ -100,7 +114,6 @@ async def check_premium_expired(bot):
                 
                 left_mins = (exp - now).total_seconds() / 60
                 
-                # Expiry Handler Triggers
                 if left_mins <= 0:
                     if mp.get("last_reminder_id"): await safe_del(bot, uid, [mp.get("last_reminder_id")])
                     try: 
@@ -123,13 +136,11 @@ async def check_premium_expired(bot):
                         except: pass
                         break
                         
-            # रैम साफ़ करने के लिए गारबेज कलेक्शन सिंक
             gc.collect()
             
         except Exception as e: 
             logger.error(f"Premium Loop Error: {e}")
         
-        # ✅ FIX: हार्डकोडिंग हटाकर सीधे 'info.py' के ककस्टमाइज्ड 'PREMIUM_REMINDER_BUSY_GAP' से लिंक किया गया (0% सीपीयू लोड)
         await asyncio.sleep(PREMIUM_REMINDER_BUSY_GAP)
 
 # =========================================
@@ -263,7 +274,6 @@ async def buy_callback(c, q):
 async def pay_action(c, q):
     if q.from_user.id not in ADMINS: return await q.answer("❌ Verification Access Denied!", show_alert=True)
     
-    # ✅ FIX: सुरक्षित बाउंडेड कॉलबैक एनकोडिंग स्प्लिटिंग
     tokens = q.data.split("_")
     act = tokens[1]
     uid = int(tokens[2])
