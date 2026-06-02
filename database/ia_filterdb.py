@@ -15,7 +15,7 @@ logger = logging.getLogger(__name__)
 client = motor.motor_asyncio.AsyncIOMotorClient(
     DATABASE_URL,
     maxPoolSize=15,             # हैवी प्रीमियम ट्रैफिक के लिए पर्याप्त कनेक्शंस
-    minPoolSize=0,              # ✅ आइडल टाइम पर 0 कनेक्शन (कोएब की रैम 100% सुरक्षित)
+    minPoolSize=0,              # आइडल टाइम पर 0 कनेक्शन (कोएब की रैम 100% सुरक्षित)
     maxIdleTimeMS=30000,        # 30 सेकंड तक शांत रहने पर सॉकेट्स बंद करें
     serverSelectionTimeoutMS=5000,
     connectTimeoutMS=10000,
@@ -36,17 +36,18 @@ COLLECTIONS = {
 }
 
 # ─────────────────────────────────────────────────────────
-# ⚡ INDEXES — Speed & Instant Sort Tuning
+# ⚡ INDEXES — Fixed Illegal Specs (Zero Warning Logs)
 # ─────────────────────────────────────────────────────────
 async def ensure_indexes():
     for name, col in COLLECTIONS.items():
         try:
-            # सुपरफास्ट सर्च के लिए कम्पाउंड टेक्स्ट और सॉर्ट इंडेक्स सिंक
+            # ✅ FIX: कम्पाउंड टेक्स्ट इंडेक्स को सुरक्षित रखा गया
             await col.create_index(
                 [("file_name", "text"), ("caption", "text")],
                 name=f"{name}_text"
             )
-            await col.create_index([("_id", -1)])
+            # ✅ FIX: अवैध _id: -1 इंडेक्स को हमेशा के लिए हटा दिया गया है
+            # इससे मोंगोडीबी की तीनों Index warning [BadValue] पूरी तरह से फिक्स हो जाएंगी।
             logger.info(f"✅ Fast Search Index OK: {name}")
         except Exception as e:
             if "already exists" in str(e) or "IndexKeySpecsConflict" in str(e):
@@ -59,7 +60,6 @@ async def ensure_indexes():
 # ─────────────────────────────────────────────────────────
 async def db_count_documents():
     try:
-        # ✅ FIX: फाइलों के साथ-साथ किसमें कितने थंबनेल लॉक हैं, उसका लाइव काउंट मैट्रिक्स
         p_task = primary.estimated_document_count()
         c_task = cloud.estimated_document_count()
         a_task = archive.estimated_document_count()
@@ -98,7 +98,6 @@ async def save_file(media, collection_type="primary"):
 
         col = COLLECTIONS.get(collection_type, primary)
         
-        # प्रोजेक्शन के साथ डुप्लिकेट और थंबनेल सुरक्षित चेक करें
         existing_doc = await col.find_one({"_id": file_id}, {"file_ref": 1, "thumb_url": 1})
         
         if existing_doc:
@@ -159,7 +158,6 @@ async def _search(col, raw_query: str, regex, offset: int, limit: int, lang=None
     count = await col.count_documents(text_flt)
     
     if count > 0:
-        # ✅ FIX: सर्च के समय file_ref को रैम में न खींचकर सिर्फ आवश्यक फ़ील्ड्स प्रोजेक्ट करें (स्पीड बढ़ेगी)
         cursor = col.find(text_flt, {"_id": 1, "file_name": 1, "file_size": 1, "caption": 1, "score": {"$meta": "textScore"}})
         cursor.sort([("score", {"$meta": "textScore"})])
         cursor.skip(offset).limit(limit)
@@ -176,7 +174,7 @@ async def _search(col, raw_query: str, regex, offset: int, limit: int, lang=None
     if lang:
         reg_flt = {"$and": [reg_flt, {"file_name": re.compile(lang, re.IGNORECASE)}]}
 
-    # ✅ FIX: सॉर्टिंग और रेगेक्स लोड को प्रोजेक्शन की मदद से सुपर-लाइटवेट किया गया है
+    # ✅ FIX: इंडेक्सिंग एरर हटने के बाद डिफ़ॉल्ट _id सॉर्टिंग को बिना -1 इंडेक्स स्पेसिफिकेशन के सेफ एलाइन किया गया
     cursor = col.find(reg_flt, {"_id": 1, "file_name": 1, "file_size": 1, "caption": 1}).sort('_id', -1)
     cursor.skip(offset).limit(limit)
     docs = await cursor.to_list(length=limit)
@@ -189,7 +187,6 @@ async def _search(col, raw_query: str, regex, offset: int, limit: int, lang=None
 # 🌐 PUBLIC SEARCH API — Adaptive Result Sync (Bot 12 vs Web 21)
 # ─────────────────────────────────────────────────────────
 async def get_search_results(query, max_results, offset=0, lang=None, collection_type="primary"):
-    # ✅ FIX: 'max_results' अब सीधा info.py से डायनामिकली पास होकर काम करेगा (Bot=12, Web=21)
     if not query:
         return [], "", 0, collection_type
 
@@ -246,7 +243,6 @@ async def delete_files(query, collection_type="all"):
 # ─────────────────────────────────────────────
 async def get_file_details(file_id):
     try:
-        # ✅ FIX: जब यूज़र फाइल पर क्लिक करेगा, केवल तभी file_ref रैम में आएगा (अल्ट्रा सिक्योर)
         for col in [primary, cloud, archive]:
             doc = await col.find_one(
                 {"_id": file_id},
