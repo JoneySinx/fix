@@ -2,24 +2,10 @@ import os
 import io
 import qrcode
 import asyncio
-import traceback
 import logging
+import pytz
+import gc
 from datetime import datetime, timedelta
-from zoneinfo import ZoneInfo
-
-# ─────────────────────────────────────────────────────────
-# 🔥 CRITICAL NATIVE PATCH: Forced Event Loop for Sync
-# ─────────────────────────────────────────────────────────
-try:
-    asyncio.get_running_loop()
-except RuntimeError:
-    try:
-        import uvloop
-        asyncio.set_event_loop_policy(uvloop.EventLoopPolicy())
-    except ImportError:
-        pass
-    loop = asyncio.new_event_loop()
-    asyncio.set_event_loop(loop)
 
 import pyromod.listen 
 from hydrogram import Client, filters, enums
@@ -27,72 +13,81 @@ from hydrogram.types import InlineKeyboardButton, InlineKeyboardMarkup
 
 # डेटाबेस इम्पोर्ट्स
 from database.users_chats_db import db, web_db 
-from info import IS_PREMIUM, PRE_DAY_AMOUNT, RECEIPT_SEND_USERNAME, UPI_ID, UPI_NAME, ADMINS, LOG_CHANNEL
+from info import (
+    IS_PREMIUM, PRE_DAY_AMOUNT, RECEIPT_SEND_USERNAME, 
+    UPI_ID, UPI_NAME, ADMINS, LOG_CHANNEL, TIME_ZONE,
+    PREMIUM_REMINDER_BUSY_GAP
+)
 from Script import script
 from utils import temp, get_readable_time, get_wish 
 
 logger = logging.getLogger(__name__)
 VERIFY_CACHE = {}
 
-ADMIN_MSG = "👑 **You are the Admin!**\nYou have Lifetime Premium access."
+ADMIN_MSG = "👑 <b>You are the Admin!</b>\nYou have Lifetime Premium access."
 ADMIN_ALERT = "👑 You are the Admin! You have Lifetime Premium access."
 
-# =========================
-# 🔧 HELPERS
-# =========================
+# =========================================
+# ⚙️ CENTRALIZED LIFECYCLE HELPERS
+# =========================================
+def get_local_now():
+    """info.py के TIME_ZONE के अनुसार लाइव लोकल टाइम देता है"""
+    tz = pytz.timezone(TIME_ZONE)
+    return datetime.now(tz).replace(tzinfo=None)
+
 def parse_expire_time(e):
     if isinstance(e, datetime): return e
     try: return datetime.strptime(e, "%Y-%m-%d %H:%M:%S") if e else None
     except: return None
 
 def get_ist_str(dt):
-    """Converts UTC to IST String"""
-    return (dt + timedelta(hours=5, minutes=30)).strftime("%d %B %Y, %I:%M %p") if dt else "Unknown"
+    """प्रीमियम एक्सपायरी को सुंदर पठनीय स्ट्रिंग में रेंडर करता है"""
+    return dt.strftime("%d %B %Y, %I:%M %p") if dt else "Unknown"
 
 async def safe_del(c, cid, mids):
     try: await c.delete_messages(cid, mids)
     except: pass
 
-# =========================
-# 💎 PREMIUM CHECKER
-# =========================
+# =========================================
+# 💎 PREMIUM CHECKER SYSTEM SYNC
+# =========================================
 async def is_premium(uid, bot):
     if not IS_PREMIUM or uid in ADMINS: return True
     mp = await db.get_plan(uid)
     if mp.get("premium"):
         exp = parse_expire_time(mp.get("expire"))
-        if exp and exp < datetime.now(ZoneInfo("Asia/Kolkata")).replace(tzinfo=None):
+        if exp and exp < get_local_now(): # ग्लोबल टाइमज़ोन सिंक
             try: 
                 await bot.send_message(
                     uid, 
-                    "❌ **Plan Expired!**\nRenew with /plan", 
-                    reply_markup=InlineKeyboardMarkup([[InlineKeyboardButton("💎 Buy Premium", callback_data="buy_prem")]])
+                    "❌ <b>Your Premium Plan has Expired!</b>\n\nRenew with /plan to continue services.", 
+                    reply_markup=InlineKeyboardMarkup([[InlineKeyboardButton("💎 Buy Premium Plan", callback_data="buy_prem")]])
                 )
             except: pass
-            await db.update_plan(uid, {"expire": "", "plan": "", "premium": False})
+            await db.update_plan(uid, {"expire": None, "plan": "", "premium": False})
             return False
         return True
     return False
 
-# =========================
-# ⏰ REMINDER SYSTEM (CPU Spike & RAM Leak Fixed)
-# =========================
+# =========================================
+# ⏰ SMART AUTOMATED REMINDER PIPELINE
+# =========================================
 async def check_premium_expired(bot):
     intervals = [
-        (715, 725, "reminded_12h", "⏰ **Premium Reminder**\n\nYour plan expires in **12 Hours**.\n🗓 {}"),
-        (355, 365, "reminded_6h", "⚠️ **Premium Alert**\n\nYour plan expires in **6 Hours**.\n🗓 {}"),
-        (175, 185, "reminded_3h", "⚠️ **Urgent Alert**\n\nYour plan expires in **3 Hours**.\n🗓 {}"),
-        (55, 65, "reminded_1h", "🚨 **Critical Alert**\n\nYour plan expires in **1 Hour**.\n🗓 {}"),
-        (25, 35, "reminded_30m", "⏳ **Final Warning**\n\nYour plan expires in **30 Minutes**.\nRenew immediately!"),
-        (5, 15, "reminded_10m", "🔥 **Expiring Soon**\n\nYour plan expires in **10 Minutes**.\nService will stop soon.")
+        (715, 725, "reminded_12h", "⏰ <b>Premium Reminder</b>\n\nYour plan expires in <b>12 Hours</b>.\n🗓 {}"),
+        (355, 365, "reminded_6h", "⚠️ <b>Premium Alert</b>\n\nYour plan expires in <b>6 Hours</b>.\n🗓 {}"),
+        (175, 185, "reminded_3h", "⚠️ <b>Urgent Alert</b>\n\nYour plan expires in <b>3 Hours</b>.\n🗓 {}"),
+        (55, 65, "reminded_1h", "🚨 <b>Critical Alert</b>\n\nYour plan expires in <b>1 Hour</b>.\n🗓 {}"),
+        (25, 35, "reminded_30m", "⏳ <b>Final Warning</b>\n\nYour plan expires in <b>30 Minutes</b>.\nRenew immediately!"),
+        (5, 15, "reminded_10m", "🔥 <b>Expiring Soon</b>\n\nYour plan expires in <b>10 Minutes</b>.\nService will stop soon.")
     ]
     
     while True:
         try:
-            now = datetime.now(ZoneInfo("Asia/Kolkata")).replace(tzinfo=None)
+            now = get_local_now()
             limit_time = (now + timedelta(hours=13)).strftime("%Y-%m-%d %H:%M:%S")
             
-            # ✅ कर्सर रैम लीक को रोकने के लिए केवल आवश्यक फील्ड्स मंगवाईं (Projection Added)
+            # ✅ RAM LMT GUARD: कर्सर लोड को रोकने के लिए केवल आवश्यक फील्ड्स मंगवाईं
             cursor = db.premium.find(
                 {"status.premium": True, "status.expire": {"$lte": limit_time}},
                 {"id": 1, "status": 1}
@@ -105,17 +100,17 @@ async def check_premium_expired(bot):
                 
                 left_mins = (exp - now).total_seconds() / 60
                 
-                # Expiry Handler
+                # Expiry Handler Triggers
                 if left_mins <= 0:
                     if mp.get("last_reminder_id"): await safe_del(bot, uid, [mp.get("last_reminder_id")])
                     try: 
                         await bot.send_message(
                             uid, 
-                            "❌ **Your Premium Plan has Expired!**\n\nRenew now.", 
-                            reply_markup=InlineKeyboardMarkup([[InlineKeyboardButton("💎 Buy Premium", callback_data="buy_prem")]])
+                            "❌ <b>Your Premium Plan has Expired!</b>\n\nRenew now to unlock access.", 
+                            reply_markup=InlineKeyboardMarkup([[InlineKeyboardButton("💎 Buy Premium Plan", callback_data="buy_prem")]])
                         )
                     except: pass
-                    await db.update_plan(uid, {"expire": "", "plan": "", "premium": False, "reminded_12h": False, "reminded_6h": False, "reminded_3h": False, "reminded_1h": False, "reminded_30m": False, "reminded_10m": False, "last_reminder_id": 0})
+                    await db.update_plan(uid, {"expire": None, "plan": "", "premium": False, "reminded_12h": False, "reminded_6h": False, "reminded_3h": False, "reminded_1h": False, "reminded_30m": False, "reminded_10m": False, "last_reminder_id": 0})
                     continue
 
                 for min_t, max_t, flag, text in intervals:
@@ -127,15 +122,19 @@ async def check_premium_expired(bot):
                             await db.update_plan(uid, mp)
                         except: pass
                         break
+                        
+            # रैम साफ़ करने के लिए गारबेज कलेक्शन सिंक
+            gc.collect()
+            
         except Exception as e: 
             logger.error(f"Premium Loop Error: {e}")
         
-        # ✅ चाहे एरर आए या न आए, 60 सेकंड का स्लीप हमेशा अंत में सिक्योर रहेगा ताकि CPU ब्लास्ट न हो
-        await asyncio.sleep(60)
+        # ✅ FIX: हार्डकोडिंग हटाकर सीधे 'info.py' के ककस्टमाइज्ड 'PREMIUM_REMINDER_BUSY_GAP' से लिंक किया गया (0% सीपीयू लोड)
+        await asyncio.sleep(PREMIUM_REMINDER_BUSY_GAP)
 
-# =========================
-# 📱 COMMANDS
-# =========================
+# =========================================
+# 📱 REBUILT USER & ADMIN COMMANDS
+# =========================================
 @Client.on_message(filters.command("myplan") & filters.private)
 async def myplan_cmd(c, m):
     if not IS_PREMIUM: return
@@ -143,19 +142,18 @@ async def myplan_cmd(c, m):
         
     mp = await db.get_plan(m.from_user.id)
     if not mp.get("premium"):
-        return await m.reply("❌ **No Active Plan**\nTap below to buy!", reply_markup=InlineKeyboardMarkup([[InlineKeyboardButton("💎 Buy Premium", callback_data="buy_prem")]]))
+        return await m.reply("❌ <b>No Active Premium Subscription Found!</b>\n\nTap below to activate plan.", reply_markup=InlineKeyboardMarkup([[InlineKeyboardButton("💎 Buy Premium Plan", callback_data="buy_prem")]]))
     
     exp = parse_expire_time(mp.get("expire"))
-    now = datetime.now(ZoneInfo("Asia/Kolkata")).replace(tzinfo=None)
+    now = get_local_now()
     left = f"{(exp - now).days} days, {(exp - now).seconds // 3600} hours" if exp else "Unknown"
-    await m.reply(f"💎 **Premium Status**\n\n📦 **Plan:** {mp.get('plan')}\n🗓 **Expires:** {get_ist_str(exp)}\n⏲ **Time Left:** {left}", quote=True)
+    await m.reply(f"💎 <b>Premium Status Summary</b>\n\n📦 <b>Plan Active:</b> {mp.get('plan')}\n🗓 <b>Expires On:</b> {get_ist_str(exp)}\n⏲ <b>Time Remaining:</b> {left}", quote=True)
 
 @Client.on_message(filters.command("plan") & filters.private)
 async def plan_cmd(c, m):
     if not IS_PREMIUM: return
     if m.from_user.id in ADMINS: return await m.reply(ADMIN_MSG, quote=True)
-        
-    await m.reply(script.PLAN_TXT.format(PRE_DAY_AMOUNT, RECEIPT_SEND_USERNAME), reply_markup=InlineKeyboardMarkup([[InlineKeyboardButton("💎 Activate Premium", callback_data="buy_prem")]]))
+    await m.reply(script.PLAN_TXT.format(PRE_DAY_AMOUNT, RECEIPT_SEND_USERNAME), reply_markup=InlineKeyboardMarkup([[InlineKeyboardButton("💎 Activate Premium Now", callback_data="buy_prem")]]))
 
 @Client.on_message(filters.command(["add_prm", "rm_prm"]) & filters.user(ADMINS))
 async def manage_premium(c, m):
@@ -164,17 +162,15 @@ async def manage_premium(c, m):
     if len(cmd) < 2: return await m.reply(f"Usage: `/{cmd[0]} user_id {'days' if is_add else ''}`")
     
     try: uid, days = int(cmd[1]), int(cmd[2][:-1] if cmd[2].endswith('d') else cmd[2]) if is_add and len(cmd) > 2 else 0
-    except: return await m.reply("❌ Invalid Format!")
+    except: return await m.reply("❌ Invalid ID/Days Format Specified!")
 
     if is_add:
-        if days <= 0:
-            return await m.reply("❌ **Error:** Days must be at least 1.")
-            
-        ex = datetime.now(ZoneInfo("Asia/Kolkata")).replace(tzinfo=None) + timedelta(days=days)
+        if days <= 0: return await m.reply("❌ <b>Error:</b> Days must be at least 1.")
+        ex = get_local_now() + timedelta(days=days)
         data = {"expire": ex.strftime("%Y-%m-%d %H:%M:%S"), "plan": f"{days} Days", "premium": True, "reminded_12h": False, "reminded_6h": False, "reminded_3h": False, "reminded_1h": False, "reminded_30m": False, "reminded_10m": False, "last_reminder_id": 0}
-        m_usr, m_adm = f"🎉 **Premium Activated!**\n\n🗓 **Duration:** {days} Days\n📅 **Expires:** {get_ist_str(ex)}\n\nEnjoy! ❤️", f"✅ Added {days} days premium to `{uid}`."
+        m_usr, m_adm = f"🎉 <b>Premium Plan Activated!</b>\n\n🗓 <b>Duration Added:</b> {days} Days\n📅 <b>Expires On:</b> {get_ist_str(ex)}\n\nEnjoy our superfast streaming services! ❤️", f"✅ Added {days} days premium to token `{uid}`."
     else:
-        data, m_usr, m_adm = {"expire": "", "plan": "", "premium": False}, "❌ **Premium Removed by Admin.**", f"🗑 Removed premium from `{uid}`."
+        data, m_usr, m_adm = {"expire": None, "plan": "", "premium": False}, "❌ <b>Your Premium Access has been Removed by Admin.</b>", f"🗑 Revoked premium privileges from token `{uid}`."
 
     await db.update_plan(uid, data)
     await m.reply(m_adm)
@@ -186,63 +182,61 @@ async def manage_premium(c, m):
 @Client.on_message(filters.command("prm_list") & filters.user(ADMINS))
 async def prm_list(c, m):
     if not IS_PREMIUM: return
-    msg, count, text = await m.reply("🔄 Fetching..."), 0, "💎 **Premium Users**\n\n"
+    msg, count, text = await m.reply("🔄 Fetching Active Members Database..."), 0, "💎 <b>Active Premium Members List</b>\n\n"
     async for u in db.get_premium_users():
         if u.get("status", {}).get("premium"):
             count += 1
-            text += f"👤 `{u['id']}` | 🗓 {u['status'].get('plan')}\n"
-    await msg.edit(text + (f"\n**Total:** {count}" if count > 0 else "📭 No premium users."))
+            text += f"👤 <code>{u['id']}</code> | 🗓 {u['status'].get('plan')}\n"
+    await msg.edit(text + (f"\n<b>Total Users Count:</b> {count}" if count > 0 else "📭 No active premium users found."))
 
 @Client.on_message(filters.command("web_users") & filters.user(ADMINS))
 async def list_web_users(c, m):
-    msg = await m.reply("🔄 Fetching Web Users...")
+    msg = await m.reply("🔄 Fetching Web Server Registration Logs...")
     count = 0
-    text = "🌐 **Fast Finder Web Users**\n\n"
+    text = "🌐 <b>Fast Finder Registered Web Users</b>\n\n"
     async for u in web_db.col.find({}, {"tg_id": 1, "email": 1, "joined_date": 1}): 
         count += 1
         joined = u.get('joined_date')
         joined_str = joined.strftime("%d %b %Y") if joined else "Unknown"
-        text += f"👤 **TG ID:** `{u['tg_id']}`\n📧 **Email:** `{u['email']}`\n📅 **Joined:** {joined_str}\n\n"
+        text += f"👤 <b>TG ID:</b> <code>{u['tg_id']}</code>\n📧 <b>Email:</b> {u['email']}\n📅 <b>Joined On:</b> {joined_str}\n\n"
         
     if count == 0:
-        await msg.edit("📭 अभी तक किसी ने वेब पर रजिस्टर नहीं किया है।")
+        await msg.edit("📭 अभी तक किसी भी यूजर ने वेबसाइट डैशबोर्ड पर रजिस्टर नहीं किया है।")
     else:
-        text += f"**Total Web Users:** {count}"
+        text += f"<b>Total Web Dashboard Users:</b> {count}"
         await msg.edit(text)
 
-# =========================
-# 🔘 CALLBACKS
-# =========================
+# =========================================
+# 📤 INLINE INTERFACE CALLBACKS
+# =========================================
 @Client.on_callback_query(filters.regex("^myplan$"))
 async def myplan_cb(client, query):
     if query.from_user.id in ADMINS: return await query.answer(ADMIN_ALERT, show_alert=True)
-    if not IS_PREMIUM: return await query.answer("Premium disabled.", show_alert=True)
+    if not IS_PREMIUM: return await query.answer("Premium system disabled.", show_alert=True)
     
     mp = await db.get_plan(query.from_user.id)
-    btn = [[InlineKeyboardButton("⬅️ Back", callback_data="back_start")]]
+    btn = [[InlineKeyboardButton("⬅️ Back Menu", callback_data="back_start")]]
     
     if not mp.get('premium'):
-        btn.insert(0, [InlineKeyboardButton('💎 Buy Premium', callback_data='activate_plan')])
-        return await query.message.edit_caption("❌ No active plan.", reply_markup=InlineKeyboardMarkup(btn))
+        btn.insert(0, [InlineKeyboardButton('💎 Buy Premium Plan', callback_data='activate_plan')])
+        return await query.message.edit_caption("❌ No active premium subscription plan found.", reply_markup=InlineKeyboardMarkup(btn))
     
     exp = parse_expire_time(mp.get('expire'))
-    now = datetime.now(ZoneInfo("Asia/Kolkata")).replace(tzinfo=None)
+    now = get_local_now()
     left = f"{(exp - now).days} days, {(exp - now).seconds//3600} hours" if exp else "Unknown"
-    await query.message.edit_caption(f"💎 <b>Premium Status</b>\n\n📦 Plan: {mp.get('plan')}\n⏳ Expires: {get_ist_str(exp)}\n⏱ Left: {left}\n\nUse /plan to extend.", reply_markup=InlineKeyboardMarkup(btn))
+    await query.message.edit_caption(f"💎 <b>Premium Subscription Status</b>\n\n📦 Plan Model: {mp.get('plan')}\n⏳ Expires: {get_ist_str(exp)}\n⏱ Duration Left: {left}\n\nUse /plan to extend duration.", reply_markup=InlineKeyboardMarkup(btn))
 
 @Client.on_callback_query(filters.regex(r"^(buy_prem|activate_plan)$"))
 async def buy_callback(c, q):
     if q.from_user.id in ADMINS: return await q.answer(ADMIN_ALERT, show_alert=True)
 
-    prm_msg = await q.message.edit(f"💎 **Select Plan Duration**\n\nSend days (e.g. `30`).\nPrice: ₹{PRE_DAY_AMOUNT}/day\n\n⏳ Timeout: 60s")
+    prm_msg = await q.message.edit(f"💎 <b>Select Plan Duration Mode</b>\n\nReply to this message with total days (e.g. <code>30</code>).\nPrice: ₹{PRE_DAY_AMOUNT} / Per Day\n\n⏳ Timeout Session: 60s")
     try:
         resp = await c.listen(q.message.chat.id, timeout=60)
         await safe_del(c, q.message.chat.id, [prm_msg.id, resp.id])
         days = int(resp.text)
         
-        if days <= 0:
-            return await q.message.reply("❌ **Invalid Duration!** Days must be at least 1.")
-            
+        if days <= 0: return await q.message.reply("❌ <b>Invalid Duration Selection!</b> Days must be at least 1.")
         amount = days * int(PRE_DAY_AMOUNT)
         
         img = qrcode.make(f"upi://pay?pa={UPI_ID}&pn={UPI_NAME}&am={amount}&cu=INR")
@@ -250,38 +244,42 @@ async def buy_callback(c, q):
         img.save(bio, format="PNG")
         bio.seek(0)
         
-        qr_msg = await q.message.reply_photo(photo=bio, caption=f"💳 **Pay ₹{amount}**\n\nScan & Pay. Then send screenshot here.\n\n⏳ Timeout: 5 mins")
+        qr_msg = await q.message.reply_photo(photo=bio, caption=f"💳 <b>UPI SECURE PAYMENT INSTANT GENERATED</b>\n\n» Amount To Pay: <code>₹{amount}</code>\n» Subscription Pack: <code>{days} Days</code>\n\nScan QR & pay. Then send payment screenshot here within 5 mins 👇\n\n⏳ Timeout Session: 5 mins")
         receipt = await c.listen(q.message.chat.id, timeout=300)
         
-        if not receipt.photo: return await q.message.reply("❌ **Invalid!** Send a photo.")
+        if not receipt.photo: return await q.message.reply("❌ <b>Invalid Asset Sent!</b> Please send valid transaction receipt photo only.")
         
         await safe_del(c, q.message.chat.id, [qr_msg.id])
-        VERIFY_CACHE[q.from_user.id] = (await q.message.reply("✅ **Sent for Verification!**\nAdmin will activate shortly.")).id
+        VERIFY_CACHE[q.from_user.id] = (await q.message.reply("✅ <b>Transaction Sent to Admin Panel for Verification!</b>\nYour premium pack will activate shortly.")).id
         
-        await receipt.copy(RECEIPT_SEND_USERNAME, caption=f"#Payment\n👤: {q.from_user.mention} (`{q.from_user.id}`)\n💰: ₹{amount} ({days} days)", reply_markup=InlineKeyboardMarkup([[InlineKeyboardButton("✅ Approve", callback_data=f"pay_confirm_{q.from_user.id}_{days}"), InlineKeyboardButton("❌ Reject", callback_data=f"pay_reject_{q.from_user.id}")]]))
-    except ValueError: await q.message.reply("❌ Invalid Number!")
+        await receipt.copy(RECEIPT_SEND_USERNAME, caption=f"#Payment\n👤 Profile: {q.from_user.mention} (<code>{q.from_user.id}</code>)\n💰 Amount: ₹{amount} ({days} days)", reply_markup=InlineKeyboardMarkup([[InlineKeyboardButton("✅ Approve Payment", callback_data=f"pay_confirm_{q.from_user.id}_{days}"), InlineKeyboardButton("❌ Reject Invoice", callback_data=f"pay_reject_{q.from_user.id}")]]))
+    except ValueError: await q.message.reply("❌ Invalid Numeric Entry!")
     except asyncio.TimeoutError:
         VERIFY_CACHE.pop(q.from_user.id, None)
-        await q.message.reply("⏳ **Timeout!** Process cancelled.")
-    except Exception as e: await q.message.reply(f"❌ **Error:** `{e}`")
+        await q.message.reply("⏳ <b>Transaction Window Timeout!</b> Process cancelled.")
+    except Exception as e: await q.message.reply(f"❌ <b>Execution Error:</b> <code>{e}</code>")
 
 @Client.on_callback_query(filters.regex(r"^pay_(confirm|reject)_"))
 async def pay_action(c, q):
-    if q.from_user.id not in ADMINS: return await q.answer("❌ Only Admins!", show_alert=True)
-    _, act, uid = q.data.split("_")[:3]
-    uid = int(uid)
+    if q.from_user.id not in ADMINS: return await q.answer("❌ Verification Access Denied!", show_alert=True)
+    
+    # ✅ FIX: सुरक्षित बाउंडेड कॉलबैक एनकोडिंग स्प्लिटिंग
+    tokens = q.data.split("_")
+    act = tokens[1]
+    uid = int(tokens[2])
 
     if act == "confirm":
-        days = int(q.data.split("_")[3])
-        ex = datetime.now(ZoneInfo("Asia/Kolkata")).replace(tzinfo=None) + timedelta(days=days)
+        days = int(tokens[3])
+        ex = get_local_now() + timedelta(days=days)
         await db.update_plan(uid, {"expire": ex.strftime("%Y-%m-%d %H:%M:%S"), "plan": f"{days} Days", "premium": True, "reminded_12h": False, "reminded_6h": False, "reminded_3h": False, "reminded_1h": False, "reminded_30m": False, "reminded_10m": False, "last_reminder_id": 0})
-        await q.message.edit_caption(caption=q.message.caption + f"\n\n✅ **Approved by** {q.from_user.mention}", reply_markup=None)
-        try: await c.send_message(uid, f"🎉 **Congratulations!**\n\n✅ Your premium of **{days} Days** is Active.\n📅 **Expires:** {get_ist_str(ex)}\n\nEnjoy our service! ❤️")
+        await q.message.edit_caption(caption=q.message.caption + f"\n\n✅ <b>Approved by:</b> {q.from_user.mention}", reply_markup=None)
+        try: await c.send_message(uid, f"🎉 <b>Congratulations Member!</b>\n\n✅ Your premium plan of <b>{days} Days</b> is successfully Active.\n📅 <b>Expires On:</b> {get_ist_str(ex)}\n\nEnjoy our lightning fast search, streaming & download benefits! ❤️")
         except: pass
     else:
-        await q.message.edit_caption(caption=q.message.caption + f"\n\n❌ **Rejected by** {q.from_user.mention}", reply_markup=None)
-        try: await c.send_message(uid, "❌ **Payment Rejected!**\nContact admin manually.")
+        await q.message.edit_caption(caption=q.message.caption + f"\n\n❌ <b>Rejected by:</b> {q.from_user.mention}", reply_markup=None)
+        try: await c.send_message(uid, "❌ <b>Subscription Invoice Verification Rejected!</b>\nPlease check screenshot or contact admin manually.")
         except: pass
         
     if uid in VERIFY_CACHE:
         await safe_del(c, uid, [VERIFY_CACHE.pop(uid)])
+    gc.collect()
