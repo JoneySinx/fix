@@ -1,5 +1,6 @@
 import logging
 import asyncio
+import signal
 import os
 import time
 import sys
