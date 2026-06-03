@@ -67,7 +67,7 @@ async def get_user_role(req):
     return None, None
 
 # ─────────────────────────────────────────────────────────
-# 🔍 SEARCH API — Rebuilt Grid Engine (Locked to 21 Results)
+# 🔍 SEARCH API — Rebuilt Grid Engine (With Cache Buster Sync)
 # ─────────────────────────────────────────────────────────
 @search_routes.get("/api/search")
 async def api_search(req):
@@ -88,7 +88,7 @@ async def api_search(req):
     flt_text = {"$text": {"$search": q}}
     flt_regex = {"file_name": re.compile(re.escape(q), re.IGNORECASE)}
     
-    # ✅ FIX: ३-कॉलम नेटफ्लिक्स ग्रिड को परफेक्ट अलाइन रखने के लिए २१ रिज़ल्ट्स पर सख्त लॉक (MAX_WEB_RESULTS)
+    # ✅ ३-कॉलम नेटफ्लिक्स ग्रिड को परफेक्ट अलाइन रखने के लिए २१ रिज़ल्ट्स पर सख्त लॉक (MAX_WEB_RESULTS)
     all_m, tot, lim = [], 0, MAX_WEB_RESULTS
     
     tgt_cols = {col: COLLECTIONS[col]} if col in COLLECTIONS else COLLECTIONS
@@ -116,8 +116,8 @@ async def api_search(req):
             continue
             
         local_limit = lim - len(all_m)
-        # स्पीड बूस्ट प्रोजेक्शन: सर्च के समय file_ref को रैम में लोड नहीं करेंगे
-        docs = await c.find(col_filters[n], {"_id": 1, "file_name": 1, "file_size": 1, "file_type": 1, "file_ref": 1}).sort("_id", -1).skip(remaining_skip).limit(local_limit).to_list(length=local_limit)
+        # स्पीड बूस्ट प्रोजेक्शन: सर्च के समय रैम ओवरलोड रोकने के लिए केवल आवश्यक डेटा खींचें
+        docs = await c.find(col_filters[n], {"_id": 1, "file_name": 1, "file_size": 1, "file_type": 1, "file_ref": 1, "thumb_url": 1}).sort("_id", -1).skip(remaining_skip).limit(local_limit).to_list(length=local_limit)
         for d in docs: d["source_col"] = n.lower()
         all_m.extend(docs)
         remaining_skip = 0
@@ -127,7 +127,10 @@ async def api_search(req):
         db_id = d.get("_id")
         file_name = d.get("file_name", "Unknown File")
         
-        tg_thumb = f"/api/thumb?file_id={db_id}"
+        # ✅ FIX: ब्राउज़र एग्रेसिव लोकल कैशे को चकमा देने के लिए डायनामिक वर्जन साल्ट इजेक्शन
+        # जब भी आप थंबनेल एडिट/चेंज करेंगे, यह टाइमस्टैम्प यूआरएल को बदल देगा और ब्राउज़र बिना इन्कॉग्निटो के तुरंत नया पोस्टर दिखाएगा!
+        thumb_salt = int(time.time() * 100)
+        tg_thumb = f"/api/thumb?file_id={db_id}&v={thumb_salt}"
         
         return {
             "file_id": db_id,
@@ -357,7 +360,7 @@ async def api_upload_thumb(req):
         # [RAM CACHE BUSTER SYNC]
         thumb_cache.pop(file_id_field, None)
 
-        # ✅ FIXED: context block का उपयोग करके BytesIO बफर को इमेज अपलोड होते ही पूरी तरह फ्लश किया गया
+        # context block का उपयोग करके BytesIO बफर को इमेज अपलोड होते ही पूरी तरह फ्लश किया गया
         with io.BytesIO(image_bytes) as img_buffer:
             img_buffer.name = "poster.jpg"
             msg = await temp.BOT.send_photo(chat_id=BIN_CHANNEL, photo=img_buffer)
