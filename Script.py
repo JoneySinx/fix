@@ -16,21 +16,33 @@ class script(object):
 ✨ <i>ᴊᴏɪɴ ᴏᴜʀ ᴘʀᴇᴍɪᴜᴍ ꜰᴏʀ ᴀɴ ᴀᴅ-ꜰʀᴇᴇ ᴇxᴘᴇʀɪᴇɴᴄᴇ!</i></b>"""
 
     # 📊 ✅ FIXED: आपके स्क्रीनशॉट के अनुसार बिल्कुल हूबहू पर्पल नियॉन थीम आधारित स्टैट्स लेआउट
-    STATUS_TXT = """📊 <b><i>FAST FINDER SYSTEM STATS</i></b>
+    STATUS_TXT = """
+📊 <b>FAST FINDER SYSTEM STATS</b>
 
-🤵 <b>Total Users:</b> <code>{}</code>
-👥 <b>Connected Groups:</b> <code>{}</code>
-💎 <b>Premium Members:</b> <code>{}</code>
+<blockquote>
+🤵 Total Users: <b>{}</b>
+👥 Connected Groups: <b>{}</b>
+💎 Premium Members: <b>{}</b>
+</blockquote>
 
-🌐 <b><i>Data Centre</i></b>
-📁 <b>Total Files:</b> <code>{}</code>
+🌐 <b>Data Centre</b>
 
-⚡ <b>Primary :</b> <code>{}</code> ✅ <code>{}</code>
-☁️ <b>Cloud :</b> <code>{}</code> ✅ <code>{}</code>
-♻️ <b>Archive :</b> <code>{}</code> ✅ <code>{}</code>
+<blockquote>
+📁 Total Files: <b>{}</b>
+</blockquote>
 
-🖼️ <b>Total Cached Thumbs:</b> <code>{}</code>
-⏰ <b>System Live Uptime:</b> <code>{}</code>"""
+<blockquote>
+⚡ Primary : <b>{}</b> ✅ <b>{}</b>
+☁️ Cloud : <b>{}</b> ✅ <b>{}</b>
+♻️ Archive : <b>{}</b> ✅ <b>{}</b>
+</blockquote>
+
+<blockquote>
+🖼️ Total Cached Thumbs: <b>{}</b>
+</blockquote>
+
+⏰ <b>System Live Uptime:</b> <code>{}</code>
+"""
 
     # ✅ सिर्फ प्रीमियम यूज़र्स के लिए ग्लोबल लाइब्रेरी स्टैट्स
     USER_STATUS_TXT = """📊 <b><u>FAST FINDER GLOBAL DATABASE</u></b>
