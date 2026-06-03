@@ -18,7 +18,6 @@ logger = logging.getLogger(__name__)
 
 admin_routes = web.RouteTableDef()
 
-# रजिस्ट्रेशन Verification OTP कैशे बकेट इनिशियलाइजेशन
 if not hasattr(temp, 'REG_PENDING'):
     temp.REG_PENDING = {}
 
@@ -45,13 +44,11 @@ function changePosterMode(){pMode=document.getElementById('posterMode').value;lo
 function handleThumbError(fileId) {
     var box = document.getElementById('poster-box-' + fileId);
     if (box) {
-        box.innerHTML = '<div style="position:absolute; inset:0; display:flex; flex-direction:column; align-items:center; justify-content:center; background:#1f1f1f; gap:6px; padding:10px;"><span style="font-size:11px; color:var(--muted); text-align:center;">थंबनेल लोड नहीं हुआ (Busy)</span><button onclick="reloadThumb(\\''+fileId+'\\')" id="btn-rl-'+fileId+'" style="background:var(--accent); color:#fff; border:none; padding:5px 10px; border-radius:4px; font-size:11px; font-weight:bold; cursor:pointer; outline:none;">🔄 Reload</button></div>';
+        box.innerHTML = '<div style="position:absolute; inset:0; display:flex; flex-direction:column; align-items:center; justify-content:center; background:#1f1f1f; padding:10px;"><span style="font-size:11px; color:var(--muted); text-align:center;">थंबनेल लोड नहीं हुआ</span></div>';
     }
 }
 
 async function reloadThumb(fileId) {
-    var btn = document.getElementById('btn-rl-' + fileId);
-    if (btn) { btn.innerText = "Loading..."; btn.disabled = true; }
     var timestamp = new Date().getTime();
     var box = document.getElementById('poster-box-' + fileId);
     if (box) {
@@ -99,10 +96,10 @@ async function doSearch(o){
             
             var adminControls='';
             if(d.is_admin){
-                adminControls='<div style="display:flex;gap:4px;margin-top:8px;">' +
-                    '<button onclick="editFile(\\'' + f.file_id + '\\',\\'' + f.raw_collection + '\\',\\'' + f.name.replace(/'/g,"\\\\'") + '\\')" style="flex:1;background:#333;color:#fff;border:0;padding:8px;border-radius:4px;cursor:pointer;font-size:12px;font-weight:bold;">Edit</button>' +
-                    '<button onclick="reloadThumb(\\'' + f.file_id + '\\')" style="background:#555;color:#fff;border:0;padding:8px;border-radius:4px;cursor:pointer;font-size:12px;" title="Force Refresh Poster">🔄</button>' +
-                    '<div style="background:var(--accent);color:#fff;border:0;padding:8px;border-radius:4px;cursor:pointer;font-size:12px;font-weight:bold;text-align:center;" onclick="deleteFile(\\'' + f.file_id + '\\',\\'' + f.raw_collection + '\\')">Delete</div>' +
+                // ✅ FIXED: यूज़र के कड़े निर्देशानुसार फालतू '🔄' रीलोड बटन को लेआउट ग्रिड से पूरी तरह साफ कर दिया गया है
+                adminControls='<div style="display:flex;gap:8px;margin-top:8px;">' +
+                    '<button onclick="editFile(\\'' + f.file_id + '\\',\\'' + f.raw_collection + '\\',\\'' + f.name.replace(/'/g,"\\\\'") + '\\')" style="flex:1;background:#444;color:#fff;border:0;padding:10px;border-radius:4px;cursor:pointer;font-size:13px;font-weight:bold;">Edit</button>' +
+                    '<div style="flex:1;background:var(--accent);color:#fff;border:0;padding:10px;border-radius:4px;cursor:pointer;font-size:13px;font-weight:bold;text-align:center;" onclick="deleteFile(\\'' + f.file_id + '\\',\\'' + f.raw_collection + '\\')">Delete</div>' +
                 '</div>';
             }
             
@@ -165,7 +162,7 @@ function editFile(fid, col, currentName) {
     document.getElementById('cropContainer').style.display = 'none';
     var prevBox = document.getElementById('emPreviewBox');
     prevBox.style.display = 'flex';
-    prevBox.innerHTML = '<img src="/api/thumb?file_id=' + fid + '" class="t-prev-img" onerror="this.src=\\'https://placehold.co/600x338/181818/FFF?text=No+Thumbnail\\';">';
+    prevBox.innerHTML = '<img src="/api/thumb?file_id=' + fid + '" class="t-prev-img" onerror="this.src=\\'https://placehold.co/600x338/181818/FFF?text=No+Thumbnail\';">';
     document.getElementById('editCombinedModal').classList.add('open');
 }
 
@@ -239,6 +236,7 @@ async function saveAllChanges() {
         if(res.success || cropperInstance) {
             showToast('✨ Metadata & Studio Poster saved successfully!');
             closeCombinedModal();
+            // बैकएंड साल्ट के कारण यह बैकग्राउंड में बिना पेज हिले थंबनेल चमका देगा
             reloadThumb(activeFid);
             doSearch(curOff);
         } else {
@@ -269,7 +267,7 @@ def build_page(title, body, cls="", active_tab="", role=None):
     else: nav_links = ""
 
     if role: nav = f'<div class="sidebar-overlay" id="sbOverlay" onclick="closeSidebar()"></div><div class="sidebar" id="sidebar"><div class="sb-header"><div class="sb-logo"><span class="nf-icon">F</span> FAST FINDER</div><button class="sb-close" onclick="closeSidebar()">&#10005;</button></div><nav class="sb-nav"><div class="sb-section">Menu</div>{nav_links}</nav><div class="sb-footer"><a href="/logout" class="sb-logout">Sign Out</a></div></div><div class="topbar"><button class="ham-btn" id="hamBtn" onclick="openSidebar()"><span class="ham-line"></span><span class="ham-line"></span><span class="ham-line"></span></button><a class="logo" href="/dashboard"><span class="nf-icon">F</span> FAST FINDER</a><div class="topbar-right"><button class="theme-btn" onclick="toggleThemeFixed()">Theme</button></div></div>'
-    else: nav = '<div class="topbar" style="position:absolute; width:100%; box-shadow:none; background:transparent;"><a class="logo" href="/" style="font-size:24px"><span class="nf-icon" style="font-size:24px">F</span> FAST FINDER</a><div class="topbar-right"><button class="theme-btn" onclick="toggleThemeFixed()">Theme</button></div></div>'
+    else: nav = ""
 
     modals = """
     <div class="edit-modal" id="editCombinedModal" onclick="if(event.target===this)closeCombinedModal()">
@@ -358,9 +356,9 @@ async def api_register_step1(req):
 
 @admin_routes.get('/verify_registration')
 async def verify_registration_page(req):
-    tg_id = req.query.get('tg_id', '')
-    if not tg_id: return web.HTTPFound('/register')
-    content = f'<p style="color:var(--muted); margin-bottom:15px; font-size:14px;">We sent a 6-digit OTP to your Telegram bot PM.</p><form action="/api/register_step2" method="post"><input type="hidden" name="tg_id" value="{tg_id}"><input type="text" name="otp" placeholder="Enter 6-digit OTP" required><button class="submit-btn" type="submit">Verify & Create Account</button></form>'
+    text_val = req.query.get('tg_id', '')
+    if not text_val: return web.HTTPFound('/register')
+    content = f'<p style="color:var(--muted); margin-bottom:15px; font-size:14px;">We sent a 6-digit OTP to your Telegram bot PM.</p><form action="/api/register_step2" method="post"><input type="hidden" name="tg_id" value="{text_val}"><input type="text" name="otp" placeholder="Enter 6-digit OTP" required><button class="submit-btn" type="submit">Verify & Create Account</button></form>'
     return build_page("Verify Registration", form_wrapper("Verify OTP", content, req.query.get('err','')), "login-bg")
 
 @admin_routes.post('/api/register_step2')
@@ -455,9 +453,6 @@ async def premium_expired(req):
     content = f'<div style="text-align:center;"><div style="font-size:50px; margin-bottom:15px;">⏳</div><p style="color:var(--muted); margin-bottom:30px;">Your access to Fast Finder Web has expired. Please renew your plan via our Telegram Bot.</p><div class="scard red" style="text-align:left; margin-bottom:25px; padding:15px;"><div class="scard-label">How to Renew?</div><div class="scard-sub" style="color:var(--text)">1. Go to Telegram Bot</div><div class="scard-sub" style="color:var(--text)">2. Use command <b>/plan</b></div><div class="scard-sub" style="color:var(--text)">3. Pay & Activate instantly</div></div><a href="https://t.me/{temp.U_NAME}" class="submit-btn" style="text-decoration:none; display:block;">Open Telegram Bot</a><a href="/logout" style="display:block; margin-top:20px; color:var(--muted); text-decoration:none;">Sign Out</a></div>'
     return build_page("Premium Expired", form_wrapper("Premium Expired", content), "login-bg")
 
-# ─────────────────────────────────────────────────────────
-# 📊 DATABASE & THUMBNAIL LIVE METRICS BREAKDOWN PAGE
-# ─────────────────────────────────────────────────────────
 @admin_routes.get('/stats')
 async def stats(req):
     role, _ = await get_auth(req)
@@ -472,7 +467,6 @@ async def stats(req):
     try: u = await user_db.total_users_count()
     except: u = 0
     
-    # प्रतिशत रेंडरिंग कैलकुलेशन (Dynamic Animation Data)
     p_tot = s.get('primary', 0)
     c_tot = s.get('cloud', 0)
     a_tot = s.get('archive', 0)
@@ -492,7 +486,6 @@ async def stats(req):
     total_thumb = f"{s.get('total_thumb', 0):,}"
     bot_users = f"{u:,}"
 
-    # ✅ MASTER UI SYNCHRONIZER: इंजेक्टिंग लाइव सीएसएस प्रोग्रेस स्टेट्स और 3 नए टेलीमेट्री विगेट्स
     html_stats_body = '<style>:root{--primary-p:'+p_per+';--cloud-p:'+c_per+';--archive-p:'+a_per+';}</style>' \
         '<div class="main" style="padding-top:40px;">' \
         '<div class="big-stat">' \
@@ -548,13 +541,6 @@ async def stats(req):
     '</div>'
 
     return build_page("Stats - Fast Finder", html_stats_body, "", "stats", role)
-
-@admin_routes.get('/dashboard')
-async def dash(req):
-    role, tg_id = await get_auth(req)
-    if not role: return web.HTTPFound('/login')
-    b = '<div class="search-zone"><div class="search-row"><div class="filter-tabs"><button class="ftab active" data-col="all" onclick="setCol(this)">All</button><button class="ftab" data-col="primary" onclick="setCol(this)">Primary</button><button class="ftab" data-col="cloud" onclick="setCol(this)">Cloud</button><button class="ftab" data-col="archive" onclick="setCol(this)">Archive</button></div><select id="posterMode" onchange="changePosterMode()" style="background:var(--bg2);color:var(--text);border:1px solid var(--border);border-radius:4px;padding:8px;font-weight:700;outline:none;cursor:pointer;"><option value="tg">📸 Original TG Thumb</option><option value="none">⚡ Text Only (Fastest)</option></select><div class="search-wrap"><span class="s-icon">&#9906;</span><input class="search-input" id="q" placeholder="Titles, people, genres"></div><button class="search-btn" onclick="doSearch(0)">Search</button></div></div><div class="main" style="padding-top:20px;"><div class="results-info" id="resInfo"><span class="results-count" id="resCount"></span></div><div id="results" class="res-grid"><div class="empty"><div class="empty-icon">&#8981;</div><p>Find your favorite movies and TV shows.</p></div></div><div class="pagination" id="pageBox"><button class="pg-btn" id="pBtn" onclick="prev()" disabled>Previous</button><span class="pg-info" id="pgInfo">Page 1</span><button class="pg-btn" id="nBtn" onclick="next()">Next</button></div></div><div class="toast" id="toast"></div>'
-    return build_page("Home - Fast Finder", b, "", "dash", role)
 
 @admin_routes.get('/logout')
 async def logout(req):
