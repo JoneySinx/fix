@@ -18,29 +18,23 @@ class script(object):
     # 📊 ✅ FIXED: आपके स्क्रीनशॉट के अनुसार बिल्कुल हूबहू पर्पल नियॉन थीम आधारित स्टैट्स लेआउट
     STATUS_TXT = """
 📊 <b>FAST FINDER SYSTEM STATS</b>
-
 <blockquote>
 🤵 Total Users: <b>{}</b>
 👥 Connected Groups: <b>{}</b>
 💎 Premium Members: <b>{}</b>
 </blockquote>
-
 🌐 <b>Data Centre</b>
-
 <blockquote>
 📁 Total Files: <b>{}</b>
 </blockquote>
-
 <blockquote>
 ⚡ Primary : <b>{}</b> ✅ <b>{}</b>
 ☁️ Cloud : <b>{}</b> ✅ <b>{}</b>
 ♻️ Archive : <b>{}</b> ✅ <b>{}</b>
 </blockquote>
-
 <blockquote>
 🖼️ Total Cached Thumbs: <b>{}</b>
 </blockquote>
-
 ⏰ <b>System Live Uptime:</b> <code>{}</code>
 """
 
