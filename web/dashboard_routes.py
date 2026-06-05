@@ -6,9 +6,6 @@ from utils import temp
 
 dashboard_routes = web.RouteTableDef()
 
-# ─────────────────────────────────────────────────────────────────────────────
-# 🎨 NEW CARD UI CSS
-# ─────────────────────────────────────────────────────────────────────────────
 CARD_CSS = """
 <style>
 /* ── Search zone ── */
@@ -55,7 +52,7 @@ CARD_CSS = """
 .file-card:hover .fc-poster{transform:scale(1.05)}
 .thumb-error{position:absolute;inset:0;display:flex;align-items:center;justify-content:center;background:#1f1f1f}
 
-/* ── Poster top row: Type · Size · Source ── */
+/* ── Poster top row ── */
 .poster-top{position:absolute;top:0;left:0;right:0;display:flex;align-items:center;gap:5px;padding:8px}
 .type-chip{background:rgba(0,0,0,.72);backdrop-filter:blur(8px);color:#fff;border-radius:5px;padding:3px 8px;font-size:10px;font-weight:800;letter-spacing:.8px;border:1px solid rgba(255,255,255,.14);line-height:1.4}
 .size-chip{background:rgba(0,0,0,.60);backdrop-filter:blur(8px);color:#e0e0e0;border-radius:5px;padding:3px 8px;font-size:10px;font-weight:600;border:1px solid rgba(255,255,255,.08);line-height:1.4}
@@ -78,7 +75,7 @@ CARD_CSS = """
 .pg-btn:active{transform:scale(.94)}
 .cdd-btn:active{transform:scale(.97)}
 
-/* ── Poster bottom row: Edit | Delete (admin only) ── */
+/* ── Poster admin buttons ── */
 .poster-admin{position:absolute;bottom:0;left:0;right:0;display:flex;gap:6px;padding:7px 8px;opacity:0;transform:translateY(8px);transition:opacity .22s ease,transform .22s cubic-bezier(.4,0,.2,1);pointer-events:none}
 .file-card:hover .poster-admin{opacity:1;transform:translateY(0);pointer-events:all}
 .poster-box.admin-open .poster-admin{opacity:1;transform:translateY(0);pointer-events:all}
@@ -94,7 +91,7 @@ CARD_CSS = """
 .fc-name{color:var(--text);font-size:12.5px;font-weight:600;line-height:1.45;display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden;cursor:pointer;transition:color .18s;text-decoration:none}
 .fc-name:hover{color:var(--accent);text-decoration:underline;text-decoration-color:var(--accent);text-underline-offset:2px}
 
-/* ── Text-only mode info row ── */
+/* ── Text-only mode ── */
 .fc-text-info{display:flex;align-items:center;gap:6px;padding:10px 11px 0;flex-wrap:wrap;margin-bottom:4px}
 .tc-type{background:var(--bg4);color:var(--muted);border-radius:5px;padding:2px 7px;font-size:9px;font-weight:800;letter-spacing:.8px;border:1px solid var(--border)}
 .tc-size{color:var(--muted);font-size:11px}
@@ -115,15 +112,11 @@ CARD_CSS = """
 </style>
 """
 
-# ─────────────────────────────────────────────────────────────────────────────
-# 🎬 JS ENGINE — पुरानी working logic + नया card HTML
-# ─────────────────────────────────────────────────────────────────────────────
 JS_ENGINE = """
 var curQ='',curOff=0,nextOff='',curCol='all',curPage=1;
 var pMode=localStorage.getItem('posterMode')||'tg';
 var LIMIT_VAL = __LIMIT_PLACEHOLDER__;
-
-var activeFid = '', activeCol = '', cropperInstance = null;
+var activeFid='',activeCol='',cropperInstance=null;
 
 /* ── Dropdown ── */
 var _cdds={col:['cddColMenu','cddColBtn','cddColLabel'],mode:['cddModeMenu','cddModeBtn','cddModeLabel']};
@@ -145,7 +138,8 @@ function pickCdd(w,val,label,el,e){
     if(w==='col'){curCol=val;if(curQ)doSearch(0);}
     else{pMode=val;localStorage.setItem('posterMode',val);if(curQ)doSearch(curOff);}
 }
-/* ── Ripple (delegated) ── */
+
+/* ── Ripple ── */
 function addRipple(e,el){
     var r=el||e.currentTarget,d=Math.max(r.offsetWidth,r.offsetHeight);
     var rc=r.getBoundingClientRect(),t=e.touches&&e.touches[0]||e;
@@ -154,6 +148,7 @@ function addRipple(e,el){
     s.style.cssText='width:'+d+'px;height:'+d+'px;left:'+(t.clientX-rc.left-d/2)+'px;top:'+(t.clientY-rc.top-d/2)+'px';
     r.appendChild(s);s.addEventListener('animationend',function(){s.remove();});
 }
+
 /* ── Admin tap toggle ── */
 function toggleAdminPanel(box,e){
     e.stopPropagation();
@@ -168,16 +163,13 @@ document.addEventListener('click',function(e){
 function handleThumbError(id){var b=_g('poster-box-'+id);if(b)b.innerHTML='<div class="thumb-error"><span style="font-size:11px;color:var(--muted);">थंबनेल लोड नहीं हुआ</span></div>';}
 async function reloadThumb(id){var b=_g('poster-box-'+id);if(b)b.innerHTML='<img src="/api/thumb?file_id='+id+'&retry=true&t='+Date.now()+'" class="fc-poster" onerror="handleThumbError(\''+id+'\')">';}
 
-
 async function doSearch(o){
     var q=document.getElementById('q').value.trim();
     if(!q){showToast('Please enter a movie name','error');return;}
     curQ=q;curOff=o;if(o===0)curPage=1;
-
     var resDiv=document.getElementById('results');
     resDiv.className='res-grid mode-'+pMode;
     resDiv.innerHTML='<div class="spin-wrap"><div class="spinner"></div><span>Searching...</span></div>';
-
     try{
         var r=await fetch('/api/search?q='+encodeURIComponent(q)+'&offset='+o+'&col='+curCol+'&mode='+pMode);
         if(!r.ok){showToast('Error fetching','error');return;}
@@ -193,7 +185,8 @@ async function doSearch(o){
         d.results.forEach(function(f){
             var sc=(f.source||'primary').toLowerCase();
             if(!['primary','cloud','archive'].includes(sc))sc='primary';
-            var sn=d.is_admin?f.name.replace(/\\/g,'\\\\').replace(/'/g,"\\'"):'',rh=' class="ripple-host" onmousedown="addRipple(event,this)" ontouchstart="addRipple(event,this)"';
+            var sn=d.is_admin?f.name.replace(/\\/g,'\\\\').replace(/'/g,"\\'"):'';
+            var rh=' class="ripple-host" onmousedown="addRipple(event,this)" ontouchstart="addRipple(event,this)"';
             var aBtns=d.is_admin?'<div class="poster-admin">'+
                 '<button'+rh+' class="btn-edit" onclick="editFile(\''+f.file_id+'\',\''+f.raw_collection+'\',\''+sn+'\')">✏️ Edit</button>'+
                 '<button'+rh+' class="btn-del" onclick="deleteFile(\''+f.file_id+'\',\''+f.raw_collection+'\')">&#128465; Delete</button></div>':'';
@@ -213,6 +206,7 @@ async function doSearch(o){
                 '';
             h+='<div class="file-card">'+posterHtml+textInfo+
                 '<div class="fc-body"><div class="fc-name" onclick="window.open(\''+f.watch+'\',\'_blank\')">'+f.name+'</div></div></div>';
+        });
         resDiv.innerHTML=h;
         nextOff=d.next_offset;
         document.getElementById('pageBox').style.display='flex';
@@ -229,9 +223,11 @@ function showToast(m,t){t=t||'success';var x=document.getElementById('toast');x.
 
 document.addEventListener('DOMContentLoaded',function(){
     _g('q').addEventListener('keydown',function(e){if(e.key==='Enter')doSearch(0);});
-    if(pMode==='none')pickCdd('mode','none','⚡ Text Only (Fastest)',_g('cddModeMenu').querySelector('[data-val="none"]'),{stopPropagation:function(){}});
+    if(pMode==='none'){
+        var el=_g('cddModeMenu').querySelector('[data-val="none"]');
+        if(el)pickCdd('mode','none','\u26a1 Text Only (Fastest)',el,{stopPropagation:function(){}});
+    }
 });
-
 
 async function deleteFile(fid,col){
     if(!confirm('Are you sure you want to delete this file?'))return;
@@ -240,12 +236,15 @@ async function deleteFile(fid,col){
     }catch(e){showToast('Delete failed','error');}
 }
 
+function editFile(fid,col,currentName){
+    activeFid=fid;activeCol=col;
+    if(cropperInstance){cropperInstance.destroy();cropperInstance=null;}
     document.getElementById('emName').value=currentName;
     document.getElementById('emFile').value='';
     document.getElementById('cropContainer').style.display='none';
     var prevBox=document.getElementById('emPreviewBox');
     prevBox.style.display='flex';
-    prevBox.innerHTML='<img src="/api/thumb?file_id='+fid+'" class="t-prev-img" onerror="this.src=\\'https://placehold.co/600x338/181818/FFF?text=No+Thumbnail\\';">';
+    prevBox.innerHTML='<img src="/api/thumb?file_id='+fid+'" class="t-prev-img" onerror="this.src=\'https://placehold.co/600x338/181818/FFF?text=No+Thumbnail\';">';
     document.getElementById('editCombinedModal').classList.add('open');
 }
 
@@ -282,7 +281,7 @@ async function saveAllChanges(){
     btn.disabled=true;btn.innerText='Processing pipeline...';
     try{
         if(cropperInstance){
-            showToast('\\u2702\\ufe0f Cropping & Uploading to Telegram...');
+            showToast('\u2702\ufe0f Cropping & Uploading to Telegram...');
             var canvas=cropperInstance.getCroppedCanvas({width:1280,height:720,imageSmoothingEnabled:true,imageSmoothingQuality:'high'});
             var blob=await new Promise(function(resolve){canvas.toBlob(resolve,'image/jpeg',0.9);});
             if(blob){
@@ -295,11 +294,11 @@ async function saveAllChanges(){
                 if(!upData.success){showToast(upData.error||'Telegram image sync failed!','error');btn.disabled=false;btn.innerText='Save Changes';return;}
             }
         }
-        showToast('\\ud83d\\udcbe Indexing metadata to Database...');
+        showToast('\ud83d\udcbe Indexing metadata to Database...');
         var r=await fetch('/api/edit_name',{method:'POST',body:JSON.stringify({file_id:activeFid,collection:activeCol,new_name:newName}),headers:{'Content-Type':'application/json'}});
         var res=await r.json();
         if(res.success||cropperInstance){
-            showToast('\\u2728 Metadata & Studio Poster saved successfully!');
+            showToast('\u2728 Metadata & Studio Poster saved successfully!');
             closeCombinedModal();reloadThumb(activeFid);doSearch(curOff);
         }else{showToast(res.error||'Metadata save failed!','error');}
     }catch(e){showToast('Network synchronization error','error');}
@@ -308,36 +307,37 @@ async function saveAllChanges(){
 """.replace("__LIMIT_PLACEHOLDER__", str(MAX_WEB_RESULTS))
 
 # ─────────────────────────────────────────────────────────────────────────────
-# 🏠 SEARCH ZONE HTML
+# 🏠 SEARCH ZONE HTML — FIXED: pickCdd() used everywhere, no pickCol/pickMode
 # ─────────────────────────────────────────────────────────────────────────────
 SEARCH_ZONE = (
     '<div class="search-zone">'
         '<div class="search-row1">'
             '<div class="search-wrap">'
-            '<input class="search-input" id="q" placeholder="Titles, people, genres\u2026"></div>'
+                '<input class="search-input" id="q" placeholder="Titles, people, genres\u2026">'
+            '</div>'
             '<button class="search-btn ripple-host" onclick="doSearch(0)" onmousedown="addRipple(event,this)" ontouchstart="addRipple(event,this)">Search</button>'
         '</div>'
         '<div class="search-row2">'
             '<div class="cdd-wrap" id="cddColWrap">'
-                '<div class="cdd-btn" id="cddColBtn" onclick="toggleCdd(\'col\')">'
+                '<div class="cdd-btn" id="cddColBtn" onclick="toggleCdd(\'col\',event)">'
                     '<span id="cddColLabel">\U0001f4c2 All Collections</span>'
                 '</div>'
                 '<span class="cdd-arrow">&#9660;</span>'
                 '<div class="cdd-menu" id="cddColMenu" style="display:none">'
-                    '<div class="cdd-item selected" data-val="all" onclick="pickCol(\'all\',\'\U0001f4c2 All Collections\',this)">\U0001f4c2 All Collections<span class="cdd-radio"><span class="cdd-radio-dot"></span></span></div>'
-                    '<div class="cdd-item" data-val="primary" onclick="pickCol(\'primary\',\'\U0001f7e2 Primary\',this)">\U0001f7e2 Primary<span class="cdd-radio"><span class="cdd-radio-dot"></span></span></div>'
-                    '<div class="cdd-item" data-val="cloud" onclick="pickCol(\'cloud\',\'\U0001f535 Cloud\',this)">\U0001f535 Cloud<span class="cdd-radio"><span class="cdd-radio-dot"></span></span></div>'
-                    '<div class="cdd-item" data-val="archive" onclick="pickCol(\'archive\',\'\U0001f7e0 Archive\',this)">\U0001f7e0 Archive<span class="cdd-radio"><span class="cdd-radio-dot"></span></span></div>'
+                    '<div class="cdd-item selected" data-val="all" onclick="pickCdd(\'col\',\'all\',\'\U0001f4c2 All Collections\',this,event)">\U0001f4c2 All Collections<span class="cdd-radio"><span class="cdd-radio-dot"></span></span></div>'
+                    '<div class="cdd-item" data-val="primary" onclick="pickCdd(\'col\',\'primary\',\'\U0001f7e2 Primary\',this,event)">\U0001f7e2 Primary<span class="cdd-radio"><span class="cdd-radio-dot"></span></span></div>'
+                    '<div class="cdd-item" data-val="cloud" onclick="pickCdd(\'col\',\'cloud\',\'\U0001f535 Cloud\',this,event)">\U0001f535 Cloud<span class="cdd-radio"><span class="cdd-radio-dot"></span></span></div>'
+                    '<div class="cdd-item" data-val="archive" onclick="pickCdd(\'col\',\'archive\',\'\U0001f7e0 Archive\',this,event)">\U0001f7e0 Archive<span class="cdd-radio"><span class="cdd-radio-dot"></span></span></div>'
                 '</div>'
             '</div>'
             '<div class="cdd-wrap" id="cddModeWrap">'
-                '<div class="cdd-btn" id="cddModeBtn" onclick="toggleCdd(\'mode\')">'
+                '<div class="cdd-btn" id="cddModeBtn" onclick="toggleCdd(\'mode\',event)">'
                     '<span id="cddModeLabel">\U0001f4f8 Original TG Thumb</span>'
                 '</div>'
                 '<span class="cdd-arrow">&#9660;</span>'
                 '<div class="cdd-menu" id="cddModeMenu" style="display:none">'
-                    '<div class="cdd-item selected" data-val="tg" onclick="pickMode(\'tg\',\'\U0001f4f8 Original TG Thumb\',this)">\U0001f4f8 Original TG Thumb<span class="cdd-radio"><span class="cdd-radio-dot"></span></span></div>'
-                    '<div class="cdd-item" data-val="none" onclick="pickMode(\'none\',\'\u26a1 Text Only (Fastest)\',this)">\u26a1 Text Only (Fastest)<span class="cdd-radio"><span class="cdd-radio-dot"></span></span></div>'
+                    '<div class="cdd-item selected" data-val="tg" onclick="pickCdd(\'mode\',\'tg\',\'\U0001f4f8 Original TG Thumb\',this,event)">\U0001f4f8 Original TG Thumb<span class="cdd-radio"><span class="cdd-radio-dot"></span></span></div>'
+                    '<div class="cdd-item" data-val="none" onclick="pickCdd(\'mode\',\'none\',\'\u26a1 Text Only (Fastest)\',this,event)">\u26a1 Text Only (Fastest)<span class="cdd-radio"><span class="cdd-radio-dot"></span></span></div>'
                 '</div>'
             '</div>'
         '</div>'
