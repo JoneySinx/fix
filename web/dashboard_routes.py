@@ -12,7 +12,7 @@ dashboard_routes = web.RouteTableDef()
 CARD_CSS = """
 <style>
 /* ── Search zone ── */
-.search-zone{padding:16px 6px 0}
+.search-zone{padding:16px 2px 0}
 .search-row1{display:flex;align-items:stretch;gap:8px;margin-bottom:8px;min-height:44px}
 .search-row2{display:flex;align-items:center;gap:8px;margin-bottom:16px}
 .search-wrap{flex:1;min-width:0;display:flex;align-items:center;background:var(--bg2);border:1px solid var(--border);border-radius:8px;padding:0 12px;gap:8px;overflow:hidden}
@@ -23,12 +23,12 @@ CARD_CSS = """
 .filter-select{background:var(--bg3);color:var(--text);border:1px solid var(--border);border-radius:7px;padding:9px 10px;font-size:12px;font-weight:700;outline:none;cursor:pointer;font-family:inherit}
 
 /* ── Results grid ── */
-.res-grid{display:grid;grid-template-columns:1fr;gap:8px;margin-bottom:24px}
+.res-grid{display:grid;grid-template-columns:1fr;gap:4px;margin-bottom:24px}
 @media(min-width:600px){.res-grid{grid-template-columns:repeat(3,1fr);gap:14px}}
 .res-grid.mode-none .poster-box{display:none}
 
 /* ── File card ── */
-.file-card{background:var(--card);border-radius:10px;overflow:hidden;border:1px solid var(--border);transition:transform .22s cubic-bezier(.4,0,.2,1),box-shadow .22s,border-color .22s;cursor:pointer}
+.file-card{background:var(--card);border-radius:6px;overflow:hidden;border:1px solid var(--border);transition:transform .22s cubic-bezier(.4,0,.2,1),box-shadow .22s,border-color .22s;cursor:pointer}
 .file-card:hover{transform:translateY(-4px);border-color:rgba(229,9,20,.4);box-shadow:0 14px 36px rgba(0,0,0,.6),0 0 0 1px rgba(229,9,20,.2)}
 
 /* ── Poster box ── */
@@ -310,10 +310,10 @@ SEARCH_ZONE = (
         '</div>'
     '</div>'
     '<div class="main" style="padding-top:4px;">'
-        '<div class="results-info" id="resInfo" style="padding:0 6px 12px;">'
+        '<div class="results-info" id="resInfo" style="padding:0 4px 8px;">'
             '<span class="results-count" id="resCount"></span>'
         '</div>'
-        '<div style="padding:0 6px">'
+        '<div style="padding:0 2px">'
             '<div id="results" class="res-grid">'
                 '<div class="empty"><div class="empty-icon">&#8981;</div>'
                 '<p>Find your favorite movies and TV shows.</p></div>'
