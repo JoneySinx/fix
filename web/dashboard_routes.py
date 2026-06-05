@@ -7,7 +7,7 @@ from utils import temp
 dashboard_routes = web.RouteTableDef()
 
 # ─────────────────────────────────────────────────────────────────────────────
-# 🎨 YOUR ORIGINAL CARD UI — (BUILT BY YOU, TOTALLY UNCHANGED)
+# 🎨 NEW CARD UI CSS
 # ─────────────────────────────────────────────────────────────────────────────
 CARD_CSS = """
 <style>
@@ -49,7 +49,7 @@ CARD_CSS = """
 .cloud .source-dot{background:#60a5fa;box-shadow:0 0 4px #60a5fa}
 .archive .source-dot{background:#fb923c;box-shadow:0 0 4px #fb923c}
 
-/* ── Poster bottom row: Edit | Delete (admin, auto-hide) ── */
+/* ── Poster bottom row: Edit | Delete (admin only) ── */
 .poster-admin{position:absolute;bottom:0;left:0;right:0;display:flex;gap:6px;padding:7px 8px;opacity:0;transform:translateY(8px);transition:opacity .2s ease,transform .22s ease;pointer-events:none}
 .file-card:hover .poster-admin{opacity:1;transform:translateY(0);pointer-events:all}
 .btn-edit,.btn-del{flex:1;padding:6px 0;border-radius:6px;font-size:11px;font-weight:700;cursor:pointer;transition:background .12s,transform .1s;border:none}
@@ -87,29 +87,17 @@ CARD_CSS = """
 """
 
 # ─────────────────────────────────────────────────────────────────────────────
-# 🎬 FIXED FRONTEND ENGINE (Correct Function Binding Maps)
+# 🎬 JS ENGINE — पुरानी working logic + नया card HTML
 # ─────────────────────────────────────────────────────────────────────────────
 JS_ENGINE = """
-var curQ = '';
-var curOff = 0;
-var nextOff = '';
-var curCol = 'all';
-var curPage = 1;
-var pMode = localStorage.getItem('posterMode') || 'tg';
+var curQ='',curOff=0,nextOff='',curCol='all',curPage=1;
+var pMode=localStorage.getItem('posterMode')||'tg';
 var LIMIT_VAL = __LIMIT_PLACEHOLDER__;
+
 var activeFid = '', activeCol = '', cropperInstance = null;
 
-// ✅ FIXED: इसे changeCol से री-मैप कर दिया गया है ताकि ड्रॉपडाउन एरर न फेंके
-function changeCol(val) {
-    curCol = val;
-    if (curQ) { doSearch(0); }
-}
-
-function changePosterMode() {
-    pMode = document.getElementById('posterMode').value;
-    localStorage.setItem('posterMode', pMode);
-    if (curQ) { doSearch(curOff); }
-}
+function changeCol(val){curCol=val;if(curQ)doSearch(0);}
+function changePosterMode(){pMode=document.getElementById('posterMode').value;localStorage.setItem('posterMode',pMode);if(curQ)doSearch(curOff);}
 
 function handleThumbError(fileId) {
     var box = document.getElementById('poster-box-' + fileId);
@@ -119,223 +107,215 @@ function handleThumbError(fileId) {
 }
 
 async function reloadThumb(fileId) {
-    var ts = new Date().getTime();
+    var timestamp = new Date().getTime();
     var box = document.getElementById('poster-box-' + fileId);
     if (box) {
-        box.innerHTML = '<img src="/api/thumb?file_id=' + fileId + '&retry=true&t=' + ts + '" class="fc-poster" onerror="handleThumbError(\'' + fileId + '\')">';
+        box.innerHTML = '<img src="/api/thumb?file_id=' + fileId + '&retry=true&t=' + timestamp + '" class="fc-poster" onerror="handleThumbError(\\'' + fileId + '\\')">';
     }
 }
 
-async function doSearch(o) {
-    var q = document.getElementById('q').value.trim();
-    if (!q) { alert('Please enter a movie name'); return; }
-    curQ = q;
-    curOff = o;
-    if (o === 0) { curPage = 1; }
-    
-    var resDiv = document.getElementById('results');
-    resDiv.className = 'res-grid mode-' + pMode;
-    resDiv.innerHTML = '<div class="spin-wrap"><div class="spinner"></div><span>Searching...</span></div>';
-    
-    try {
-        var r = await fetch('/api/search?q=' + encodeURIComponent(q) + '&offset=' + o + '&col=' + curCol + '&mode=' + pMode);
-        if (!r.ok) { alert('Error fetching data from server'); return; }
-        var d = await r.json();
-        if (d.error) { alert(d.error); return; }
-        
-        document.getElementById('resInfo').style.display = 'flex';
-        document.getElementById('resCount').innerHTML = 'More to explore: <span style="color:var(--text);font-weight:600">' + q + '</span>';
-        
-        if (!d.results || !d.results.length) {
-            resDiv.innerHTML = '<div class="empty"><div class="empty-icon">⚠</div><p>No titles found for "' + q + '"</p></div>';
-            document.getElementById('pageBox').style.display = 'none';
-            return;
+async function doSearch(o){
+    var q=document.getElementById('q').value.trim();
+    if(!q){showToast('Please enter a movie name','error');return;}
+    curQ=q;curOff=o;if(o===0)curPage=1;
+
+    var resDiv=document.getElementById('results');
+    resDiv.className='res-grid mode-'+pMode;
+    resDiv.innerHTML='<div class="spin-wrap"><div class="spinner"></div><span>Searching...</span></div>';
+
+    try{
+        var r=await fetch('/api/search?q='+encodeURIComponent(q)+'&offset='+o+'&col='+curCol+'&mode='+pMode);
+        if(!r.ok){showToast('Error fetching','error');return;}
+        var d=await r.json();
+        if(d.error){showToast(d.error,'error');return;}
+        document.getElementById('resInfo').style.display='flex';
+        document.getElementById('resCount').innerHTML='More to explore: <span style="color:var(--text);font-weight:600">'+q+'</span>';
+        if(!d.results||!d.results.length){
+            resDiv.innerHTML='<div class="empty"><div class="empty-icon">&#9888;</div><p>No titles found for "'+q+'"</p></div>';
+            document.getElementById('pageBox').style.display='none';return;
         }
-        
-        var h = '';
-        d.results.forEach(function(f) {
-            var sc = (f.source || 'primary').toLowerCase();
-            if (!['primary', 'cloud', 'archive'].includes(sc)) sc = 'primary';
+        var h='';
+        d.results.forEach(function(f){
+            var sc=(f.source||'primary').toLowerCase();
+            if(!['primary','cloud','archive'].includes(sc))sc='primary';
 
-            var adminBtns = '';
-            if (d.is_admin) {
-                var safeName = f.name.replace(/\\\\/g, '\\\\\\\\').replace(/'/g, "\\\\'");
-                adminBtns = '<div class="poster-admin">' +
-                    '<button class="btn-edit" onclick="editFile(\'' + f.file_id + '\',\'' + f.raw_collection + '\',\'' + safeName + '\')">✏️ Edit</button>' +
-                    '<button class="btn-del" onclick="deleteFile(\'' + f.file_id + '\',\'' + f.raw_collection + '\')">🗑 Delete</button>' +
+            var adminBtns='';
+            if(d.is_admin){
+                var safeName=f.name.replace(/\\\\/g,'\\\\\\\\').replace(/'/g,"\\\\'");
+                adminBtns='<div class="poster-admin">'+
+                    '<button class="btn-edit" onclick="editFile(\\''+f.file_id+'\\',\\''+f.raw_collection+'\\',\\''+safeName+'\\')">&#9999; Edit</button>'+
+                    '<button class="btn-del" onclick="deleteFile(\\''+f.file_id+'\\',\\''+f.raw_collection+'\\')">&#128465; Delete</button>'+
                 '</div>';
             }
 
-            var posterHtml = '';
-            if (pMode !== 'none') {
-                posterHtml = '<div class="poster-box" id="poster-box-' + f.file_id + '">' +
-                    '<img src="' + f.tg_thumb + '" class="fc-poster" onerror="handleThumbError(\'' + f.file_id + '\')" loading="lazy">' +
-                    '<div class="poster-top">' +
-                        '<span class="type-chip">' + f.type.toUpperCase() + '</span>' +
-                        '<span class="size-chip">' + f.size + '</span>' +
-                        '<span class="source-pill ' + sc + '"><span class="source-dot"></span>' + sc.toUpperCase() + '</span>' +
-                    '</div>' +
-                    adminBtns +
+            var posterHtml='';
+            if(pMode!=='none'){
+                posterHtml='<div class="poster-box" id="poster-box-'+f.file_id+'">'+
+                    '<img src="'+f.tg_thumb+'" class="fc-poster" onerror="handleThumbError(\\''+f.file_id+'\\')" loading="lazy">'+
+                    '<div class="poster-top">'+
+                        '<span class="type-chip">'+f.type.toUpperCase()+'</span>'+
+                        '<span class="size-chip">'+f.size+'</span>'+
+                        '<span class="source-pill '+sc+'"><span class="source-dot"></span>'+sc.toUpperCase()+'</span>'+
+                    '</div>'+
+                    adminBtns+
                 '</div>';
             }
 
-            var textInfo = '';
-            if (pMode === 'none') {
-                textInfo = '<div class="fc-text-info">' +
-                    '<span class="tc-type">' + f.type.toUpperCase() + '</span>' +
-                    '<span class="tc-size">' + f.size + '</span>' +
-                    '<span class="source-pill ' + sc + '" style="margin-left:auto"><span class="source-dot"></span>' + sc.toUpperCase() + '</span>' +
+            var textInfo='';
+            if(pMode==='none'){
+                textInfo='<div class="fc-text-info">'+
+                    '<span class="tc-type">'+f.type.toUpperCase()+'</span>'+
+                    '<span class="tc-size">'+f.size+'</span>'+
+                    '<span class="source-pill '+sc+'" style="margin-left:auto"><span class="source-dot"></span>'+sc.toUpperCase()+'</span>'+
                 '</div>';
-                if (d.is_admin) {
-                    var safeName2 = f.name.replace(/\\\\/g, '\\\\\\\\').replace(/'/g, "\\\\'");
-                    textInfo += '<div style="display:flex;gap:5px;padding:5px 11px 0">' +
-                        '<button class="btn-edit" onclick="editFile(\'' + f.file_id + '\',\'' + f.raw_collection + '\',\'' + safeName2 + '\')">✏️ Edit</button>' +
-                        '<button class="btn-del" onclick="deleteFile(\'' + f.file_id + '\',\'' + f.raw_collection + '\')">🗑 Delete</button>' +
+                if(d.is_admin){
+                    var safeName2=f.name.replace(/\\\\/g,'\\\\\\\\').replace(/'/g,"\\\\'");
+                    textInfo+='<div style="display:flex;gap:5px;padding:5px 11px 0">'+
+                        '<button class="btn-edit" onclick="editFile(\\''+f.file_id+'\\',\\''+f.raw_collection+'\\',\\''+safeName2+'\\')">&#9999; Edit</button>'+
+                        '<button class="btn-del" onclick="deleteFile(\\''+f.file_id+'\\',\\''+f.raw_collection+'\\')">&#128465; Delete</button>'+
                     '</div>';
                 }
             }
 
-            h += '<div class="file-card">' +
-                posterHtml +
-                textInfo +
-                '<div class="fc-body">' +
-                    '<div class="fc-name" onclick="window.open(\'' + f.watch + '\',\'_blank\')">' + f.name + '</div>' +
-                '</div>' +
+            h+='<div class="file-card">'+
+                posterHtml+
+                textInfo+
+                '<div class="fc-body">'+
+                    '<div class="fc-name" onclick="window.open(\\''+f.watch+'\\',\\'_blank\\')">'+f.name+'</div>'+
+                '</div>'+
             '</div>';
         });
-        
-        resDiv.innerHTML = h;
-        nextOff = d.next_offset;
-        document.getElementById('pageBox').style.display = 'flex';
-        document.getElementById('pBtn').disabled = (o === 0);
-        document.getElementById('nBtn').disabled = !nextOff;
-        document.getElementById('pgInfo').textContent = 'Page ' + curPage;
-    } catch (e) {
-        alert('Network synchronization error');
-    }
+        resDiv.innerHTML=h;
+        nextOff=d.next_offset;
+        document.getElementById('pageBox').style.display='flex';
+        document.getElementById('pBtn').disabled=(o===0);
+        document.getElementById('nBtn').disabled=!nextOff;
+        document.getElementById('pgInfo').textContent='Page '+curPage;
+    }catch(e){showToast('Network error','error');}
 }
 
-function next() { if (nextOff) { curPage++; doSearch(nextOff); scrollTo(0, 0); } }
-function prev() { if (curPage > 1) { curPage--; doSearch(Math.max(0, curOff - LIMIT_VAL)); scrollTo(0, 0); } }
+function next(){if(nextOff){curPage++;doSearch(nextOff);scrollTo(0,0);}}
+function prev(){if(curPage>1){curPage--;doSearch(Math.max(0,curOff-LIMIT_VAL));scrollTo(0,0);}}
+var _tt;
+function showToast(m,t){t=t||'success';var x=document.getElementById('toast');x.textContent=m;x.className='toast '+t+' show';clearTimeout(_tt);_tt=setTimeout(function(){x.classList.remove('show');},3000);}
 
-document.addEventListener('DOMContentLoaded', function() {
-    var pm = document.getElementById('posterMode'); if (pm) pm.value = pMode;
-    var q = document.getElementById('q'); 
-    if (q) {
-        q.addEventListener('keydown', function(e) { if (e.key === 'Enter') doSearch(0); });
-    }
-    var cs = document.getElementById('colSelect'); if (cs) cs.value = curCol;
+document.addEventListener('DOMContentLoaded',function(){
+    var pm=document.getElementById('posterMode');if(pm)pm.value=pMode;
+    var q=document.getElementById('q');if(q)q.addEventListener('keydown',function(e){if(e.key==='Enter')doSearch(0);});
+    var cs=document.getElementById('colSelect');if(cs)cs.value=curCol;
 });
 
-async function deleteFile(fid, col) {
-    if (!confirm('Are you sure you want to delete this file?')) return;
-    try {
-        var r = await fetch('/api/delete', { method: 'POST', body: JSON.stringify({ file_id: fid, collection: col }), headers: { 'Content-Type': 'application/json' } });
-        var res = await r.json();
-        if (res.success) { doSearch(curOff); }
-        else { alert(res.error || 'Delete failed!'); }
-    } catch(e) { alert('Delete failed'); }
+async function deleteFile(fid,col){
+    if(!confirm('Are you sure you want to delete this file?'))return;
+    try{
+        var r=await fetch('/api/delete',{method:'POST',body:JSON.stringify({file_id:fid,collection:col}),headers:{'Content-Type':'application/json'}});
+        var res=await r.json();
+        if(res.success){showToast('\\u2705 File deleted successfully!');doSearch(curOff);}
+        else{showToast(res.error||'Delete failed!','error');}
+    }catch(e){showToast('Delete failed','error');}
 }
 
-function editFile(fid, col, currentName) {
-    activeFid = fid; activeCol = col;
-    if (cropperInstance) { cropperInstance.destroy(); cropperInstance = null; }
-    document.getElementById('emName').value = currentName;
-    document.getElementById('emFile').value = '';
-    document.getElementById('cropContainer').style.display = 'none';
-    var prevBox = document.getElementById('emPreviewBox');
-    prevBox.style.display = 'flex';
-    prevBox.innerHTML = '<img src="/api/thumb?file_id=' + fid + '" class="t-prev-img" onerror="this.src=\'https://placehold.co/600x338/181818/FFF?text=No+Thumbnail\';">';
+function editFile(fid,col,currentName){
+    activeFid=fid;activeCol=col;
+    if(cropperInstance){cropperInstance.destroy();cropperInstance=null;}
+    document.getElementById('emName').value=currentName;
+    document.getElementById('emFile').value='';
+    document.getElementById('cropContainer').style.display='none';
+    var prevBox=document.getElementById('emPreviewBox');
+    prevBox.style.display='flex';
+    prevBox.innerHTML='<img src="/api/thumb?file_id='+fid+'" class="t-prev-img" onerror="this.src=\\'https://placehold.co/600x338/181818/FFF?text=No+Thumbnail\\';">';
     document.getElementById('editCombinedModal').classList.add('open');
 }
 
-function closeCombinedModal() {
+function closeCombinedModal(){
     document.getElementById('editCombinedModal').classList.remove('open');
-    if (cropperInstance) { cropperInstance.destroy(); cropperInstance = null; }
+    if(cropperInstance){cropperInstance.destroy();cropperInstance=null;}
 }
 
-function handleLocalPreview(input) {
-    if (input.files && input.files[0]) {
-        var reader = new FileReader();
-        reader.onload = function(e) {
-            if (cropperInstance) { cropperInstance.destroy(); }
-            document.getElementById('emPreviewBox').style.display = 'none';
-            var cropWrap = document.getElementById('cropContainer');
-            cropWrap.style.display = 'block';
-            cropWrap.innerHTML = '<img id="cropImage" src="' + e.target.result + '" style="max-width:100%;">';
-            var img = document.getElementById('cropImage');
-            cropperInstance = new Cropper(img, {
-                aspectRatio: 16 / 9, viewMode: 1, dragMode: 'move', background: false,
-                autoCropArea: 1, restore: false, guides: false, center: true, highlight: false,
-                cropBoxMovable: false, cropBoxResizable: false, toggleDragModeOnDblclick: false,
-                zoomable: true, movable: true
+function handleLocalPreview(input){
+    if(input.files&&input.files[0]){
+        var reader=new FileReader();
+        reader.onload=function(e){
+            if(cropperInstance){cropperInstance.destroy();}
+            document.getElementById('emPreviewBox').style.display='none';
+            var cropWrap=document.getElementById('cropContainer');
+            cropWrap.style.display='block';
+            cropWrap.innerHTML='<img id="cropImage" src="'+e.target.result+'" style="max-width:100%;">';
+            var img=document.getElementById('cropImage');
+            cropperInstance=new Cropper(img,{
+                aspectRatio:16/9,viewMode:1,dragMode:'move',background:false,
+                autoCropArea:1,restore:false,guides:false,center:true,highlight:false,
+                cropBoxMovable:false,cropBoxResizable:false,toggleDragModeOnDblclick:false,
+                zoomable:true,movable:true
             });
         };
         reader.readAsDataURL(input.files[0]);
     }
 }
 
-async function saveAllChanges() {
-    var newName = document.getElementById('emName').value.trim();
-    if (!newName) { alert('File name cannot be empty!'); return; }
-    var btn = document.getElementById('emSaveBtn');
-    btn.disabled = true; btn.innerText = 'Processing pipeline...';
-    try {
-        if (cropperInstance) {
-            var canvas = cropperInstance.getCroppedCanvas({ width: 1280, height: 720, imageSmoothingEnabled: true, imageSmoothingQuality: 'high' });
-            var blob = await new Promise(function(resolve) { canvas.toBlob(resolve, 'image/jpeg', 0.9); });
-            if (blob) {
-                var formData = new FormData();
-                formData.append('file_id', activeFid);
-                formData.append('collection', activeCol);
-                formData.append('image', blob, 'cropped_poster.jpg');
-                var upRes = await fetch('/api/upload_thumb', { method: 'POST', body: formData });
-                var upData = await upRes.json();
-                if (!upData.success) { btn.disabled = false; btn.innerText = 'Save Changes'; return; }
+async function saveAllChanges(){
+    var newName=document.getElementById('emName').value.trim();
+    if(!newName){showToast('File name cannot be empty!','error');return;}
+    var btn=document.getElementById('emSaveBtn');
+    btn.disabled=true;btn.innerText='Processing pipeline...';
+    try{
+        if(cropperInstance){
+            showToast('\\u2702\\ufe0f Cropping & Uploading to Telegram...');
+            var canvas=cropperInstance.getCroppedCanvas({width:1280,height:720,imageSmoothingEnabled:true,imageSmoothingQuality:'high'});
+            var blob=await new Promise(function(resolve){canvas.toBlob(resolve,'image/jpeg',0.9);});
+            if(blob){
+                var formData=new FormData();
+                formData.append('file_id',activeFid);
+                formData.append('collection',activeCol);
+                formData.append('image',blob,'cropped_poster.jpg');
+                var upRes=await fetch('/api/upload_thumb',{method:'POST',body:formData});
+                var upData=await upRes.json();
+                if(!upData.success){showToast(upData.error||'Telegram image sync failed!','error');btn.disabled=false;btn.innerText='Save Changes';return;}
             }
         }
-        var r = await fetch('/api/edit_name', { method: 'POST', body: JSON.stringify({ file_id: activeFid, collection: activeCol, new_name: newName }), headers: { 'Content-Type': 'application/json' } });
-        var res = await r.json();
-        if (res.success || cropperInstance) {
-            closeCombinedModal(); reloadThumb(activeFid); doSearch(curOff);
-        }
-    } catch (e) { alert('Network synchronization error'); }
-    finally { btn.disabled = false; btn.innerText = 'Save Changes'; }
+        showToast('\\ud83d\\udcbe Indexing metadata to Database...');
+        var r=await fetch('/api/edit_name',{method:'POST',body:JSON.stringify({file_id:activeFid,collection:activeCol,new_name:newName}),headers:{'Content-Type':'application/json'}});
+        var res=await r.json();
+        if(res.success||cropperInstance){
+            showToast('\\u2728 Metadata & Studio Poster saved successfully!');
+            closeCombinedModal();reloadThumb(activeFid);doSearch(curOff);
+        }else{showToast(res.error||'Metadata save failed!','error');}
+    }catch(e){showToast('Network synchronization error','error');}
+    finally{btn.disabled=false;btn.innerText='Save Changes';}
 }
 """.replace("__LIMIT_PLACEHOLDER__", str(MAX_WEB_RESULTS))
 
 # ─────────────────────────────────────────────────────────────────────────────
-# 🏠 YOUR EXACT SEARCH ZONE HTML — (FIXED: changeCol mapping resolved)
+# 🏠 SEARCH ZONE HTML
 # ─────────────────────────────────────────────────────────────────────────────
 SEARCH_ZONE = (
     '<div class="search-zone">'
         '<div class="search-row1">'
-            '<div class="search-wrap"><span class="s-icon">⚲</span>'
-            '<input class="search-input" id="q" placeholder="Titles, people, genres…"></div>'
+            '<div class="search-wrap"><span class="s-icon">&#9906;</span>'
+            '<input class="search-input" id="q" placeholder="Titles, people, genres\u2026"></div>'
             '<button class="search-btn" onclick="doSearch(0)">Search</button>'
         '</div>'
         '<div class="search-row2">'
-            # ✅ FIX: changeCol(this.value) फ़ंक्शन अब आपके जावास्क्रिप्ट इंजन से 100% सही मैप हो गया है!
             '<select class="filter-select" id="colSelect" onchange="changeCol(this.value)">'
-                '<option value="all">📂 All Collections</option>'
-                '<option value="primary">🟢 Primary</option>'
-                '<option value="cloud">🔵 Cloud</option>'
-                '<option value="archive">🟠 Archive</option>'
+                '<option value="all">\U0001f4c2 All Collections</option>'
+                '<option value="primary">\U0001f7e2 Primary</option>'
+                '<option value="cloud">\U0001f535 Cloud</option>'
+                '<option value="archive">\U0001f7e0 Archive</option>'
             '</select>'
             '<select id="posterMode" onchange="changePosterMode()" class="filter-select">'
-                '<option value="tg">📸 Original TG Thumb</option>'
-                '<option value="none">⚡ Text Only (Fastest)</option>'
+                '<option value="tg">\U0001f4f8 Original TG Thumb</option>'
+                '<option value="none">\u26a1 Text Only (Fastest)</option>'
             '</select>'
         '</div>'
     '</div>'
     '<div class="main" style="padding-top:4px;">'
-        '<div class="results-info" id="resInfo" style="padding:0 4% 12px; display:none;">'
+        '<div class="results-info" id="resInfo" style="padding:0 4% 12px;">'
             '<span class="results-count" id="resCount"></span>'
         '</div>'
         '<div style="padding:0 4%">'
             '<div id="results" class="res-grid">'
-                '<div class="empty"><div class="empty-icon">🍿</div>'
-                '<p>Find your favorite movies and TV shows instantly.</p></div>'
+                '<div class="empty"><div class="empty-icon">&#8981;</div>'
+                '<p>Find your favorite movies and TV shows.</p></div>'
             '</div>'
             '<div class="pagination" id="pageBox" style="display:none;">'
                 '<button class="pg-btn" id="pBtn" onclick="prev()" disabled>Previous</button>'
@@ -380,7 +360,7 @@ async def premium_expired(req):
         return web.HTTPFound('/login')
     content = (
         '<div style="text-align:center;">'
-        '<div style="font-size:50px;margin-bottom:15px;">⏳</div>'
+        '<div style="font-size:50px;margin-bottom:15px;">&#9203;</div>'
         '<p style="color:var(--muted);margin-bottom:30px;">Your access to Fast Finder Web has expired. '
         'Please renew your plan via our Telegram Bot.</p>'
         '<div class="scard red" style="text-align:left;margin-bottom:25px;padding:15px;">'
@@ -389,7 +369,7 @@ async def premium_expired(req):
         '<div class="scard-sub" style="color:var(--text)">2. Use command <b>/plan</b></div>'
         '<div class="scard-sub" style="color:var(--text)">3. Pay & Activate instantly</div>'
         '</div>'
-        f'<a href="https://t.me/{{temp.U_NAME}}" class="submit-btn" style="text-decoration:none;display:block;">Open Telegram Bot</a>'
+        f'<a href="https://t.me/{temp.U_NAME}" class="submit-btn" style="text-decoration:none;display:block;">Open Telegram Bot</a>'
         '<a href="/logout" style="display:block;margin-top:20px;color:var(--muted);text-decoration:none;">Sign Out</a>'
         '</div>'
     )
