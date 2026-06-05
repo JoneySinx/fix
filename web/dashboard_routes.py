@@ -12,7 +12,7 @@ dashboard_routes = web.RouteTableDef()
 CARD_CSS = """
 <style>
 /* ── Search zone ── */
-.search-zone{padding:16px 2px 0}
+.search-zone{padding:16px 12px 0}
 .search-row1{display:flex;align-items:stretch;gap:8px;margin-bottom:8px;min-height:44px}
 .search-row2{display:flex;align-items:center;gap:8px;margin-bottom:16px}
 .search-wrap{flex:1;min-width:0;display:flex;align-items:center;background:var(--bg2);border:2px solid var(--border);border-radius:8px;padding:0 12px;gap:8px;overflow:hidden}
@@ -311,7 +311,7 @@ SEARCH_ZONE = (
         '</div>'
     '</div>'
     '<div class="main" style="padding-top:4px;">'
-        '<div class="results-info" id="resInfo" style="padding:0 4px 8px;">'
+        '<div class="results-info" id="resInfo" style="padding:0 12px 8px;">'
             '<span class="results-count" id="resCount"></span>'
         '</div>'
         '<div style="padding:0 2px">'
