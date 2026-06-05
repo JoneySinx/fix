@@ -89,52 +89,39 @@ async def api_search(req):
     flt_regex = {"file_name": re.compile(re.escape(q), re.IGNORECASE)}
     
     # ✅ ३-कॉलम नेटफ्लिक्स ग्रिड को परफेक्ट अलाइन रखने के लिए २१ रिज़ल्ट्स पर सख्त लॉक (MAX_WEB_RESULTS)
-    all_m, tot, lim = [], 0, MAX_WEB_RESULTS
-    
+    all_m, lim = [], MAX_WEB_RESULTS
     tgt_cols = {col: COLLECTIONS[col]} if col in COLLECTIONS else COLLECTIONS
-    col_counts, col_filters = {}, {}
 
-    async def get_col_count(name, collection):
-        count = await collection.count_documents(flt_text)
-        active_flt = flt_text if count > 0 else flt_regex
-        if count == 0: count = await collection.count_documents(active_flt)
-        return name, count, active_flt
-
-    count_results = await asyncio.gather(*(get_col_count(n, c) for n, c in tgt_cols.items()))
-    for name, count, active_flt in count_results:
-        col_counts[name] = count
-        col_filters[name] = active_flt
-        tot += count
-
+    # 🚀 SPEED UP: बिना भारी काउंट किए सीधे कलेक्शन्स से डेटा फेच करें
     remaining_skip = off
     for n, c in tgt_cols.items():
         if len(all_m) >= lim: break
-        count = col_counts[n]
-        if count == 0: continue
-        if remaining_skip >= count:
-            remaining_skip -= count
-            continue
-            
+        
         local_limit = lim - len(all_m)
-        # स्पीड बूस्ट प्रोजेक्शन: सर्च के समय रैम ओवरलोड रोकने के लिए केवल आवश्यक डेटा खींचें
-        docs = await c.find(col_filters[n], {"_id": 1, "file_name": 1, "file_size": 1, "file_type": 1, "file_ref": 1, "thumb_url": 1}).sort("_id", -1).skip(remaining_skip).limit(local_limit).to_list(length=local_limit)
-        for d in docs: d["source_col"] = n.lower()
-        all_m.extend(docs)
-        remaining_skip = 0
+        # पहले तेज़ टेक्स्ट सर्च ट्राई करें
+        docs = await c.find(flt_text, {"_id": 1, "file_name": 1, "file_size": 1, "file_type": 1, "file_ref": 1, "thumb_url": 1}).sort("_id", -1).skip(remaining_skip).limit(local_limit).to_list(length=local_limit)
+        
+        # अगर टेक्स्ट सर्च से कुछ न मिले, तो फ़ॉलबैक regex सर्च करें
+        if not docs and remaining_skip == 0:
+            docs = await c.find(flt_regex, {"_id": 1, "file_name": 1, "file_size": 1, "file_type": 1, "file_ref": 1, "thumb_url": 1}).sort("_id", -1).limit(local_limit).to_list(length=local_limit)
+            
+        if docs:
+            for d in docs: d["source_col"] = n.lower()
+            all_m.extend(docs)
+            remaining_skip = max(0, remaining_skip - len(docs))
 
-    async def process_doc(d):
+    # 🚀 SPEED UP: process_doc को बिना asyncio.gather के डायरेक्ट सिंक लूप में प्रोसेस करें
+    results_list = []
+    thumb_salt = int(time.time() * 100)
+    
+    for d in all_m:
         fid = d.get("file_ref") or d.get("_id")
         db_id = d.get("_id")
-        file_name = d.get("file_name", "Unknown File")
-        
-        # ✅ FIX: ब्राउज़र एग्रेसिव लोकल कैशे को चकमा देने के लिए डायनामिक वर्जन साल्ट इजेक्शन
-        # जब भी आप थंबनेल एडिट/चेंज करेंगे, यह टाइमस्टैम्प यूआरएल को बदल देगा और ब्राउज़र बिना इन्कॉग्निटो के तुरंत नया पोस्टर दिखाएगा!
-        thumb_salt = int(time.time() * 100)
         tg_thumb = f"/api/thumb?file_id={db_id}&v={thumb_salt}"
         
-        return {
+        results_list.append({
             "file_id": db_id,
-            "name": file_name,
+            "name": d.get("file_name", "Unknown File"),
             "size": get_size(d.get("file_size", 0)),
             "type": d.get("file_type", "document").upper(),
             "source": d.get("source_col", "unknown").capitalize(),
@@ -143,17 +130,19 @@ async def api_search(req):
             "tg_thumb": tg_thumb,
             "watch": f"/setup_stream?file_id={fid}&mode=watch",
             "download": f"/setup_stream?file_id={fid}&mode=download",
-        }
+        })
 
-    results_list = await asyncio.gather(*(process_doc(d) for d in all_m))
-    
+    # 🚀 PAGINATION LOGIC: अगर पूरे 21 रिज़ल्ट्स मिले हैं, मतलब अगला पेज उपलब्ध है
+    has_more = len(results_list) == lim
+    next_offset = off + lim if has_more else ""
+
     # रैम फ्लश बूस्टर
     gc.collect()
     
     return web.json_response({
-        "results": list(results_list),
-        "total": tot,
-        "next_offset": off + lim if off + lim < tot else "",
+        "results": results_list,
+        "total": off + len(results_list) + (1 if has_more else 0), # फ्रंटएंड कंपैटिबिलिटी के लिए वर्चुअल टोटल
+        "next_offset": next_offset,
         "is_admin": role == "admin",
     })
 
