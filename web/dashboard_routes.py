@@ -23,7 +23,8 @@ CARD_CSS = """
 .filter-select{background:var(--bg3);color:var(--text);border:1px solid var(--border);border-radius:7px;padding:9px 10px;font-size:12px;font-weight:700;outline:none;cursor:pointer;font-family:inherit}
 
 /* ── Results grid ── */
-.res-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(155px,1fr));gap:10px;margin-bottom:24px}
+.res-grid{display:grid;grid-template-columns:1fr;gap:12px;margin-bottom:24px}
+@media(min-width:600px){.res-grid{grid-template-columns:repeat(3,1fr);gap:14px}}
 .res-grid.mode-none .poster-box{display:none}
 
 /* ── File card ── */
