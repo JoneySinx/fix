@@ -19,17 +19,7 @@ CARD_CSS = """
 .search-wrap:focus-within{border-color:var(--accent)}
 .search-input{flex:1;min-width:0;width:100%;background:transparent;border:none;outline:none;color:var(--text);caret-color:var(--accent);font-size:15px;font-weight:600;padding:11px 0;font-family:inherit;-webkit-tap-highlight-color:transparent}
 .search-input::placeholder{color:var(--muted);font-weight:400}
-.search-input:-webkit-autofill,
-.search-input:-webkit-autofill:hover,
-.search-input:-webkit-autofill:focus,
-.search-input:-webkit-autofill:active{
-  -webkit-box-shadow:0 0 0 100px var(--bg3) inset !important;
-  box-shadow:0 0 0 100px var(--bg3) inset !important;
-  -webkit-text-fill-color:var(--text) !important;
-  caret-color:var(--accent) !important;
-  border-radius:8px;
-  transition:background-color 9999s ease-in-out 0s;
-}
+.search-input:-webkit-autofill,.search-input:-webkit-autofill:hover,.search-input:-webkit-autofill:focus,.search-input:-webkit-autofill:active{-webkit-box-shadow:0 0 0 100px var(--bg3) inset !important;box-shadow:0 0 0 100px var(--bg3) inset !important;-webkit-text-fill-color:var(--text) !important;caret-color:var(--accent) !important;transition:background-color 9999s ease-in-out 0s}
 .search-btn{flex-shrink:0;background:linear-gradient(135deg,var(--accent),var(--accent-hover));color:#fff;border:none;border-radius:8px;padding:0 22px;font-size:13px;font-weight:700;cursor:pointer;white-space:nowrap;box-shadow:0 4px 14px rgba(229,9,20,0.35);align-self:stretch}
 .search-btn:hover{opacity:0.92}
 
@@ -78,16 +68,26 @@ CARD_CSS = """
 .cloud .source-dot{background:#60a5fa;box-shadow:0 0 4px #60a5fa}
 .archive .source-dot{background:#fb923c;box-shadow:0 0 4px #fb923c}
 
+/* ── Ripple ── */
+.ripple-host{position:relative;overflow:hidden}
+@keyframes rippleAnim{to{transform:scale(4);opacity:0}}
+.ripple-circle{position:absolute;border-radius:50%;background:rgba(255,255,255,.28);transform:scale(0);animation:rippleAnim .55s linear;pointer-events:none}
+
+/* ── Button press scale ── */
+.search-btn:active{transform:scale(.95)}
+.pg-btn:active{transform:scale(.94)}
+.cdd-btn:active{transform:scale(.97)}
+
 /* ── Poster bottom row: Edit | Delete (admin only) ── */
-.poster-admin{position:absolute;bottom:0;left:0;right:0;display:flex;gap:6px;padding:7px 8px;opacity:0;transform:translateY(8px);transition:opacity .2s ease,transform .22s ease;pointer-events:none}
+.poster-admin{position:absolute;bottom:0;left:0;right:0;display:flex;gap:6px;padding:7px 8px;opacity:0;transform:translateY(8px);transition:opacity .22s ease,transform .22s cubic-bezier(.4,0,.2,1);pointer-events:none}
 .file-card:hover .poster-admin{opacity:1;transform:translateY(0);pointer-events:all}
-.btn-edit,.btn-del{flex:1;padding:6px 0;border-radius:6px;font-size:11px;font-weight:700;cursor:pointer;transition:background .12s,transform .1s;border:none}
+.poster-box.admin-open .poster-admin{opacity:1;transform:translateY(0);pointer-events:all}
+.btn-edit,.btn-del{flex:1;padding:6px 0;border-radius:6px;font-size:11px;font-weight:700;cursor:pointer;transition:background .12s,transform .12s;border:none;position:relative;overflow:hidden}
 .btn-edit{background:rgba(42,42,48,.90);backdrop-filter:blur(10px);color:#fff;border:1px solid rgba(255,255,255,.18)}
 .btn-edit:hover{background:rgba(80,80,88,.95)}
-.btn-edit:active{transform:scale(.93)}
 .btn-del{background:rgba(160,8,8,.78);backdrop-filter:blur(10px);color:#fff;border:1px solid rgba(229,9,20,.45)}
 .btn-del:hover{background:rgba(229,9,20,.92)}
-.btn-del:active{transform:scale(.93)}
+.btn-edit:active,.btn-del:active{transform:scale(.93)}
 
 /* ── Card body ── */
 .fc-body{padding:10px 11px 12px}
@@ -125,70 +125,49 @@ var LIMIT_VAL = __LIMIT_PLACEHOLDER__;
 
 var activeFid = '', activeCol = '', cropperInstance = null;
 
-/* ── Custom dropdown logic ── */
-function closeCdds(){
-    document.getElementById('cddColMenu').style.display='none';
-    document.getElementById('cddColBtn').classList.remove('open');
-    document.getElementById('cddModeMenu').style.display='none';
-    document.getElementById('cddModeBtn').classList.remove('open');
+/* ── Dropdown ── */
+var _cdds={col:['cddColMenu','cddColBtn','cddColLabel'],mode:['cddModeMenu','cddModeBtn','cddModeLabel']};
+function _g(id){return document.getElementById(id);}
+function closeCdds(){Object.values(_cdds).forEach(function(c){_g(c[0]).style.display='none';_g(c[1]).classList.remove('open');});}
+function toggleCdd(w,e){
+    e.stopPropagation();
+    var c=_cdds[w],o=_cdds[w==='col'?'mode':'col'];
+    var open=_g(c[0]).style.display!=='none';
+    _g(o[0]).style.display='none';_g(o[1]).classList.remove('open');
+    _g(c[0]).style.display=open?'none':'block';_g(c[1]).classList.toggle('open',!open);
 }
-function toggleCdd(which,e){
-    if(e){e.stopPropagation();}
-    var menuId=which==='col'?'cddColMenu':'cddModeMenu';
-    var btnId=which==='col'?'cddColBtn':'cddModeBtn';
-    var otherId=which==='col'?'cddModeMenu':'cddColMenu';
-    var otherBtnId=which==='col'?'cddModeBtn':'cddColBtn';
-    var menu=document.getElementById(menuId);
-    var btn=document.getElementById(btnId);
-    var isOpen=menu.style.display!=='none';
-    document.getElementById(otherId).style.display='none';
-    document.getElementById(otherBtnId).classList.remove('open');
-    if(isOpen){menu.style.display='none';btn.classList.remove('open');}
-    else{menu.style.display='block';btn.classList.add('open');}
+function pickCdd(w,val,label,el,e){
+    e.stopPropagation();
+    var c=_cdds[w];
+    _g(c[2]).textContent=label;
+    _g(c[0]).querySelectorAll('.cdd-item').forEach(function(i){i.classList.toggle('selected',i===el);});
+    _g(c[0]).style.display='none';_g(c[1]).classList.remove('open');
+    if(w==='col'){curCol=val;if(curQ)doSearch(0);}
+    else{pMode=val;localStorage.setItem('posterMode',val);if(curQ)doSearch(curOff);}
 }
-function pickCol(val,label,el,e){
-    if(e){e.stopPropagation();}
-    curCol=val;
-    document.getElementById('cddColLabel').textContent=label;
-    document.querySelectorAll('#cddColMenu .cdd-item').forEach(function(i){i.classList.remove('selected');});
-    el.classList.add('selected');
-    document.getElementById('cddColMenu').style.display='none';
-    document.getElementById('cddColBtn').classList.remove('open');
-    if(curQ)doSearch(0);
+/* ── Ripple (delegated) ── */
+function addRipple(e,el){
+    var r=el||e.currentTarget,d=Math.max(r.offsetWidth,r.offsetHeight);
+    var rc=r.getBoundingClientRect(),t=e.touches&&e.touches[0]||e;
+    var s=document.createElement('span');
+    s.className='ripple-circle';
+    s.style.cssText='width:'+d+'px;height:'+d+'px;left:'+(t.clientX-rc.left-d/2)+'px;top:'+(t.clientY-rc.top-d/2)+'px';
+    r.appendChild(s);s.addEventListener('animationend',function(){s.remove();});
 }
-function pickMode(val,label,el,e){
-    if(e){e.stopPropagation();}
-    pMode=val;
-    localStorage.setItem('posterMode',pMode);
-    document.getElementById('cddModeLabel').textContent=label;
-    document.querySelectorAll('#cddModeMenu .cdd-item').forEach(function(i){i.classList.remove('selected');});
-    el.classList.add('selected');
-    document.getElementById('cddModeMenu').style.display='none';
-    document.getElementById('cddModeBtn').classList.remove('open');
-    if(curQ)doSearch(curOff);
+/* ── Admin tap toggle ── */
+function toggleAdminPanel(box,e){
+    e.stopPropagation();
+    var open=box.classList.toggle('admin-open');
+    if(open)document.querySelectorAll('.poster-box.admin-open').forEach(function(b){if(b!==box)b.classList.remove('admin-open');});
 }
 document.addEventListener('click',function(e){
-    if(!e.target.closest('.cdd-wrap')){closeCdds();}
+    if(!e.target.closest('.cdd-wrap'))closeCdds();
+    if(!e.target.closest('.poster-box'))document.querySelectorAll('.poster-box.admin-open').forEach(function(b){b.classList.remove('admin-open');});
 });
-document.querySelectorAll('.cdd-menu').forEach(function(m){
-    m.addEventListener('click',function(e){e.stopPropagation();});
-});
-function changeCol(val){curCol=val;if(curQ)doSearch(0);}
 
-function handleThumbError(fileId) {
-    var box = document.getElementById('poster-box-' + fileId);
-    if (box) {
-        box.innerHTML = '<div class="thumb-error"><span style="font-size:11px;color:var(--muted);">थंबनेल लोड नहीं हुआ</span></div>';
-    }
-}
+function handleThumbError(id){var b=_g('poster-box-'+id);if(b)b.innerHTML='<div class="thumb-error"><span style="font-size:11px;color:var(--muted);">थंबनेल लोड नहीं हुआ</span></div>';}
+async function reloadThumb(id){var b=_g('poster-box-'+id);if(b)b.innerHTML='<img src="/api/thumb?file_id='+id+'&retry=true&t='+Date.now()+'" class="fc-poster" onerror="handleThumbError(\''+id+'\')">';}
 
-async function reloadThumb(fileId) {
-    var timestamp = new Date().getTime();
-    var box = document.getElementById('poster-box-' + fileId);
-    if (box) {
-        box.innerHTML = '<img src="/api/thumb?file_id=' + fileId + '&retry=true&t=' + timestamp + '" class="fc-poster" onerror="handleThumbError(\\'' + fileId + '\\')">';
-    }
-}
 
 async function doSearch(o){
     var q=document.getElementById('q').value.trim();
@@ -214,53 +193,26 @@ async function doSearch(o){
         d.results.forEach(function(f){
             var sc=(f.source||'primary').toLowerCase();
             if(!['primary','cloud','archive'].includes(sc))sc='primary';
-
-            var adminBtns='';
-            if(d.is_admin){
-                var safeName=f.name.replace(/\\\\/g,'\\\\\\\\').replace(/'/g,"\\\\'");
-                adminBtns='<div class="poster-admin">'+
-                    '<button class="btn-edit" onclick="editFile(\\''+f.file_id+'\\',\\''+f.raw_collection+'\\',\\''+safeName+'\\')">&#9999; Edit</button>'+
-                    '<button class="btn-del" onclick="deleteFile(\\''+f.file_id+'\\',\\''+f.raw_collection+'\\')">&#128465; Delete</button>'+
-                '</div>';
-            }
-
-            var posterHtml='';
-            if(pMode!=='none'){
-                posterHtml='<div class="poster-box" id="poster-box-'+f.file_id+'">'+
-                    '<img src="'+f.tg_thumb+'" class="fc-poster" onerror="handleThumbError(\\''+f.file_id+'\\')" loading="lazy">'+
-                    '<div class="poster-top">'+
-                        '<span class="type-chip">'+f.type.toUpperCase()+'</span>'+
-                        '<span class="size-chip">'+f.size+'</span>'+
-                        '<span class="source-pill '+sc+'"><span class="source-dot"></span>'+sc.toUpperCase()+'</span>'+
-                    '</div>'+
-                    adminBtns+
-                '</div>';
-            }
-
-            var textInfo='';
-            if(pMode==='none'){
-                textInfo='<div class="fc-text-info">'+
-                    '<span class="tc-type">'+f.type.toUpperCase()+'</span>'+
-                    '<span class="tc-size">'+f.size+'</span>'+
-                    '<span class="source-pill '+sc+'" style="margin-left:auto"><span class="source-dot"></span>'+sc.toUpperCase()+'</span>'+
-                '</div>';
-                if(d.is_admin){
-                    var safeName2=f.name.replace(/\\\\/g,'\\\\\\\\').replace(/'/g,"\\\\'");
-                    textInfo+='<div style="display:flex;gap:5px;padding:5px 11px 0">'+
-                        '<button class="btn-edit" onclick="editFile(\\''+f.file_id+'\\',\\''+f.raw_collection+'\\',\\''+safeName2+'\\')">&#9999; Edit</button>'+
-                        '<button class="btn-del" onclick="deleteFile(\\''+f.file_id+'\\',\\''+f.raw_collection+'\\')">&#128465; Delete</button>'+
-                    '</div>';
-                }
-            }
-
-            h+='<div class="file-card">'+
-                posterHtml+
-                textInfo+
-                '<div class="fc-body">'+
-                    '<div class="fc-name" onclick="window.open(\\''+f.watch+'\\',\\'_blank\\')">'+f.name+'</div>'+
-                '</div>'+
-            '</div>';
-        });
+            var sn=d.is_admin?f.name.replace(/\\/g,'\\\\').replace(/'/g,"\\'"):'',rh=' class="ripple-host" onmousedown="addRipple(event,this)" ontouchstart="addRipple(event,this)"';
+            var aBtns=d.is_admin?'<div class="poster-admin">'+
+                '<button'+rh+' class="btn-edit" onclick="editFile(\''+f.file_id+'\',\''+f.raw_collection+'\',\''+sn+'\')">✏️ Edit</button>'+
+                '<button'+rh+' class="btn-del" onclick="deleteFile(\''+f.file_id+'\',\''+f.raw_collection+'\')">&#128465; Delete</button></div>':'';
+            var posterHtml=pMode!=='none'?
+                '<div class="poster-box" id="poster-box-'+f.file_id+'"'+(d.is_admin?' onclick="toggleAdminPanel(this,event)"':'')+'>'+
+                '<img src="'+f.tg_thumb+'" class="fc-poster" onerror="handleThumbError(\''+f.file_id+'\')" loading="lazy">'+
+                '<div class="poster-top"><span class="type-chip">'+f.type.toUpperCase()+'</span>'+
+                '<span class="size-chip">'+f.size+'</span>'+
+                '<span class="source-pill '+sc+'"><span class="source-dot"></span>'+sc.toUpperCase()+'</span></div>'+aBtns+'</div>':'';
+            var textInfo=pMode==='none'?
+                '<div class="fc-text-info"><span class="tc-type">'+f.type.toUpperCase()+'</span>'+
+                '<span class="tc-size">'+f.size+'</span>'+
+                '<span class="source-pill '+sc+'" style="margin-left:auto"><span class="source-dot"></span>'+sc.toUpperCase()+'</span></div>'+
+                (d.is_admin?'<div style="display:flex;gap:5px;padding:5px 11px 0">'+
+                '<button'+rh+' class="btn-edit" onclick="editFile(\''+f.file_id+'\',\''+f.raw_collection+'\',\''+sn+'\')">✏️ Edit</button>'+
+                '<button'+rh+' class="btn-del" onclick="deleteFile(\''+f.file_id+'\',\''+f.raw_collection+'\')">&#128465; Delete</button></div>':''):
+                '';
+            h+='<div class="file-card">'+posterHtml+textInfo+
+                '<div class="fc-body"><div class="fc-name" onclick="window.open(\''+f.watch+'\',\'_blank\')">'+f.name+'</div></div></div>';
         resDiv.innerHTML=h;
         nextOff=d.next_offset;
         document.getElementById('pageBox').style.display='flex';
@@ -276,28 +228,18 @@ var _tt;
 function showToast(m,t){t=t||'success';var x=document.getElementById('toast');x.textContent=m;x.className='toast '+t+' show';clearTimeout(_tt);_tt=setTimeout(function(){x.classList.remove('show');},3000);}
 
 document.addEventListener('DOMContentLoaded',function(){
-    var q=document.getElementById('q');if(q)q.addEventListener('keydown',function(e){if(e.key==='Enter')doSearch(0);});
-    /* restore saved posterMode in custom dropdown */
-    if(pMode==='none'){
-        var mItems=document.querySelectorAll('#cddModeMenu .cdd-item');
-        mItems.forEach(function(i){i.classList.remove('selected');if(i.dataset.val===pMode)i.classList.add('selected');});
-        document.getElementById('cddModeLabel').textContent='\u26a1 Text Only (Fastest)';
-    }
+    _g('q').addEventListener('keydown',function(e){if(e.key==='Enter')doSearch(0);});
+    if(pMode==='none')pickCdd('mode','none','⚡ Text Only (Fastest)',_g('cddModeMenu').querySelector('[data-val="none"]'),{stopPropagation:function(){}});
 });
+
 
 async function deleteFile(fid,col){
     if(!confirm('Are you sure you want to delete this file?'))return;
-    try{
-        var r=await fetch('/api/delete',{method:'POST',body:JSON.stringify({file_id:fid,collection:col}),headers:{'Content-Type':'application/json'}});
-        var res=await r.json();
-        if(res.success){showToast('\\u2705 File deleted successfully!');doSearch(curOff);}
-        else{showToast(res.error||'Delete failed!','error');}
+    try{var res=await(await fetch('/api/delete',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({file_id:fid,collection:col})})).json();
+    res.success?(showToast('\u2705 File deleted successfully!'),doSearch(curOff)):showToast(res.error||'Delete failed!','error');
     }catch(e){showToast('Delete failed','error');}
 }
 
-function editFile(fid,col,currentName){
-    activeFid=fid;activeCol=col;
-    if(cropperInstance){cropperInstance.destroy();cropperInstance=null;}
     document.getElementById('emName').value=currentName;
     document.getElementById('emFile').value='';
     document.getElementById('cropContainer').style.display='none';
@@ -373,7 +315,7 @@ SEARCH_ZONE = (
         '<div class="search-row1">'
             '<div class="search-wrap">'
             '<input class="search-input" id="q" placeholder="Titles, people, genres\u2026"></div>'
-            '<button class="search-btn" onclick="doSearch(0)">Search</button>'
+            '<button class="search-btn ripple-host" onclick="doSearch(0)" onmousedown="addRipple(event,this)" ontouchstart="addRipple(event,this)">Search</button>'
         '</div>'
         '<div class="search-row2">'
             '<div class="cdd-wrap" id="cddColWrap">'
@@ -410,9 +352,9 @@ SEARCH_ZONE = (
                 '<p>Find your favorite movies and TV shows.</p></div>'
             '</div>'
             '<div class="pagination" id="pageBox" style="display:none;">'
-                '<button class="pg-btn" id="pBtn" onclick="prev()" disabled>Previous</button>'
+                '<button class="pg-btn ripple-host" id="pBtn" onclick="prev()" onmousedown="addRipple(event,this)" ontouchstart="addRipple(event,this)" disabled>Previous</button>'
                 '<span class="pg-info" id="pgInfo">Page 1</span>'
-                '<button class="pg-btn" id="nBtn" onclick="next()">Next</button>'
+                '<button class="pg-btn ripple-host" id="nBtn" onclick="next()" onmousedown="addRipple(event,this)" ontouchstart="addRipple(event,this)">Next</button>'
             '</div>'
         '</div>'
     '</div>'
