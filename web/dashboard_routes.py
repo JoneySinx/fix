@@ -15,12 +15,29 @@ CARD_CSS = """
 .search-zone{padding:16px 12px 0}
 .search-row1{display:flex;align-items:stretch;gap:8px;margin-bottom:8px;min-height:44px}
 .search-row2{display:flex;align-items:center;gap:8px;margin-bottom:16px}
-.search-wrap{flex:1;min-width:0;display:flex;align-items:center;background:var(--bg);border:1px solid var(--border);border-radius:8px;padding:0 12px;gap:8px;overflow:hidden}
+.search-wrap{flex:1;min-width:0;display:flex;align-items:center;background:var(--card);border:1.5px solid var(--border);border-radius:8px;padding:0 12px;gap:8px;overflow:hidden;transition:border-color .18s}
+.search-wrap:focus-within{border-color:var(--accent)}
 .search-input{flex:1;min-width:0;width:100%;background:transparent;border:none;outline:none;color:var(--text);caret-color:var(--accent);font-size:15px;font-weight:600;padding:11px 0;font-family:inherit}
 .search-input::placeholder{color:var(--muted);font-weight:400}
 .search-btn{flex-shrink:0;background:linear-gradient(135deg,var(--accent),var(--accent-hover));color:#fff;border:none;border-radius:8px;padding:0 22px;font-size:13px;font-weight:700;cursor:pointer;white-space:nowrap;box-shadow:0 4px 14px rgba(229,9,20,0.35);align-self:stretch}
 .search-btn:hover{opacity:0.92}
-.filter-select{flex:1;min-width:0;background:var(--bg);color:var(--text);border:1px solid var(--border);border-radius:7px;padding:9px 6px;font-size:12px;font-weight:700;outline:none;cursor:pointer;font-family:inherit;box-sizing:border-box;-webkit-appearance:none;appearance:none;background-image:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='10' height='6'%3E%3Cpath d='M0 0l5 6 5-6z' fill='%23888'/%3E%3C/svg%3E");background-repeat:no-repeat;background-position:right 10px center;padding-right:28px}
+
+/* ── Custom dropdown ── */
+.cdd-wrap{flex:1;min-width:0;position:relative;user-select:none}
+.cdd-btn{width:100%;background:var(--card);color:var(--text);border:1.5px solid var(--border);border-radius:7px;padding:9px 28px 9px 10px;font-size:12px;font-weight:700;cursor:pointer;font-family:inherit;box-sizing:border-box;display:flex;align-items:center;gap:6px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;transition:border-color .15s}
+.cdd-btn:hover,.cdd-btn.open{border-color:var(--accent)}
+.cdd-arrow{position:absolute;right:10px;top:50%;transform:translateY(-50%);pointer-events:none;font-size:9px;color:var(--muted);transition:transform .2s}
+.cdd-btn.open+.cdd-arrow{transform:translateY(-50%) rotate(180deg)}
+.cdd-menu{position:absolute;top:calc(100% + 5px);left:0;right:0;background:var(--card);border:1.5px solid var(--border);border-radius:10px;overflow:hidden;z-index:9999;box-shadow:0 8px 32px rgba(0,0,0,.45);animation:cddIn .15s ease}
+@keyframes cddIn{from{opacity:0;transform:translateY(-6px)}to{opacity:1;transform:translateY(0)}}
+.cdd-item{display:flex;align-items:center;gap:10px;padding:13px 14px;font-size:13px;font-weight:700;color:var(--text);cursor:pointer;transition:background .12s;border-bottom:1px solid var(--border)}
+.cdd-item:last-child{border-bottom:none}
+.cdd-item:hover{background:var(--bg3)}
+.cdd-item.selected{color:var(--accent)}
+.cdd-radio{width:18px;height:18px;border-radius:50%;border:2px solid var(--border);margin-left:auto;flex-shrink:0;display:flex;align-items:center;justify-content:center;transition:border-color .15s}
+.cdd-item.selected .cdd-radio{border-color:var(--accent)}
+.cdd-radio-dot{width:8px;height:8px;border-radius:50%;background:var(--accent);display:none}
+.cdd-item.selected .cdd-radio-dot{display:block}
 
 /* ── Results grid ── */
 .res-grid{display:grid;grid-template-columns:1fr;gap:4px;margin-bottom:24px}
@@ -97,8 +114,44 @@ var LIMIT_VAL = __LIMIT_PLACEHOLDER__;
 
 var activeFid = '', activeCol = '', cropperInstance = null;
 
+/* ── Custom dropdown logic ── */
+function toggleCdd(which){
+    var menuId=which==='col'?'cddColMenu':'cddModeMenu';
+    var btnId=which==='col'?'cddColBtn':'cddModeBtn';
+    var other=which==='col'?'cddModeMenu':'cddColMenu';
+    var otherBtn=which==='col'?'cddModeBtn':'cddColBtn';
+    var menu=document.getElementById(menuId);
+    var btn=document.getElementById(btnId);
+    var isOpen=menu.style.display!=='none';
+    document.getElementById(other).style.display='none';
+    document.getElementById(otherBtn).classList.remove('open');
+    if(isOpen){menu.style.display='none';btn.classList.remove('open');}
+    else{menu.style.display='block';btn.classList.add('open');}
+}
+function pickCol(val,label,el){
+    curCol=val;
+    document.getElementById('cddColLabel').textContent=label;
+    document.querySelectorAll('#cddColMenu .cdd-item').forEach(function(i){i.classList.remove('selected');});
+    el.classList.add('selected');
+    document.getElementById('cddColMenu').style.display='none';
+    document.getElementById('cddColBtn').classList.remove('open');
+    if(curQ)doSearch(0);
+}
+function pickMode(val,label,el){
+    pMode=val;
+    localStorage.setItem('posterMode',pMode);
+    document.getElementById('cddModeLabel').textContent=label;
+    document.querySelectorAll('#cddModeMenu .cdd-item').forEach(function(i){i.classList.remove('selected');});
+    el.classList.add('selected');
+    document.getElementById('cddModeMenu').style.display='none';
+    document.getElementById('cddModeBtn').classList.remove('open');
+    if(curQ)doSearch(curOff);
+}
+document.addEventListener('click',function(e){
+    if(!e.target.closest('#cddColWrap')){document.getElementById('cddColMenu').style.display='none';document.getElementById('cddColBtn').classList.remove('open');}
+    if(!e.target.closest('#cddModeWrap')){document.getElementById('cddModeMenu').style.display='none';document.getElementById('cddModeBtn').classList.remove('open');}
+});
 function changeCol(val){curCol=val;if(curQ)doSearch(0);}
-function changePosterMode(){pMode=document.getElementById('posterMode').value;localStorage.setItem('posterMode',pMode);if(curQ)doSearch(curOff);}
 
 function handleThumbError(fileId) {
     var box = document.getElementById('poster-box-' + fileId);
@@ -201,9 +254,13 @@ var _tt;
 function showToast(m,t){t=t||'success';var x=document.getElementById('toast');x.textContent=m;x.className='toast '+t+' show';clearTimeout(_tt);_tt=setTimeout(function(){x.classList.remove('show');},3000);}
 
 document.addEventListener('DOMContentLoaded',function(){
-    var pm=document.getElementById('posterMode');if(pm)pm.value=pMode;
     var q=document.getElementById('q');if(q)q.addEventListener('keydown',function(e){if(e.key==='Enter')doSearch(0);});
-    var cs=document.getElementById('colSelect');if(cs)cs.value=curCol;
+    /* restore saved posterMode in custom dropdown */
+    if(pMode==='none'){
+        var mItems=document.querySelectorAll('#cddModeMenu .cdd-item');
+        mItems.forEach(function(i){i.classList.remove('selected');if(i.dataset.val===pMode)i.classList.add('selected');});
+        document.getElementById('cddModeLabel').textContent='\u26a1 Text Only (Fastest)';
+    }
 });
 
 async function deleteFile(fid,col){
@@ -297,16 +354,28 @@ SEARCH_ZONE = (
             '<button class="search-btn" onclick="doSearch(0)">Search</button>'
         '</div>'
         '<div class="search-row2">'
-            '<select class="filter-select" id="colSelect" onchange="changeCol(this.value)">'
-                '<option value="all">\U0001f4c2 All Collections</option>'
-                '<option value="primary">\U0001f7e2 Primary</option>'
-                '<option value="cloud">\U0001f535 Cloud</option>'
-                '<option value="archive">\U0001f7e0 Archive</option>'
-            '</select>'
-            '<select id="posterMode" onchange="changePosterMode()" class="filter-select">'
-                '<option value="tg">\U0001f4f8 Original TG Thumb</option>'
-                '<option value="none">\u26a1 Text Only (Fastest)</option>'
-            '</select>'
+            '<div class="cdd-wrap" id="cddColWrap">'
+                '<div class="cdd-btn" id="cddColBtn" onclick="toggleCdd(\'col\')">'
+                    '<span id="cddColLabel">\U0001f4c2 All Collections</span>'
+                '</div>'
+                '<span class="cdd-arrow">&#9660;</span>'
+                '<div class="cdd-menu" id="cddColMenu" style="display:none">'
+                    '<div class="cdd-item selected" data-val="all" onclick="pickCol(\'all\',\'\U0001f4c2 All Collections\',this)">\U0001f4c2 All Collections<span class="cdd-radio"><span class="cdd-radio-dot"></span></span></div>'
+                    '<div class="cdd-item" data-val="primary" onclick="pickCol(\'primary\',\'\U0001f7e2 Primary\',this)">\U0001f7e2 Primary<span class="cdd-radio"><span class="cdd-radio-dot"></span></span></div>'
+                    '<div class="cdd-item" data-val="cloud" onclick="pickCol(\'cloud\',\'\U0001f535 Cloud\',this)">\U0001f535 Cloud<span class="cdd-radio"><span class="cdd-radio-dot"></span></span></div>'
+                    '<div class="cdd-item" data-val="archive" onclick="pickCol(\'archive\',\'\U0001f7e0 Archive\',this)">\U0001f7e0 Archive<span class="cdd-radio"><span class="cdd-radio-dot"></span></span></div>'
+                '</div>'
+            '</div>'
+            '<div class="cdd-wrap" id="cddModeWrap">'
+                '<div class="cdd-btn" id="cddModeBtn" onclick="toggleCdd(\'mode\')">'
+                    '<span id="cddModeLabel">\U0001f4f8 Original TG Thumb</span>'
+                '</div>'
+                '<span class="cdd-arrow">&#9660;</span>'
+                '<div class="cdd-menu" id="cddModeMenu" style="display:none">'
+                    '<div class="cdd-item selected" data-val="tg" onclick="pickMode(\'tg\',\'\U0001f4f8 Original TG Thumb\',this)">\U0001f4f8 Original TG Thumb<span class="cdd-radio"><span class="cdd-radio-dot"></span></span></div>'
+                    '<div class="cdd-item" data-val="none" onclick="pickMode(\'none\',\'\u26a1 Text Only (Fastest)\',this)">\u26a1 Text Only (Fastest)<span class="cdd-radio"><span class="cdd-radio-dot"></span></span></div>'
+                '</div>'
+            '</div>'
         '</div>'
     '</div>'
     '<div class="main" style="padding-top:4px;">'
