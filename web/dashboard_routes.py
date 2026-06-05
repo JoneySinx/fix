@@ -87,200 +87,225 @@ CARD_CSS = """
 """
 
 # ─────────────────────────────────────────────────────────────────────────────
-# 🎬 YOUR ORIGINAL JAVASCRIPT ENGINE — (UNCHANGED)
+# 🎬 FIXED FRONTEND ENGINE (Correct Function Binding Maps)
 # ─────────────────────────────────────────────────────────────────────────────
 JS_ENGINE = """
-var curQ='',curOff=0,nextOff='',curCol='all',curPage=1;
-var pMode=localStorage.getItem('posterMode')||'tg';
-var LIMIT_VAL=__LIMIT_PLACEHOLDER__;
-var activeFid='',activeCol='',cropperInstance=null;
+var curQ = '';
+var curOff = 0;
+var nextOff = '';
+var curCol = 'all';
+var curPage = 1;
+var pMode = localStorage.getItem('posterMode') || 'tg';
+var LIMIT_VAL = __LIMIT_PLACEHOLDER__;
+var activeFid = '', activeCol = '', cropperInstance = null;
 
-function changeCol(val){{curCol=val;if(curQ)doSearch(0);}}
-function changePosterMode(){{pMode=document.getElementById('posterMode').value;localStorage.setItem('posterMode',pMode);if(curQ)doSearch(curOff);}}
+// ✅ FIXED: इसे changeCol से री-मैप कर दिया गया है ताकि ड्रॉपडाउन एरर न फेंके
+function changeCol(val) {
+    curCol = val;
+    if (curQ) { doSearch(0); }
+}
 
-function handleThumbError(fileId){{
-    var box=document.getElementById('poster-box-'+fileId);
-    if(box){{box.innerHTML='<div class="thumb-error"><span style="font-size:11px;color:var(--muted);">थंबनेल लोड नहीं हुआ</span></div>';}}
-}}
+function changePosterMode() {
+    pMode = document.getElementById('posterMode').value;
+    localStorage.setItem('posterMode', pMode);
+    if (curQ) { doSearch(curOff); }
+}
 
-async function reloadThumb(fileId){{
-    var ts=new Date().getTime();
-    var box=document.getElementById('poster-box-'+fileId);
-    if(box){{box.innerHTML='<img src="/api/thumb?file_id='+fileId+'&retry=true&t='+ts+'" class="fc-poster" onerror="handleThumbError(\''+fileId+'\')">';}}
-}}
+function handleThumbError(fileId) {
+    var box = document.getElementById('poster-box-' + fileId);
+    if (box) {
+        box.innerHTML = '<div class="thumb-error"><span style="font-size:11px;color:var(--muted);">थंबनेल लोड नहीं हुआ</span></div>';
+    }
+}
 
-async function doSearch(o){{
-    var q=document.getElementById('q').value.trim();
-    if(!q){{showToast('Please enter a movie name','error');return;}}
-    curQ=q;curOff=o;if(o===0)curPage=1;
-    var resDiv=document.getElementById('results');
-    resDiv.className='res-grid mode-'+pMode;
-    resDiv.innerHTML='<div class="spin-wrap"><div class="spinner"></div><span>Searching...</span></div>';
-    try{{
-        var r=await fetch('/api/search?q='+encodeURIComponent(q)+'&offset='+o+'&col='+curCol+'&mode='+pMode);
-        if(!r.ok){{showToast('Error fetching','error');return;}}
-        var d=await r.json();
-        if(d.error){{showToast(d.error,'error');return;}}
-        document.getElementById('resInfo').style.display='flex';
-        document.getElementById('resCount').innerHTML='More to explore: <span style="color:var(--text);font-weight:600">'+q+'</span>';
-        if(!d.results||!d.results.length){{
-            resDiv.innerHTML='<div class="empty"><div class="empty-icon">⚠</div><p>No titles found for "'+q+'"</p></div>';
-            document.getElementById('pageBox').style.display='none';return;
-        }}
-        var h='';
-        d.results.forEach(function(f){{
-            var sc=(f.source||'primary').toLowerCase();
-            if(!['primary','cloud','archive'].includes(sc))sc='primary';
+async function reloadThumb(fileId) {
+    var ts = new Date().getTime();
+    var box = document.getElementById('poster-box-' + fileId);
+    if (box) {
+        box.innerHTML = '<img src="/api/thumb?file_id=' + fileId + '&retry=true&t=' + ts + '" class="fc-poster" onerror="handleThumbError(\'' + fileId + '\')">';
+    }
+}
 
-            var adminBtns='';
-            if(d.is_admin){{
-                var safeName=f.name.replace(/\\\\/g,'\\\\\\\\').replace(/'/g,"\\\\'");
-                adminBtns='<div class="poster-admin">'+
-                    '<button class="btn-edit" onclick="editFile(\''+f.file_id+'\',\''+f.raw_collection+'\',\''+safeName+'\')">✏️ Edit</button>'+
-                    '<button class="btn-del" onclick="deleteFile(\''+f.file_id+'\',\''+f.raw_collection+'\')">🗑 Delete</button>'+
+async function doSearch(o) {
+    var q = document.getElementById('q').value.trim();
+    if (!q) { alert('Please enter a movie name'); return; }
+    curQ = q;
+    curOff = o;
+    if (o === 0) { curPage = 1; }
+    
+    var resDiv = document.getElementById('results');
+    resDiv.className = 'res-grid mode-' + pMode;
+    resDiv.innerHTML = '<div class="spin-wrap"><div class="spinner"></div><span>Searching...</span></div>';
+    
+    try {
+        var r = await fetch('/api/search?q=' + encodeURIComponent(q) + '&offset=' + o + '&col=' + curCol + '&mode=' + pMode);
+        if (!r.ok) { alert('Error fetching data from server'); return; }
+        var d = await r.json();
+        if (d.error) { alert(d.error); return; }
+        
+        document.getElementById('resInfo').style.display = 'flex';
+        document.getElementById('resCount').innerHTML = 'More to explore: <span style="color:var(--text);font-weight:600">' + q + '</span>';
+        
+        if (!d.results || !d.results.length) {
+            resDiv.innerHTML = '<div class="empty"><div class="empty-icon">⚠</div><p>No titles found for "' + q + '"</p></div>';
+            document.getElementById('pageBox').style.display = 'none';
+            return;
+        }
+        
+        var h = '';
+        d.results.forEach(function(f) {
+            var sc = (f.source || 'primary').toLowerCase();
+            if (!['primary', 'cloud', 'archive'].includes(sc)) sc = 'primary';
+
+            var adminBtns = '';
+            if (d.is_admin) {
+                var safeName = f.name.replace(/\\\\/g, '\\\\\\\\').replace(/'/g, "\\\\'");
+                adminBtns = '<div class="poster-admin">' +
+                    '<button class="btn-edit" onclick="editFile(\'' + f.file_id + '\',\'' + f.raw_collection + '\',\'' + safeName + '\')">✏️ Edit</button>' +
+                    '<button class="btn-del" onclick="deleteFile(\'' + f.file_id + '\',\'' + f.raw_collection + '\')">🗑 Delete</button>' +
                 '</div>';
-            }}
+            }
 
-            var posterHtml='';
-            if(pMode!=='none'){{
-                posterHtml='<div class="poster-box" id="poster-box-'+f.file_id+'">'+
-                    '<img src="'+f.tg_thumb+'" class="fc-poster" onerror="handleThumbError(\''+f.file_id+'\')" loading="lazy">'+
-                    '<div class="poster-top">'+
-                        '<span class="type-chip">'+f.type.toUpperCase()+'</span>'+
-                        '<span class="size-chip">'+f.size+'</span>'+
-                        '<span class="source-pill '+sc+'"><span class="source-dot"></span>'+sc.toUpperCase()+'</span>'+
-                    '</div>'+
-                    adminBtns+
+            var posterHtml = '';
+            if (pMode !== 'none') {
+                posterHtml = '<div class="poster-box" id="poster-box-' + f.file_id + '">' +
+                    '<img src="' + f.tg_thumb + '" class="fc-poster" onerror="handleThumbError(\'' + f.file_id + '\')" loading="lazy">' +
+                    '<div class="poster-top">' +
+                        '<span class="type-chip">' + f.type.toUpperCase() + '</span>' +
+                        '<span class="size-chip">' + f.size + '</span>' +
+                        '<span class="source-pill ' + sc + '"><span class="source-dot"></span>' + sc.toUpperCase() + '</span>' +
+                    '</div>' +
+                    adminBtns +
                 '</div>';
-            }}
+            }
 
-            var textInfo='';
-            if(pMode==='none'){{
-                textInfo='<div class="fc-text-info">'+
-                    '<span class="tc-type">'+f.type.toUpperCase()+'</span>'+
-                    '<span class="tc-size">'+f.size+'</span>'+
-                    '<span class="source-pill '+sc+'" style="margin-left:auto"><span class="source-dot"></span>'+sc.toUpperCase()+'</span>'+
+            var textInfo = '';
+            if (pMode === 'none') {
+                textInfo = '<div class="fc-text-info">' +
+                    '<span class="tc-type">' + f.type.toUpperCase() + '</span>' +
+                    '<span class="tc-size">' + f.size + '</span>' +
+                    '<span class="source-pill ' + sc + '" style="margin-left:auto"><span class="source-dot"></span>' + sc.toUpperCase() + '</span>' +
                 '</div>';
-                if(d.is_admin){{
-                    var safeName2=f.name.replace(/\\\\/g,'\\\\\\\\').replace(/'/g,"\\\\'");
-                    textInfo+='<div style="display:flex;gap:5px;padding:5px 11px 0">'+
-                        '<button class="btn-edit" onclick="editFile(\''+f.file_id+'\',\''+f.raw_collection+'\',\''+safeName2+'\')">✏️ Edit</button>'+
-                        '<button class="btn-del" onclick="deleteFile(\''+f.file_id+'\',\''+f.raw_collection+'\')">🗑 Delete</button>'+
+                if (d.is_admin) {
+                    var safeName2 = f.name.replace(/\\\\/g, '\\\\\\\\').replace(/'/g, "\\\\'");
+                    textInfo += '<div style="display:flex;gap:5px;padding:5px 11px 0">' +
+                        '<button class="btn-edit" onclick="editFile(\'' + f.file_id + '\',\'' + f.raw_collection + '\',\'' + safeName2 + '\')">✏️ Edit</button>' +
+                        '<button class="btn-del" onclick="deleteFile(\'' + f.file_id + '\',\'' + f.raw_collection + '\')">🗑 Delete</button>' +
                     '</div>';
-                }}
-            }}
+                }
+            }
 
-            h+='<div class="file-card">'+
-                posterHtml+
-                textInfo+
-                '<div class="fc-body">'+
-                    '<div class="fc-name" onclick="window.open(\''+f.watch+'\',\'_blank\')">'+f.name+'</div>'+
-                '</div>'+
+            h += '<div class="file-card">' +
+                posterHtml +
+                textInfo +
+                '<div class="fc-body">' +
+                    '<div class="fc-name" onclick="window.open(\'' + f.watch + '\',\'_blank\')">' + f.name + '</div>' +
+                '</div>' +
             '</div>';
-        }});
-        resDiv.innerHTML=h;
-        nextOff=d.next_offset;
-        document.getElementById('pageBox').style.display='flex';
-        document.getElementById('pBtn').disabled=(o===0);
-        document.getElementById('nBtn').disabled=!nextOff;
-        document.getElementById('pgInfo').textContent='Page '+curPage;
-    }}catch(e){{showToast('Network error','error');}}
-}}
+        });
+        
+        resDiv.innerHTML = h;
+        nextOff = d.next_offset;
+        document.getElementById('pageBox').style.display = 'flex';
+        document.getElementById('pBtn').disabled = (o === 0);
+        document.getElementById('nBtn').disabled = !nextOff;
+        document.getElementById('pgInfo').textContent = 'Page ' + curPage;
+    } catch (e) {
+        alert('Network synchronization error');
+    }
+}
 
-function next() {{ if (nextOff) {{ curPage++; doSearch(nextOff); scrollTo(0, 0); }} }}
-function prev() {{ if (curPage > 1) {{ curPage--; doSearch(Math.max(0, curOff - LIMIT_VAL)); scrollTo(0, 0); }} }}
+function next() { if (nextOff) { curPage++; doSearch(nextOff); scrollTo(0, 0); } }
+function prev() { if (curPage > 1) { curPage--; doSearch(Math.max(0, curOff - LIMIT_VAL)); scrollTo(0, 0); } }
 
-var _tt;
-function showToast(m,t){{t=t||'success';var x=document.getElementById('toast');x.textContent=m;x.className='toast '+t+' show';clearTimeout(_tt);_tt=setTimeout(function(){{x.classList.remove('show');}},3000);}}
+document.addEventListener('DOMContentLoaded', function() {
+    var pm = document.getElementById('posterMode'); if (pm) pm.value = pMode;
+    var q = document.getElementById('q'); 
+    if (q) {
+        q.addEventListener('keydown', function(e) { if (e.key === 'Enter') doSearch(0); });
+    }
+    var cs = document.getElementById('colSelect'); if (cs) cs.value = curCol;
+});
 
-document.addEventListener('DOMContentLoaded',function(){{
-    var pm=document.getElementById('posterMode');if(pm)pm.value=pMode;
-    var q=document.getElementById('q');if(q)q.addEventListener('keydown',function(e){{if(e.key==='Enter')doSearch(0);}});
-    var cs=document.getElementById('colSelect');if(cs)cs.value=curCol;
-}});
+async function deleteFile(fid, col) {
+    if (!confirm('Are you sure you want to delete this file?')) return;
+    try {
+        var r = await fetch('/api/delete', { method: 'POST', body: JSON.stringify({ file_id: fid, collection: col }), headers: { 'Content-Type': 'application/json' } });
+        var res = await r.json();
+        if (res.success) { doSearch(curOff); }
+        else { alert(res.error || 'Delete failed!'); }
+    } catch(e) { alert('Delete failed'); }
+}
 
-async function deleteFile(fid,col){{
-    if(!confirm('Are you sure you want to delete this file?'))return;
-    try{{
-        var r=await fetch('/api/delete',{{method:'POST',body:JSON.stringify({{file_id:fid,collection:col}}),headers:{{'Content-Type':'application/json'}}}});
-        var res=await r.json();
-        if(res.success){{showToast('✅ File deleted successfully!');doSearch(curOff);}}
-        else{{showToast(res.error||'Delete failed!','error');}}
-    }}catch(e){{showToast('Delete failed','error');}}
-}}
-
-function editFile(fid,col,currentName){{
-    activeFid=fid;activeCol=col;
-    if(cropperInstance){{cropperInstance.destroy();cropperInstance=null;}}
-    document.getElementById('emName').value=currentName;
-    document.getElementById('emFile').value='';
-    document.getElementById('cropContainer').style.display='none';
-    var prevBox=document.getElementById('emPreviewBox');
-    prevBox.style.display='flex';
-    prevBox.innerHTML='<img src="/api/thumb?file_id='+fid+'" class="t-prev-img" onerror="this.src=\\'https://placehold.co/600x338/181818/FFF?text=No+Thumbnail\\';">';
+function editFile(fid, col, currentName) {
+    activeFid = fid; activeCol = col;
+    if (cropperInstance) { cropperInstance.destroy(); cropperInstance = null; }
+    document.getElementById('emName').value = currentName;
+    document.getElementById('emFile').value = '';
+    document.getElementById('cropContainer').style.display = 'none';
+    var prevBox = document.getElementById('emPreviewBox');
+    prevBox.style.display = 'flex';
+    prevBox.innerHTML = '<img src="/api/thumb?file_id=' + fid + '" class="t-prev-img" onerror="this.src=\'https://placehold.co/600x338/181818/FFF?text=No+Thumbnail\';">';
     document.getElementById('editCombinedModal').classList.add('open');
-}}
+}
 
-function closeCombinedModal(){{
+function closeCombinedModal() {
     document.getElementById('editCombinedModal').classList.remove('open');
-    if(cropperInstance){{cropperInstance.destroy();cropperInstance=null;}}
-}}
+    if (cropperInstance) { cropperInstance.destroy(); cropperInstance = null; }
+}
 
-function handleLocalPreview(input){{
-    if(input.files&&input.files[0]){{
-        var reader=new FileReader();
-        reader.onload=function(e){{
-            if(cropperInstance){{cropperInstance.destroy();}}
-            document.getElementById('emPreviewBox').style.display='none';
-            var cropWrap=document.getElementById('cropContainer');
-            cropWrap.style.display='block';
-            cropWrap.innerHTML='<img id="cropImage" src="'+e.target.result+'" style="max-width:100%;">';
-            var img=document.getElementById('cropImage');
-            cropperInstance=new Cropper(img,{{
-                aspectRatio:16/9,viewMode:1,dragMode:'move',background:false,
-                autoCropArea:1,restore:false,guides:false,center:true,highlight:false,
-                cropBoxMovable:false,cropBoxResizable:false,toggleDragModeOnDblclick:false,
-                zoomable:true,movable:true
-    }});
-        }};
+function handleLocalPreview(input) {
+    if (input.files && input.files[0]) {
+        var reader = new FileReader();
+        reader.onload = function(e) {
+            if (cropperInstance) { cropperInstance.destroy(); }
+            document.getElementById('emPreviewBox').style.display = 'none';
+            var cropWrap = document.getElementById('cropContainer');
+            cropWrap.style.display = 'block';
+            cropWrap.innerHTML = '<img id="cropImage" src="' + e.target.result + '" style="max-width:100%;">';
+            var img = document.getElementById('cropImage');
+            cropperInstance = new Cropper(img, {
+                aspectRatio: 16 / 9, viewMode: 1, dragMode: 'move', background: false,
+                autoCropArea: 1, restore: false, guides: false, center: true, highlight: false,
+                cropBoxMovable: false, cropBoxResizable: false, toggleDragModeOnDblclick: false,
+                zoomable: true, movable: true
+            });
+        };
         reader.readAsDataURL(input.files[0]);
-    }}
-}}
+    }
+}
 
-async function saveAllChanges(){{
-    var newName=document.getElementById('emName').value.trim();
-    if(!newName){{showToast('File name cannot be empty!','error');return;}}
-    var btn=document.getElementById('emSaveBtn');
-    btn.disabled=true;btn.innerText='Processing pipeline...';
-    try{{
-        if(cropperInstance){{
-            showToast('✂️ Cropping & Uploading to Telegram...','success');
-            var canvas=cropperInstance.getCroppedCanvas({{width:1280,height:720,imageSmoothingEnabled:true,imageSmoothingQuality:'high'}});
-            var blob=await new Promise(function(resolve){{canvas.toBlob(resolve,'image/jpeg',0.9);}});
-            if(blob){{
-                var formData=new FormData();
-                formData.append('file_id',activeFid);
-                formData.append('collection',activeCol);
-                formData.append('image',blob,'cropped_poster.jpg');
-                var upRes=await fetch('/api/upload_thumb',{{method:'POST',body:formData}});
-                var upData=await upRes.json();
-                if(!upData.success){{showToast(upData.error||'Telegram image sync failed!','error');btn.disabled=false;btn.innerText='Save Changes';return;}}
-            }}
-        }}
-        showToast('💾 Indexing metadata to Database...','success');
-        var r=await fetch('/api/edit_name',{{method:'POST',body:JSON.stringify({{file_id:activeFid,collection:activeCol,new_name:newName}}),headers:{{'Content-Type':'application/json'}}}});
-        var res=await r.json();
-        if(res.success||cropperInstance){{
-            showToast('✨ Metadata & Studio Poster saved successfully!','success');
-            closeCombinedModal();reloadThumb(activeFid);doSearch(curOff);
-        }}else{{showToast(res.error||'Metadata save failed!','error');}}
-    }}catch(e){{showToast('Network synchronization error','error');}}
-    finally{{btn.disabled=false;btn.innerText='Save Changes';}}
-}}
+async function saveAllChanges() {
+    var newName = document.getElementById('emName').value.trim();
+    if (!newName) { alert('File name cannot be empty!'); return; }
+    var btn = document.getElementById('emSaveBtn');
+    btn.disabled = true; btn.innerText = 'Processing pipeline...';
+    try {
+        if (cropperInstance) {
+            var canvas = cropperInstance.getCroppedCanvas({ width: 1280, height: 720, imageSmoothingEnabled: true, imageSmoothingQuality: 'high' });
+            var blob = await new Promise(function(resolve) { canvas.toBlob(resolve, 'image/jpeg', 0.9); });
+            if (blob) {
+                var formData = new FormData();
+                formData.append('file_id', activeFid);
+                formData.append('collection', activeCol);
+                formData.append('image', blob, 'cropped_poster.jpg');
+                var upRes = await fetch('/api/upload_thumb', { method: 'POST', body: formData });
+                var upData = await upRes.json();
+                if (!upData.success) { btn.disabled = false; btn.innerText = 'Save Changes'; return; }
+            }
+        }
+        var r = await fetch('/api/edit_name', { method: 'POST', body: JSON.stringify({ file_id: activeFid, collection: activeCol, new_name: newName }), headers: { 'Content-Type': 'application/json' } });
+        var res = await r.json();
+        if (res.success || cropperInstance) {
+            closeCombinedModal(); reloadThumb(activeFid); doSearch(curOff);
+        }
+    } catch (e) { alert('Network synchronization error'); }
+    finally { btn.disabled = false; btn.innerText = 'Save Changes'; }
+}
 """.replace("__LIMIT_PLACEHOLDER__", str(MAX_WEB_RESULTS))
 
 # ─────────────────────────────────────────────────────────────────────────────
-# 🏠 YOUR EXACT HTML HTML ZONE — (FIXED: changeCol mapping resolved)
+# 🏠 YOUR EXACT SEARCH ZONE HTML — (FIXED: changeCol mapping resolved)
 # ─────────────────────────────────────────────────────────────────────────────
 SEARCH_ZONE = (
     '<div class="search-zone">'
@@ -290,7 +315,7 @@ SEARCH_ZONE = (
             '<button class="search-btn" onclick="doSearch(0)">Search</button>'
         '</div>'
         '<div class="search-row2">'
-            # ✅ FIX: changeCol(this.value) फ़ंक्शन अब आपके जावास्क्रिप्ट इंजन से 100% सही सिंक हो गया है!
+            # ✅ FIX: changeCol(this.value) फ़ंक्शन अब आपके जावास्क्रिप्ट इंजन से 100% सही मैप हो गया है!
             '<select class="filter-select" id="colSelect" onchange="changeCol(this.value)">'
                 '<option value="all">📂 All Collections</option>'
                 '<option value="primary">🟢 Primary</option>'
