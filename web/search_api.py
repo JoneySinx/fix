@@ -39,7 +39,7 @@ async def bg_prefetch_worker(tg_id, q, col, mode, prefetch_offset, lim):
     try:
         cache_key = f"{tg_id}_{q}_{col}_{mode}_{prefetch_offset}"
         
-        # अगर अगला पेज पहले से ही कैशे में प्रोसेस हो चुका है, तो डुप्लिकेट क्वेरी न मारें
+        # अगर अगला पेज पहले से ही कैशे में प्रोसेस हो चुका है, तो दोबारा लूप न चलाएं
         if cache_key in PREFETCH_CACHE:
             return
 
@@ -57,12 +57,16 @@ async def bg_prefetch_worker(tg_id, q, col, mode, prefetch_offset, lim):
             local_limit = lim - len(bg_docs)
             docs = []
             try:
+                # ia_filterdb की तरह ही बिना काउंट लोड के सीधे लिमिटेड डेटा फेच
                 docs = await c.find(flt_text, projection).sort("_id", -1).skip(remaining_skip).limit(local_limit).to_list(length=local_limit)
             except Exception: 
                 pass
             
             if not docs:
-                docs = await c.find(flt_regex, projection).sort("_id", -1).skip(remaining_skip).limit(local_limit).to_list(length=local_limit)
+                try:
+                    docs = await c.find(flt_regex, projection).sort("_id", -1).skip(remaining_skip).limit(local_limit).to_list(length=local_limit)
+                except Exception:
+                    pass
                 
             if docs:
                 for d in docs: 
@@ -161,8 +165,11 @@ async def api_search(req):
             except Exception: 
                 pass
             
-            if not docs and remaining_skip == 0:
-                docs = await c.find(flt_regex, projection).sort("_id", -1).limit(local_limit).to_list(length=local_limit)
+            if not docs:
+                try:
+                    docs = await c.find(flt_regex, projection).sort("_id", -1).skip(remaining_skip).limit(local_limit).to_list(length=local_limit)
+                except Exception:
+                    pass
                 
             if docs:
                 for d in docs: d["source_col"] = n.lower()
@@ -213,7 +220,7 @@ async def api_search(req):
     
     return web.json_response({
         "results": results_list,
-        "total": off + len(results_list) + (1 if has_more else 0), 
+        "total": off + len(results_list) + (1 if has_more else 0), # वर्चुअल टोटल फॉर इंस्टेंट रेंडरिंग
         "next_offset": next_offset,
         "is_admin": role == "admin",
     })
