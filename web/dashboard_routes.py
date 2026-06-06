@@ -15,9 +15,9 @@ CARD_CSS = """
 .search-zone{padding:16px 20px 0}
 .search-row1{display:flex;align-items:center;gap:10px;margin-bottom:10px}
 .search-row2{display:flex;align-items:center;justify-content:center;gap:10px;margin-bottom:16px}
-.search-wrap{flex:1;min-width:0;display:flex;align-items:center;background:var(--bg3);border:1.5px solid var(--border);border-radius:999px;padding:0 6px 0 18px;gap:8px;overflow:hidden;min-height:42px;transition:border-color .18s}
+.search-wrap{flex:1;min-width:0;display:flex;align-items:center;background:var(--bg3);border:1.5px solid var(--border);border-radius:12px;padding:0 6px 0 18px;gap:8px;overflow:hidden;min-height:36px;transition:border-color .18s}
 .search-wrap:focus-within{border-color:var(--border)}
-.search-input{flex:1;min-width:0;width:100%;background:transparent;border:none;outline:none;color:var(--text);caret-color:var(--accent);font-size:15px;font-weight:600;padding:9px 0;font-family:inherit;-webkit-tap-highlight-color:transparent}
+.search-input{flex:1;min-width:0;width:100%;background:transparent;border:none;outline:none;color:var(--text);caret-color:var(--accent);font-size:14px;font-weight:600;padding:6px 0;font-family:inherit;-webkit-tap-highlight-color:transparent}
 .search-input::placeholder{color:var(--muted);font-weight:400}
 .search-input:-webkit-autofill,
 .search-input:-webkit-autofill:hover,
@@ -30,7 +30,7 @@ CARD_CSS = """
   border-radius:999px;
   transition:background-color 9999s ease-in-out 0s;
 }
-.search-btn{position:relative;overflow:hidden;flex-shrink:0;background:var(--accent);color:#fff;border:none;border-radius:12px;padding:0 22px;height:42px;font-size:15px;font-weight:700;cursor:pointer;white-space:nowrap;transition:transform .15s,box-shadow .15s,background .15s;letter-spacing:.3px}
+.search-btn{position:relative;overflow:hidden;flex-shrink:0;background:var(--accent);color:#fff;border:none;border-radius:12px;padding:0 20px;height:36px;font-size:14px;font-weight:700;cursor:pointer;white-space:nowrap;transition:transform .15s,box-shadow .15s,background .15s;letter-spacing:.3px}
 .search-btn:hover{background:var(--accent-hover);transform:scale(1.03);box-shadow:0 6px 22px rgba(229,9,20,0.50)}
 .search-btn:active{transform:scale(.96)}
 /* ripple */
