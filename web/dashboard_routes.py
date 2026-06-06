@@ -15,6 +15,11 @@ CARD_CSS = """
 .search-zone{padding:16px 20px 0}
 .search-row1{display:flex;align-items:center;gap:10px;margin-bottom:10px}
 .search-row2{display:flex;align-items:center;justify-content:center;gap:10px;margin-bottom:16px}
+@media(min-width:768px){
+  .search-zone{padding:16px 24px 0;display:flex;align-items:center;gap:10px;flex-wrap:nowrap}
+  .search-row1{flex:1;margin-bottom:0}
+  .search-row2{margin-bottom:0;justify-content:flex-start;flex-shrink:0}
+}
 .search-wrap{flex:1;min-width:0;display:flex;align-items:center;background:var(--bg3);border:1.5px solid var(--border);border-radius:12px;padding:0 6px 0 18px;gap:8px;overflow:hidden;min-height:38px;transition:border-color .18s}
 .search-wrap:focus-within{border-color:var(--border)}
 .search-input{flex:1;min-width:0;width:100%;background:transparent;border:none;outline:none;color:var(--text);caret-color:var(--accent);font-size:14px;font-weight:600;padding:6px 0;font-family:inherit;-webkit-tap-highlight-color:transparent}
