@@ -30,17 +30,13 @@ CARD_CSS = """
   border-radius:0;
   transition:background-color 9999s ease-in-out 0s;
 }
-.search-btn-row{display:flex;justify-content:center;margin-bottom:12px}
-.search-btn{position:relative;overflow:hidden;background:linear-gradient(135deg,var(--accent),var(--accent-hover));color:#fff;border:none;border-radius:999px;padding:11px 40px;font-size:14px;font-weight:700;cursor:pointer;white-space:nowrap;box-shadow:0 4px 18px rgba(229,9,20,0.40);transition:transform .15s,box-shadow .15s,opacity .15s;letter-spacing:.4px}
-.search-btn:hover{transform:translateY(-2px) scale(1.03);box-shadow:0 8px 28px rgba(229,9,20,0.55);opacity:0.95}
+.search-btn{position:relative;overflow:hidden;flex-shrink:0;background:var(--accent);color:#fff;border:none;border-radius:12px;padding:0 28px;font-size:15px;font-weight:700;cursor:pointer;white-space:nowrap;align-self:stretch;margin:5px 5px 5px 0;transition:transform .15s,box-shadow .15s,background .15s;letter-spacing:.3px}
+.search-btn:hover{background:var(--accent-hover);transform:scale(1.03);box-shadow:0 6px 22px rgba(229,9,20,0.50)}
 .search-btn:active{transform:scale(.96)}
 /* ripple */
 .search-btn::after{content:'';position:absolute;inset:0;background:rgba(255,255,255,0);border-radius:inherit;pointer-events:none}
 .search-btn.ripple-go::after{animation:btnRipple .45s ease-out forwards}
 @keyframes btnRipple{0%{background:rgba(255,255,255,0.28);transform:scale(.6)}100%{background:rgba(255,255,255,0);transform:scale(1.6)}}
-/* pulse ring on idle */
-@keyframes btnPulse{0%,100%{box-shadow:0 4px 18px rgba(229,9,20,0.40)}50%{box-shadow:0 4px 28px rgba(229,9,20,0.70),0 0 0 6px rgba(229,9,20,0.10)}}
-.search-btn{animation:btnPulse 2.8s ease-in-out infinite}
 
 /* ── Custom dropdown ── */
 .cdd-wrap{flex:0 1 auto;min-width:0;position:relative;user-select:none}
@@ -243,8 +239,8 @@ async function doSearch(o){
             if(d.is_admin){
                 var safeName=f.name.replace(/\\\\/g,'\\\\\\\\').replace(/'/g,"\\\\'");
                 adminBtns='<div class="poster-admin">'+
-                    '<button class="btn-edit" onclick="editFile(\\''+f.file_id+'\\',\\''+f.raw_collection+'\\',\\''+safeName+'\\')">&#9999; Edit</button>'+
-                    '<button class="btn-del" onclick="deleteFile(\\''+f.file_id+'\\',\\''+f.raw_collection+'\\')">&#128465; Delete</button>'+
+                    '<button class="btn-edit" onclick="event.stopPropagation();editFile(\\''+f.file_id+'\\',\\''+f.raw_collection+'\\',\\''+safeName+'\\')">&#9999; Edit</button>'+
+                    '<button class="btn-del" onclick="event.stopPropagation();deleteFile(\\''+f.file_id+'\\',\\''+f.raw_collection+'\\')">&#128465; Delete</button>'+
                 '</div>';
             }
 
@@ -270,9 +266,9 @@ async function doSearch(o){
                 '</div>';
                 if(d.is_admin){
                     var safeName2=f.name.replace(/\\\\/g,'\\\\\\\\').replace(/'/g,"\\\\'");
-                    textInfo+='<div style="display:flex;gap:5px;padding:5px 11px 0">'+
-                        '<button class="btn-edit" onclick="editFile(\\''+f.file_id+'\\',\\''+f.raw_collection+'\\',\\''+safeName2+'\\')">&#9999; Edit</button>'+
-                        '<button class="btn-del" onclick="deleteFile(\\''+f.file_id+'\\',\\''+f.raw_collection+'\\')">&#128465; Delete</button>'+
+                    textInfo+='<div class="text-admin-row">'+
+                        '<button class="btn-edit" onclick="event.stopPropagation();editFile(\\''+f.file_id+'\\',\\''+f.raw_collection+'\\',\\''+safeName2+'\\')">&#9999; Edit</button>'+
+                        '<button class="btn-del" onclick="event.stopPropagation();deleteFile(\\''+f.file_id+'\\',\\''+f.raw_collection+'\\')">&#128465; Delete</button>'+
                     '</div>';
                 }
             }
@@ -398,11 +394,7 @@ SEARCH_ZONE = (
             '<div class="search-wrap">'
             '<input class="search-input" id="q" placeholder="Titles, people, genres\u2026">'
             '</div>'
-        '</div>'
-        '<div class="search-btn-row">'
-            '<button class="search-btn" id="searchBtn" onclick="doSearch(0);triggerRipple(this)">'
-            '\U0001f50d\u2002Search'
-            '</button>'
+            '<button class="search-btn" id="searchBtn" onclick="doSearch(0);triggerRipple(this)">Search</button>'
         '</div>'
         '<div class="search-row2">'
             '<div class="cdd-wrap" id="cddColWrap">'
