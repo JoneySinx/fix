@@ -75,9 +75,9 @@ CARD_CSS = """
 .type-chip{background:rgba(0,0,0,.72);backdrop-filter:blur(8px);color:#fff;border-radius:5px;padding:3px 8px;font-size:10px;font-weight:800;letter-spacing:.8px;border:1px solid rgba(255,255,255,.14);line-height:1.4}
 .size-chip{background:rgba(0,0,0,.60);backdrop-filter:blur(8px);color:#e0e0e0;border-radius:5px;padding:3px 8px;font-size:10px;font-weight:600;border:1px solid rgba(255,255,255,.08);line-height:1.4}
 .source-pill{margin-left:auto;border-radius:20px;padding:3px 8px;font-size:9px;font-weight:700;letter-spacing:.4px;display:inline-flex;align-items:center;gap:4px;backdrop-filter:blur(8px)}
-.source-pill.primary{background:rgba(34,197,94,.15);color:#22c55e;border:1px solid rgba(34,197,94,.28)}
-.source-pill.cloud{background:rgba(59,130,246,.15);color:#60a5fa;border:1px solid rgba(59,130,246,.28)}
-.source-pill.archive{background:rgba(251,146,60,.15);color:#fb923c;border:1px solid rgba(251,146,60,.28)}
+.source-pill.primary{background:rgba(34,197,94,.25);color:#22c55e;border:1px solid rgba(34,197,94,.55)}
+.source-pill.cloud{background:rgba(59,130,246,.25);color:#60a5fa;border:1px solid rgba(59,130,246,.55)}
+.source-pill.archive{background:rgba(251,146,60,.25);color:#fb923c;border:1px solid rgba(251,146,60,.55)}
 .source-dot{width:5px;height:5px;border-radius:50%;flex-shrink:0}
 .primary .source-dot{background:#22c55e;box-shadow:0 0 4px #22c55e}
 .cloud .source-dot{background:#60a5fa;box-shadow:0 0 4px #60a5fa}
@@ -109,9 +109,10 @@ CARD_CSS = """
 
 /* ── Pagination ── */
 .pagination{display:flex;align-items:center;justify-content:center;gap:12px;margin-top:8px}
-.pg-btn{background:var(--bg4);color:var(--text);border:1px solid var(--border);border-radius:6px;padding:8px 18px;font-size:12px;font-weight:700;cursor:pointer;transition:background .15s}
-.pg-btn:disabled{background:var(--bg3);color:var(--muted);cursor:not-allowed}
-.pg-btn:not(:disabled):hover{background:var(--bg3)}
+.pg-btn{background:var(--bg4);color:var(--text);border:1px solid var(--border);border-radius:6px;padding:8px 18px;font-size:12px;font-weight:700;cursor:pointer;transition:background .15s,transform .15s,box-shadow .15s}
+.pg-btn:disabled{background:var(--bg3);color:var(--muted);cursor:not-allowed;opacity:.45}
+.pg-btn:not(:disabled):hover{background:var(--accent);color:#fff;border-color:var(--accent);box-shadow:0 4px 16px rgba(229,9,20,.35)}
+.pg-btn:not(:disabled):active{transform:scale(.93);box-shadow:none}
 .pg-info{color:var(--muted);font-size:12px;font-weight:600}
 
 /* ── Empty / Loading ── */
