@@ -13,10 +13,10 @@ CARD_CSS = """
 <style>
 /* ── Search zone ── */
 .search-zone{padding:16px 12px 0}
-.search-row1{display:flex;align-items:stretch;gap:0;margin-bottom:10px;min-height:50px;background:var(--bg3);border:1.5px solid var(--border);border-radius:999px;overflow:hidden;transition:border-color .18s;padding:0}
+.search-row1{display:flex;align-items:center;gap:10px;margin-bottom:10px}
 .search-row2{display:flex;align-items:center;justify-content:center;gap:10px;margin-bottom:16px}
-.search-wrap{flex:1;min-width:0;display:flex;align-items:center;background:transparent;border:none;border-radius:0;padding:0 6px 0 18px;gap:8px;overflow:hidden}
-.search-wrap:focus-within{border-color:transparent}
+.search-wrap{flex:1;min-width:0;display:flex;align-items:center;background:var(--bg3);border:1.5px solid var(--border);border-radius:999px;padding:0 6px 0 18px;gap:8px;overflow:hidden;min-height:50px;transition:border-color .18s}
+.search-wrap:focus-within{border-color:var(--border)}
 .search-input{flex:1;min-width:0;width:100%;background:transparent;border:none;outline:none;color:var(--text);caret-color:var(--accent);font-size:15px;font-weight:600;padding:13px 0;font-family:inherit;-webkit-tap-highlight-color:transparent}
 .search-input::placeholder{color:var(--muted);font-weight:400}
 .search-input:-webkit-autofill,
@@ -27,10 +27,10 @@ CARD_CSS = """
   box-shadow:0 0 0 100px var(--bg3) inset !important;
   -webkit-text-fill-color:var(--text) !important;
   caret-color:var(--accent) !important;
-  border-radius:0;
+  border-radius:999px;
   transition:background-color 9999s ease-in-out 0s;
 }
-.search-btn{position:relative;overflow:hidden;flex-shrink:0;background:var(--accent);color:#fff;border:none;border-radius:12px;padding:0 28px;font-size:15px;font-weight:700;cursor:pointer;white-space:nowrap;align-self:stretch;margin:5px 5px 5px 0;transition:transform .15s,box-shadow .15s,background .15s;letter-spacing:.3px}
+.search-btn{position:relative;overflow:hidden;flex-shrink:0;background:var(--accent);color:#fff;border:none;border-radius:12px;padding:0 32px;height:50px;font-size:15px;font-weight:700;cursor:pointer;white-space:nowrap;transition:transform .15s,box-shadow .15s,background .15s;letter-spacing:.3px}
 .search-btn:hover{background:var(--accent-hover);transform:scale(1.03);box-shadow:0 6px 22px rgba(229,9,20,0.50)}
 .search-btn:active{transform:scale(.96)}
 /* ripple */
@@ -392,7 +392,7 @@ SEARCH_ZONE = (
     '<div class="search-zone">'
         '<div class="search-row1">'
             '<div class="search-wrap">'
-            '<input class="search-input" id="q" placeholder="Titles, people, genres\u2026">'
+                '<input class="search-input" id="q" placeholder="Titles, people, genres\u2026">'
             '</div>'
             '<button class="search-btn" id="searchBtn" onclick="doSearch(0);triggerRipple(this)">Search</button>'
         '</div>'
