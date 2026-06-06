@@ -20,6 +20,9 @@ BUTTONS = {}
 SRC_TO_SHORT = {"primary": "pri", "cloud": "cld", "archive": "arc"}
 SHORT_TO_SRC = {"pri": "primary", "cld": "cloud", "arc": "archive"}
 
+# ⚡ स्मार्ट डिक्शनरी जो चालू टाइमर्स को ट्रैक करेगी ताकि रिसेट किया जा सके
+ACTIVE_DELETE_TASKS = {}
+
 # ⚡ AGGRESSIVE RAM PROTECTION (Koyeb Free Tier Safe Guard)
 def check_cache_limit():
     """यदि कैशे कीज़ लिमिट पार करती हैं, तो कोएब रैम क्रैश (OOM) रोकने के लिए कबाड़ को तुरंत साफ़ करें।"""
@@ -35,6 +38,34 @@ async def is_valid_search(message):
     if message.entities and any(e.type in [enums.MessageEntityType.URL, enums.MessageEntityType.TEXT_LINK] for e in message.entities): return False
     if not any(c.isalnum() for c in message.text): return False
     return True
+
+# ─────────────────────────────────────────────
+# ⏰ SMART AUTO-DELETE WITH RESET ENGINE
+# ─────────────────────────────────────────────
+async def start_auto_delete_timer(client, chat_id, message_id, delay=300):
+    """5 मिनट बाद मैसेज को डिलीट करने का टास्क, जो एक्टिविटी होने पर रिसेट हो सकता है"""
+    task_key = f"{chat_id}_{message_id}"
+    
+    # अगर इस मैसेज का टाइमर पहले से चल रहा है, तो उसे तुरंत कैंसिल (Reset) करें
+    if task_key in ACTIVE_DELETE_TASKS:
+        try:
+            ACTIVE_DELETE_TASKS[task_key].cancel()
+        except:
+            pass
+
+    async def _delete_task():
+        try:
+            await asyncio.sleep(delay)
+            await client.delete_messages(chat_id, message_id)
+            ACTIVE_DELETE_TASKS.pop(task_key, None)
+        except asyncio.CancelledError:
+            pass # टाइमर रिसेट होने पर बिना डिलीट किए बंद हो जाएगा
+        except Exception as e:
+            logger.error(f"Auto-delete runtime error: {e}")
+
+    # नया 5 मिनट का फ्रेश टाइमर टास्क सेट करें
+    task = asyncio.create_task(_delete_task())
+    ACTIVE_DELETE_TASKS[task_key] = task
 
 # ─────────────────────────────────────────────
 # 🧠 SPELL CHECKER (Google Suggest API Engine)
@@ -80,7 +111,6 @@ def get_filter_ui(search, files, total, act_src, offset, chat_id, req_id, key, n
     btn = []
     act_src_short = SRC_TO_SHORT.get(act_src, "pri")
 
-    # नेविगेशन बटन्स (Prev/Next) की लिस्ट तैयार करना
     nav = []
     prev_off = int(offset) - MAX_BOT_RESULTS
     if prev_off >= 0: 
@@ -92,9 +122,7 @@ def get_filter_ui(search, files, total, act_src, offset, chat_id, req_id, key, n
     if nav: 
         btn.append(nav)
 
-    # 🎯 आपके कड़े निर्देशानुसार कस्टमाइज्ड लेआउट इंजन लॉक:
     if not simple_mode:
-        # FULL MODE: इसमें सोर्स बटन्स और क्लोज बटन दोनों हमेशा दिखेंगे
         col_btn = []
         for c in ["primary", "cloud", "archive"]:
             tick = "✅" if c == act_src else "📂"
@@ -102,9 +130,6 @@ def get_filter_ui(search, files, total, act_src, offset, chat_id, req_id, key, n
         btn.append(col_btn)
         btn.append([InlineKeyboardButton("❌ Close Result", callback_data=f"close_{req_id}")])
     else:
-        # SIMPLE MODE: क्लोज बटन को यहाँ से पूरी तरह डिलीट कर दिया गया है!
-        # अगर कुल रिजल्ट्स 12 या उससे कम होंगे, तो 'nav' खाली रहेगा और 'btn' भी खाली रहेगा।
-        # बोट बिना किसी बटन (No Buttons) का एकदम क्लीन और क्रिस्टल क्लियर टेक्स्ट मैसेज भेजेगा।
         pass
     
     return cap, InlineKeyboardMarkup(btn) if btn else None
@@ -157,16 +182,20 @@ async def close_admin_panel(client, query):
     except: pass
 
 # ─────────────────────────────────────────────
-# 🔍 COMMAND CONTROLS
+# 🔍 COMMAND CONTROLS (Group + PM Sync Done ✅)
 # ─────────────────────────────────────────────
-@Client.on_message(filters.command("button_style") & filters.group)
+@Client.on_message(filters.command("button_style") & (filters.group | filters.private))
 async def button_style_toggle(client, message):
-    if not await is_check_admin(client, message.chat.id, message.from_user.id): return
+    # अगर ग्रुप है तो एडमिन चेक करें, PM है तो बाईपास करें
+    if message.chat.type in [enums.ChatType.GROUP, enums.ChatType.SUPERGROUP]:
+        if not await is_check_admin(client, message.chat.id, message.from_user.id): return
+
     settings = await get_settings(message.chat.id)
     new_mode_val = not settings.get("simple_mode", True)
     await save_group_settings(message.chat.id, "simple_mode", new_mode_val)
+    
     new_mode_str = "SIMPLE (Only Next/Prev)" if new_mode_val else "FULL (With Source Buttons)"
-    await message.reply(f"✅ Button style changed to: **{new_mode_str}**")
+    await message.reply(f"✅ <b>Button style changed to:</b> **{new_mode_str}**")
 
 @Client.on_message(filters.command("search") & filters.group)
 async def search_toggle(client, message):
@@ -239,14 +268,14 @@ async def auto_filter(client, msg, collection_type="all", settings=None):
                 cap = f"❌ **{search}** not found.\n\n🤔 **Did you mean:** __{suggestion}__?"
                 try:
                     m = await msg.reply(cap, reply_markup=InlineKeyboardMarkup(btn), quote=True)
-                    if settings.get("auto_delete"):
-                        await db.add_to_delete_queue(m.chat.id, m.id, DELETE_TIME)
+                    # बिना एक्टिविटी वाले डिलीट टास्क में डालें (5 मिनट)
+                    asyncio.create_task(start_auto_delete_timer(client, m.chat.id, m.id, delay=300))
                 except: pass
                 return
 
         try:
             m = await msg.reply(script.NOT_FILE_TXT.format(msg.from_user.mention, search), quote=True)
-            await db.add_to_delete_queue(m.chat.id, m.id, 15)
+            asyncio.create_task(start_auto_delete_timer(client, m.chat.id, m.id, delay=15))
         except: pass
         return
 
@@ -257,10 +286,9 @@ async def auto_filter(client, msg, collection_type="all", settings=None):
     cap, markup = get_filter_ui(search, files, total, act_src, 0, msg.chat.id, msg.from_user.id, key, next_offset, is_simple_mode)
 
     try:
-        # ✅ FIX: अगर सिंपल मोड में 12 से कम रिजल्ट हैं, तो markup की जगह None पास होगा जिससे टेलीग्राम बिना बटन का क्लीन मैसेज भेजेगा
-        await msg.reply(cap, reply_markup=markup, disable_web_page_preview=True, quote=True)
-        if settings.get("auto_delete"):
-            await db.add_to_delete_queue(msg.chat.id, msg.id + 1, DELETE_TIME)
+        res = await msg.reply(cap, reply_markup=markup, disable_web_page_preview=True, quote=True)
+        # 📢 फ्रेश 5 मिनट का नो-एक्टिविटी डिलीट टाइमर एक्टिवेट करें
+        asyncio.create_task(start_auto_delete_timer(client, res.chat.id, res.id, delay=300))
     except Exception as e: 
         logger.error(f"Auto filter response error: {e}")
 
@@ -273,6 +301,12 @@ async def close_callback(client, query):
         chat_id = query.message.chat.id
         current_msg_id = query.message.id
         
+        # एक्टिविटी डिलीट टास्क को भी लिस्ट से रिमूव करें
+        task_key = f"{chat_id}_{current_msg_id}"
+        if task_key in ACTIVE_DELETE_TASKS:
+            ACTIVE_DELETE_TASKS[task_key].cancel()
+            ACTIVE_DELETE_TASKS.pop(task_key, None)
+
         msg_ids_to_clean = [current_msg_id, current_msg_id - 1, current_msg_id + 1]
         
         for mid in msg_ids_to_clean:
@@ -304,15 +338,12 @@ async def spell_check_handler(client, query):
         
         settings = await get_settings(query.message.chat.id)
         is_simple_mode = settings.get("simple_mode", True)
-        
-        if settings.get("auto_delete"):
-            await db.remove_from_delete_queue(query.message.chat.id, query.message.id)
 
         cap, markup = get_filter_ui(suggestion, files, total, act_src, 0, query.message.chat.id, query.from_user.id, key, next_offset, is_simple_mode)
         await query.message.edit_text(cap, reply_markup=markup, disable_web_page_preview=True)
         
-        if settings.get("auto_delete"):
-            await db.add_to_delete_queue(query.message.chat.id, query.message.id, DELETE_TIME)
+        # 🔄 स्पेलचेक रिजल्ट पर क्लिक हुआ -> टाइमर रिसेट/फ्रेश स्टार्ट (5 मिनट)
+        asyncio.create_task(start_auto_delete_timer(client, query.message.chat.id, query.message.id, delay=300))
             
     except Exception as e:
         logger.error(f"Spellcheck Callback Error: {e}")
@@ -321,7 +352,7 @@ async def spell_check_handler(client, query):
         gc.collect()
 
 # ─────────────────────────────────────────────
-# 🔄 PAGINATION & PERFECT TIMER RESET SYNCHRONIZER
+# 🔄 PAGINATION & PERFECT TIMER RESET SYNCHRONIZER (Next / Prev Reset Lock)
 # ─────────────────────────────────────────────
 @Client.on_callback_query(filters.regex(r"^(nav_|coll_)"))
 async def pagination_handler(client, query):
@@ -352,18 +383,15 @@ async def pagination_handler(client, query):
     
     cap, markup = get_filter_ui(search, files, total, act_src, offset, query.message.chat.id, req, key, next_off, is_simple_mode)
 
-    if settings.get("auto_delete"):
-        await db.remove_from_delete_queue(query.message.chat.id, query.message.id)
-
     try: 
         await query.message.edit_text(cap, reply_markup=markup, disable_web_page_preview=True)
         
-        if settings.get("auto_delete"):
-            await db.add_to_delete_queue(query.message.chat.id, query.message.id, DELETE_TIME)
+        # 🔄 ✅ NEXT/PREV बटन दबाया गया -> पुराना टाइमर रिसेट करके फिर से नए 5 मिनट अलॉट किए गए!
+        asyncio.create_task(start_auto_delete_timer(client, query.message.chat.id, query.message.id, delay=300))
     except Exception as e:
         logger.error(f"Pagination delivery failure: {e}")
-        if settings.get("auto_delete"):
-            await db.add_to_delete_queue(query.message.chat.id, query.message.id, DELETE_TIME)
+        # फेल होने की दशा में भी बैकअप सेफ्टी टाइमर चालू रखें
+        asyncio.create_task(start_auto_delete_timer(client, query.message.chat.id, query.message.id, delay=300))
         
     await query.answer()
     gc.collect()
