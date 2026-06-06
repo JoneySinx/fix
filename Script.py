@@ -72,31 +72,31 @@ Just type the movie or series name in my PM, open our Mini App, or add me into y
 I have many more features for you.
 Please check the commands below 👇</b>"""
 
-    # ✅ ब्रॉडकास्ट हटाकर बिल्कुल साफ एडमिन लिस्ट और ग्रुप कंट्रोल्स का सिंक
+    # ✅ बिल्कुल साफ एडमिन लिस्ट और ग्रुप कंट्रोल्स (1024 कैरेक्टर लिमिट के अंदर फिक्स)
     ADMIN_COMMAND_TXT = """<b>👑 <u>Bot Admin Commands:</u> 👇
 
-• /stats - View detailed database & user population statistics
-• /delete - Delete specific files from collections
-• /delete_all - Wipe out an entire storage collection
-• /add_prm - Grant premium access to a user manually
-• /rm_prm - Revoke premium status from a user
-• /prm_list - Export document list of all active premium users
-• /web_users - View list of users registered on Web Dashboard
-• /warmup_thumbs - Lock missing thumbnails into Database
-• /restart - Hard restart the bot application session
+• /stats - View database & user stats
+• /delete - Delete specific files from DB
+• /delete_all - Wipe entire collection
+• /add_prm - Grant premium manually
+• /rm_prm - Revoke premium status
+• /prm_list - Export premium users list
+• /web_users - View Web Dashboard users
+• /warmup_thumbs - Lock missing thumbnails
+• /restart - Hard restart the bot session
 
 ⚙️ <u>Group Management Guide:</u> 👇
 
-• /search on | off - Toggle Auto Filter on/off in group
-• /settings - Open Inline Button UI Center for Group Settings 
-• /button_style - Switch results between Simple and Full mode
-• /mute | /unmute - Restrict user from sending messages
+• /search on | off - Toggle Auto Filter
+• /settings - Open Group Settings UI
+• /button_style - Switch results mode
+• /mute | /unmute - Restrict group user
 • /ban - Ban user permanently from group
-• /warn | /resetwarn - Manage warnings (Auto-Ban on 3/3 warns)
-• /addblacklist | /removeblacklist - Manage blocked words
-• /blacklist - View group's blacklisted keywords
-• /dlink | /removedlink - Manage timed auto-delete words
-• /dlinklist - View persistent auto-delete triggers</b>"""
+• /warn | /resetwarn - Manage warnings
+• /addblacklist | /removeblacklist - Words
+• /blacklist - View blacklisted keywords
+• /dlink | /removedlink - Auto-delete words
+• /dlinklist - View auto-delete triggers</b>"""
     
     # ✅ प्रीमियम案 की डिटेल्स (Price / Per Day fixed)
     PLAN_TXT = """💎 <b>Fast Finder Premium Plans</b> 💎
