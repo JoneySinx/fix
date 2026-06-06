@@ -43,7 +43,7 @@ input[type=number]::-webkit-inner-spin-button,input[type=number]::-webkit-outer-
 .ibanner svg{flex-shrink:0;margin-top:2px;color:var(--accent);}
 .steprow{display:flex;align-items:center;gap:8px;margin-bottom:10px;}
 .stpbadge{width:20px;height:20px;border-radius:50%;background:var(--bg3);border:1px solid var(--border);display:flex;align-items:center;justify-content:center;flex-shrink:0;font-size:10px;font-weight:700;color:var(--muted);}
-.stplabel{font-size:11px;font-weight:600;color:var(--muted);text-transform:uppercase;letter-spacing:.06em;}
+.stplabel{font-size:11px;font-weight:600;color:var(--muted);text-transform:uppercase;letter-spacing:.06em;margin-bottom:5px;}
 .splitrow{display:flex;gap:8px;} .splitrow .iwrap{flex:1;}
 .thendiv{display:flex;align-items:center;gap:10px;margin:16px 0;} .thendiv::before,.thendiv::after{content:'';flex:1;height:1px;background:var(--border);} .thendiv span{font-size:11px;color:var(--bg4);}
 .otprow{display:flex;gap:8px;justify-content:center;margin-bottom:14px;}
@@ -119,8 +119,11 @@ async def api_register_step1(req):
 async def verify_registration_page(req):
     tg_id = req.query.get('tg_id', '')
     if not tg_id: return web.HTTPFound('/register')
-    boxes = "".join([f'<input class="otpbox" type="text" inputmode="numeric" maxlength="1" id="o{i}" oninput="otpNext(this,{i})" onkeydown="otpBack(event,{i})">' for ibox in range(6)])
-    content = f'{_AUTH_CSS}<p class="lc-sub">Check your Telegram DM for a 6-digit code</p><form action="/api/register_step2" method="post" id="otpForm"><input type="hidden" name="tg_id" value="{tg_id}"><div class="otprow">{"".join([f`<input class="otpbox" type="text" inputmode="numeric" maxlength="1" id="o{i}" oninput="otpNext(this,{i})" onkeydown="otpBack(event,{i})">` for i in range(6)])}</div><div class="otpprog"><div class="otpbar"><div class="otpbarfill" id="otpBar" style="width:0%"></div></div><span class="otpcount" id="otpCount">0 / 6</span></div><input type="hidden" name="otp" id="otpHidden"><button class="sbtn" type="submit" id="otpBtn" disabled style="opacity:.4;cursor:not-allowed;">Verify &amp; Create Account</button></form><p style="text-align:center;font-size:12px;color:var(--muted);margin-top:14px;">Didn\'t receive OTP? <a href="/register" style="color:var(--accent);text-decoration:none;">Resend</a> &nbsp;&middot;&nbsp; <a href="/register" style="color:var(--muted);text-decoration:none;">Go back</a></p><p style="text-align:center;font-size:11px;color:var(--muted);margin-top:6px;opacity:.6;">OTP expires in 5 minutes</p><script>function otpNext(el,i){{if(!/^\d?$/.test(el.value)){{el.value=\'\';return;}}el.classList.toggle(\'filled\',el.value!==\'\');syncOtp();if(el.value&&i<5)document.getElementById(\'o\'+(i+1)).focus();}}function otpBack(e,i){{if(e.key===\'Backspace\'&&!document.getElementById(\'o\'+i).value&&i>0)document.getElementById(\'o\'+(i-1)).focus();}}function syncOtp(){{var val=\'\',count=0;for(var i=0;i<6;i++){{var v=document.getElementById(\'o\'+i).value;val+=v;if(v)count++;}}document.getElementById(\'otpHidden\').value=val;document.getElementById(\'otpBar\').style.width=(count/6*100)+\'%\';document.getElementById(\'otpCount\').innerText=count+\' / 6\';var btn=document.getElementById(\'otpBtn\');btn.disabled=count<6;btn.style.opacity=count<6?\'.4\':\'1\';btn.style.cursor=count<6?\'not-allowed\':\'pointer\';}}document.getElementById(\'o0\').focus();</script>{_RIPPLE_JS}'
+    
+    # Securely pre-build OTP boxes to prevent quote nesting syntax error
+    otp_boxes = "".join([f'<input class="otpbox" type="text" inputmode="numeric" maxlength="1" id="o{i}" oninput="otpNext(this,{i})" onkeydown="otpBack(event,{i})">' for i in range(6)])
+    
+    content = f'{_AUTH_CSS}<p class="lc-sub">Check your Telegram DM for a 6-digit code</p><form action="/api/register_step2" method="post" id="otpForm"><input type="hidden" name="tg_id" value="{tg_id}"><div class="otprow">{otp_boxes}</div><div class="otpprog"><div class="otpbar"><div class="otpbarfill" id="otpBar" style="width:0%"></div></div><span class="otpcount" id="otpCount">0 / 6</span></div><input type="hidden" name="otp" id="otpHidden"><button class="sbtn" type="submit" id="otpBtn" disabled style="opacity:.4;cursor:not-allowed;">Verify &amp; Create Account</button></form><p style="text-align:center;font-size:12px;color:var(--muted);margin-top:14px;">Didn\'t receive OTP? <a href="/register" style="color:var(--accent);text-decoration:none;">Resend</a> &nbsp;&middot;&nbsp; <a href="/register" style="color:var(--muted);text-decoration:none;">Go back</a></p><p style="text-align:center;font-size:11px;color:var(--muted);margin-top:6px;opacity:.6;">OTP expires in 5 minutes</p><script>function otpNext(el,i){{if(!/^\d?$/.test(el.value)){{el.value=\'\';return;}}el.classList.toggle(\'filled\',el.value!==\'\');syncOtp();if(el.value&&i<5)document.getElementById(\'o\'+(i+1)).focus();}}function otpBack(e,i){{if(e.key===\'Backspace\'&&!document.getElementById(\'o\'+i).value&&i>0)document.getElementById(\'o\'+(i-1)).focus();}}function syncOtp(){{var val=\'\',count=0;for(var i=0;i<6;i++){{var v=document.getElementById(\'o\'+i).value;val+=v;if(v)count++;}}document.getElementById(\'otpHidden\').value=val;document.getElementById(\'otpBar\').style.width=(count/6*100)+\'%\';document.getElementById(\'otpCount\').innerText=count+\' / 6\';var btn=document.getElementById(\'otpBtn\');btn.disabled=count<6;btn.style.opacity=count<6?\'.4\':\'1\';btn.style.cursor=count<6?\'not-allowed\':\'pointer\';}}document.getElementById(\'o0\').focus();</script>{_RIPPLE_JS}'
     return build_page("Verify OTP", form_wrapper("Verify OTP", content, req.query.get('err', '')))
 
 @login_routes.post('/api/register_step2')
@@ -150,17 +153,4 @@ async def api_forgot_password(req):
     except: return web.HTTPFound('/forgot_password?err=Invalid Telegram ID')
     if otp := await web_db.generate_otp(tg_id):
         try:
-            await temp.BOT.send_message(tg_id, f"🔐 **Fast Finder Password Reset**\n\nYour OTP is: `{otp}`\n\nValid for 10 minutes. Do not share!")
-            return web.HTTPFound('/forgot_password?msg=OTP sent to your Telegram!')
-        except:
-            return web.HTTPFound('/forgot_password?err=Error sending OTP. Have you started the bot?')
-    return web.HTTPFound('/forgot_password?err=Telegram ID not registered!')
-
-@login_routes.post('/api/reset_password')
-async def api_reset_password(req):
-    d = await req.post()
-    try: tg_id = int(d.get('tg_id'))
-    except: return web.HTTPFound('/forgot_password?err=Invalid Input')
-    if await web_db.verify_otp_and_reset(tg_id, d.get('otp'), d.get('new_password')):
-        return web.HTTPFound('/login?msg=Password updated successfully! Please sign in.')
-    return web.HTTPFound('/forgot_password?err=Invalid or expired OTP.')
+            await temp.BOT.send_message(tg_id, f"🔐 **Fast Finder Password Reset**\n\nYour
