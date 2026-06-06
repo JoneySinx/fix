@@ -13,47 +13,14 @@ CARD_CSS = """
 <style>
 /* ── Search zone ── */
 .search-zone{padding:16px 12px 0}
-.search-row1{display:flex;align-items:center;gap:10px;margin-bottom:10px}
-.search-row2{display:flex;align-items:center;justify-content:center;gap:10px;margin-bottom:16px}
-.search-wrap{flex:1;min-width:0;display:flex;align-items:center;background:var(--bg3);border:1.5px solid var(--border);border-radius:999px;padding:0 6px 0 18px;gap:8px;overflow:hidden;min-height:50px;transition:border-color .18s}
-.search-wrap:focus-within{border-color:var(--border)}
-.search-input{flex:1;min-width:0;width:100%;background:transparent;border:none;outline:none;color:var(--text);caret-color:var(--accent);font-size:15px;font-weight:600;padding:13px 0;font-family:inherit;-webkit-tap-highlight-color:transparent}
+.search-row1{display:flex;align-items:stretch;gap:8px;margin-bottom:8px;min-height:48px}
+.search-row2{display:flex;align-items:center;gap:8px;margin-bottom:16px}
+.search-wrap{flex:1;min-width:0;display:flex;align-items:center;background:var(--bg);border:1px solid var(--border);border-radius:8px;padding:0 14px;overflow:hidden}
+.search-input{flex:1;min-width:0;width:100%;background:transparent;border:none;outline:none;color:var(--text);caret-color:var(--accent);font-size:15px;font-weight:500;padding:13px 0;font-family:inherit}
 .search-input::placeholder{color:var(--muted);font-weight:400}
-.search-input:-webkit-autofill,
-.search-input:-webkit-autofill:hover,
-.search-input:-webkit-autofill:focus,
-.search-input:-webkit-autofill:active{
-  -webkit-box-shadow:0 0 0 100px var(--bg3) inset !important;
-  box-shadow:0 0 0 100px var(--bg3) inset !important;
-  -webkit-text-fill-color:var(--text) !important;
-  caret-color:var(--accent) !important;
-  border-radius:999px;
-  transition:background-color 9999s ease-in-out 0s;
-}
-.search-btn{position:relative;overflow:hidden;flex-shrink:0;background:var(--accent);color:#fff;border:none;border-radius:12px;padding:0 32px;height:50px;font-size:15px;font-weight:700;cursor:pointer;white-space:nowrap;transition:transform .15s,box-shadow .15s,background .15s;letter-spacing:.3px}
-.search-btn:hover{background:var(--accent-hover);transform:scale(1.03);box-shadow:0 6px 22px rgba(229,9,20,0.50)}
-.search-btn:active{transform:scale(.96)}
-/* ripple */
-.search-btn::after{content:'';position:absolute;inset:0;background:rgba(255,255,255,0);border-radius:inherit;pointer-events:none}
-.search-btn.ripple-go::after{animation:btnRipple .45s ease-out forwards}
-@keyframes btnRipple{0%{background:rgba(255,255,255,0.28);transform:scale(.6)}100%{background:rgba(255,255,255,0);transform:scale(1.6)}}
-
-/* ── Custom dropdown ── */
-.cdd-wrap{flex:0 1 auto;min-width:0;position:relative;user-select:none}
-.cdd-btn{width:auto;background:var(--bg3);color:var(--text);border:1.5px solid var(--border);border-radius:999px;padding:8px 28px 8px 14px;font-size:11px;font-weight:700;cursor:pointer;font-family:inherit;box-sizing:border-box;display:inline-flex;align-items:center;gap:5px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;transition:border-color .15s,box-shadow .15s}
-.cdd-btn:hover,.cdd-btn.open{border-color:var(--accent);box-shadow:0 0 0 3px rgba(229,9,20,0.12)}
-.cdd-arrow{position:absolute;right:12px;top:50%;transform:translateY(-50%);pointer-events:none;font-size:9px;color:var(--muted);transition:transform .2s}
-.cdd-btn.open+.cdd-arrow{transform:translateY(-50%) rotate(180deg)}
-.cdd-menu{position:absolute;top:calc(100% + 7px);left:50%;transform:translateX(-50%);min-width:max-content;background:var(--bg2,var(--bg3));border:1.5px solid var(--border);border-radius:16px;overflow:hidden;z-index:9999;box-shadow:0 8px 32px rgba(0,0,0,.45);animation:cddIn .15s ease}
-@keyframes cddIn{from{opacity:0;transform:translateY(-6px)}to{opacity:1;transform:translateY(0)}}
-.cdd-item{display:flex;align-items:center;gap:10px;padding:13px 14px;font-size:13px;font-weight:700;color:var(--text);cursor:pointer;transition:background .12s;border-bottom:1px solid var(--border)}
-.cdd-item:last-child{border-bottom:none}
-.cdd-item:hover{background:var(--bg3)}
-.cdd-item.selected{color:var(--accent)}
-.cdd-radio{width:18px;height:18px;border-radius:50%;border:2px solid var(--border);margin-left:auto;flex-shrink:0;display:flex;align-items:center;justify-content:center;transition:border-color .15s}
-.cdd-item.selected .cdd-radio{border-color:var(--accent)}
-.cdd-radio-dot{width:8px;height:8px;border-radius:50%;background:var(--accent);display:none}
-.cdd-item.selected .cdd-radio-dot{display:block}
+.search-btn{flex-shrink:0;background:var(--accent);color:#fff;border:none;border-radius:8px;padding:0 20px;font-size:14px;font-weight:700;cursor:pointer;white-space:nowrap;align-self:stretch;letter-spacing:0.3px}
+.search-btn:active{opacity:0.85}
+.filter-select{flex:1;min-width:0;background:var(--bg);color:var(--text);border:1px solid var(--border);border-radius:7px;padding:9px 6px;font-size:12px;font-weight:700;outline:none;cursor:pointer;font-family:inherit;box-sizing:border-box;-webkit-appearance:none;appearance:none;background-image:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='10' height='6'%3E%3Cpath d='M0 0l5 6 5-6z' fill='%23888'/%3E%3C/svg%3E");background-repeat:no-repeat;background-position:right 10px center;padding-right:28px}
 
 /* ── Results grid ── */
 .res-grid{display:grid;grid-template-columns:1fr;gap:4px;margin-bottom:24px}
@@ -85,10 +52,7 @@ CARD_CSS = """
 
 /* ── Poster bottom row: Edit | Delete (admin only) ── */
 .poster-admin{position:absolute;bottom:0;left:0;right:0;display:flex;gap:6px;padding:7px 8px;opacity:0;transform:translateY(8px);transition:opacity .2s ease,transform .22s ease;pointer-events:none}
-.file-card.admin-active .poster-admin{opacity:1;transform:translateY(0);pointer-events:all}
-/* text-only admin row */
-.text-admin-row{display:none;gap:5px;padding:5px 11px 0}
-.file-card.admin-active .text-admin-row{display:flex}
+.file-card:hover .poster-admin{opacity:1;transform:translateY(0);pointer-events:all}
 .btn-edit,.btn-del{flex:1;padding:6px 0;border-radius:6px;font-size:11px;font-weight:700;cursor:pointer;transition:background .12s,transform .1s;border:none}
 .btn-edit{background:rgba(42,42,48,.90);backdrop-filter:blur(10px);color:#fff;border:1px solid rgba(255,255,255,.18)}
 .btn-edit:hover{background:rgba(80,80,88,.95)}
@@ -133,55 +97,8 @@ var LIMIT_VAL = __LIMIT_PLACEHOLDER__;
 
 var activeFid = '', activeCol = '', cropperInstance = null;
 
-/* ── Custom dropdown logic ── */
-function closeCdds(){
-    document.getElementById('cddColMenu').style.display='none';
-    document.getElementById('cddColBtn').classList.remove('open');
-    document.getElementById('cddModeMenu').style.display='none';
-    document.getElementById('cddModeBtn').classList.remove('open');
-}
-function toggleCdd(which,e){
-    if(e){e.stopPropagation();}
-    var menuId=which==='col'?'cddColMenu':'cddModeMenu';
-    var btnId=which==='col'?'cddColBtn':'cddModeBtn';
-    var otherId=which==='col'?'cddModeMenu':'cddColMenu';
-    var otherBtnId=which==='col'?'cddModeBtn':'cddColBtn';
-    var menu=document.getElementById(menuId);
-    var btn=document.getElementById(btnId);
-    var isOpen=menu.style.display!=='none';
-    document.getElementById(otherId).style.display='none';
-    document.getElementById(otherBtnId).classList.remove('open');
-    if(isOpen){menu.style.display='none';btn.classList.remove('open');}
-    else{menu.style.display='block';btn.classList.add('open');}
-}
-function pickCol(val,label,el,e){
-    if(e){e.stopPropagation();}
-    curCol=val;
-    document.getElementById('cddColLabel').textContent=label;
-    document.querySelectorAll('#cddColMenu .cdd-item').forEach(function(i){i.classList.remove('selected');});
-    el.classList.add('selected');
-    document.getElementById('cddColMenu').style.display='none';
-    document.getElementById('cddColBtn').classList.remove('open');
-    if(curQ)doSearch(0);
-}
-function pickMode(val,label,el,e){
-    if(e){e.stopPropagation();}
-    pMode=val;
-    localStorage.setItem('posterMode',pMode);
-    document.getElementById('cddModeLabel').textContent=label;
-    document.querySelectorAll('#cddModeMenu .cdd-item').forEach(function(i){i.classList.remove('selected');});
-    el.classList.add('selected');
-    document.getElementById('cddModeMenu').style.display='none';
-    document.getElementById('cddModeBtn').classList.remove('open');
-    if(curQ)doSearch(curOff);
-}
-document.addEventListener('click',function(e){
-    if(!e.target.closest('.cdd-wrap')){closeCdds();}
-});
-document.querySelectorAll('.cdd-menu').forEach(function(m){
-    m.addEventListener('click',function(e){e.stopPropagation();});
-});
 function changeCol(val){curCol=val;if(curQ)doSearch(0);}
+function changePosterMode(){pMode=document.getElementById('posterMode').value;localStorage.setItem('posterMode',pMode);if(curQ)doSearch(curOff);}
 
 function handleThumbError(fileId) {
     var box = document.getElementById('poster-box-' + fileId);
@@ -198,18 +115,6 @@ async function reloadThumb(fileId) {
     }
 }
 
-function triggerRipple(btn){btn.classList.remove('ripple-go');void btn.offsetWidth;btn.classList.add('ripple-go');setTimeout(function(){btn.classList.remove('ripple-go');},460);}
-
-/* ── Admin buttons: click to show/hide ── */
-function toggleAdminBtns(card,e){
-    e.stopPropagation();
-    var isActive=card.classList.contains('admin-active');
-    document.querySelectorAll('.file-card.admin-active').forEach(function(c){c.classList.remove('admin-active');});
-    if(!isActive){card.classList.add('admin-active');}
-}
-document.addEventListener('click',function(){
-    document.querySelectorAll('.file-card.admin-active').forEach(function(c){c.classList.remove('admin-active');});
-});
 async function doSearch(o){
     var q=document.getElementById('q').value.trim();
     if(!q){showToast('Please enter a movie name','error');return;}
@@ -239,14 +144,14 @@ async function doSearch(o){
             if(d.is_admin){
                 var safeName=f.name.replace(/\\\\/g,'\\\\\\\\').replace(/'/g,"\\\\'");
                 adminBtns='<div class="poster-admin">'+
-                    '<button class="btn-edit" onclick="event.stopPropagation();editFile(\\''+f.file_id+'\\',\\''+f.raw_collection+'\\',\\''+safeName+'\\')">&#9999; Edit</button>'+
-                    '<button class="btn-del" onclick="event.stopPropagation();deleteFile(\\''+f.file_id+'\\',\\''+f.raw_collection+'\\')">&#128465; Delete</button>'+
+                    '<button class="btn-edit" onclick="editFile(\\''+f.file_id+'\\',\\''+f.raw_collection+'\\',\\''+safeName+'\\')">&#9999; Edit</button>'+
+                    '<button class="btn-del" onclick="deleteFile(\\''+f.file_id+'\\',\\''+f.raw_collection+'\\')">&#128465; Delete</button>'+
                 '</div>';
             }
 
             var posterHtml='';
             if(pMode!=='none'){
-                posterHtml='<div class="poster-box" id="poster-box-'+f.file_id+'" onclick="toggleAdminBtns(this.closest(\\'.file-card\\'),event)">'+
+                posterHtml='<div class="poster-box" id="poster-box-'+f.file_id+'">'+
                     '<img src="'+f.tg_thumb+'" class="fc-poster" onerror="handleThumbError(\\''+f.file_id+'\\')" loading="lazy">'+
                     '<div class="poster-top">'+
                         '<span class="type-chip">'+f.type.toUpperCase()+'</span>'+
@@ -259,16 +164,16 @@ async function doSearch(o){
 
             var textInfo='';
             if(pMode==='none'){
-                textInfo='<div class="fc-text-info" onclick="toggleAdminBtns(this.closest(\\'.file-card\\'),event)">'+
+                textInfo='<div class="fc-text-info">'+
                     '<span class="tc-type">'+f.type.toUpperCase()+'</span>'+
                     '<span class="tc-size">'+f.size+'</span>'+
                     '<span class="source-pill '+sc+'" style="margin-left:auto"><span class="source-dot"></span>'+sc.toUpperCase()+'</span>'+
                 '</div>';
                 if(d.is_admin){
                     var safeName2=f.name.replace(/\\\\/g,'\\\\\\\\').replace(/'/g,"\\\\'");
-                    textInfo+='<div class="text-admin-row">'+
-                        '<button class="btn-edit" onclick="event.stopPropagation();editFile(\\''+f.file_id+'\\',\\''+f.raw_collection+'\\',\\''+safeName2+'\\')">&#9999; Edit</button>'+
-                        '<button class="btn-del" onclick="event.stopPropagation();deleteFile(\\''+f.file_id+'\\',\\''+f.raw_collection+'\\')">&#128465; Delete</button>'+
+                    textInfo+='<div style="display:flex;gap:5px;padding:5px 11px 0">'+
+                        '<button class="btn-edit" onclick="editFile(\\''+f.file_id+'\\',\\''+f.raw_collection+'\\',\\''+safeName2+'\\')">&#9999; Edit</button>'+
+                        '<button class="btn-del" onclick="deleteFile(\\''+f.file_id+'\\',\\''+f.raw_collection+'\\')">&#128465; Delete</button>'+
                     '</div>';
                 }
             }
@@ -296,13 +201,9 @@ var _tt;
 function showToast(m,t){t=t||'success';var x=document.getElementById('toast');x.textContent=m;x.className='toast '+t+' show';clearTimeout(_tt);_tt=setTimeout(function(){x.classList.remove('show');},3000);}
 
 document.addEventListener('DOMContentLoaded',function(){
+    var pm=document.getElementById('posterMode');if(pm)pm.value=pMode;
     var q=document.getElementById('q');if(q)q.addEventListener('keydown',function(e){if(e.key==='Enter')doSearch(0);});
-    /* restore saved posterMode in custom dropdown */
-    if(pMode==='none'){
-        var mItems=document.querySelectorAll('#cddModeMenu .cdd-item');
-        mItems.forEach(function(i){i.classList.remove('selected');if(i.dataset.val===pMode)i.classList.add('selected');});
-        document.getElementById('cddModeLabel').textContent='\u26a1 Text Only (Fastest)';
-    }
+    var cs=document.getElementById('colSelect');if(cs)cs.value=curCol;
 });
 
 async function deleteFile(fid,col){
@@ -394,31 +295,19 @@ SEARCH_ZONE = (
             '<div class="search-wrap">'
                 '<input class="search-input" id="q" placeholder="Titles, people, genres\u2026">'
             '</div>'
-            '<button class="search-btn" id="searchBtn" onclick="doSearch(0);triggerRipple(this)">Search</button>'
+            '<button class="search-btn" onclick="doSearch(0)">&#128269; Search</button>'
         '</div>'
         '<div class="search-row2">'
-            '<div class="cdd-wrap" id="cddColWrap">'
-                '<div class="cdd-btn" id="cddColBtn" onclick="toggleCdd(\'col\')">'
-                    '<span id="cddColLabel">\U0001f4c2 All Collections</span>'
-                '</div>'
-                '<span class="cdd-arrow">&#9660;</span>'
-                '<div class="cdd-menu" id="cddColMenu" style="display:none">'
-                    '<div class="cdd-item selected" data-val="all" onclick="pickCol(\'all\',\'\U0001f4c2 All Collections\',this)">\U0001f4c2 All Collections<span class="cdd-radio"><span class="cdd-radio-dot"></span></span></div>'
-                    '<div class="cdd-item" data-val="primary" onclick="pickCol(\'primary\',\'\U0001f7e2 Primary\',this)">\U0001f7e2 Primary<span class="cdd-radio"><span class="cdd-radio-dot"></span></span></div>'
-                    '<div class="cdd-item" data-val="cloud" onclick="pickCol(\'cloud\',\'\U0001f535 Cloud\',this)">\U0001f535 Cloud<span class="cdd-radio"><span class="cdd-radio-dot"></span></span></div>'
-                    '<div class="cdd-item" data-val="archive" onclick="pickCol(\'archive\',\'\U0001f7e0 Archive\',this)">\U0001f7e0 Archive<span class="cdd-radio"><span class="cdd-radio-dot"></span></span></div>'
-                '</div>'
-            '</div>'
-            '<div class="cdd-wrap" id="cddModeWrap">'
-                '<div class="cdd-btn" id="cddModeBtn" onclick="toggleCdd(\'mode\')">'
-                    '<span id="cddModeLabel">\U0001f4f8 Original TG Thumb</span>'
-                '</div>'
-                '<span class="cdd-arrow">&#9660;</span>'
-                '<div class="cdd-menu" id="cddModeMenu" style="display:none">'
-                    '<div class="cdd-item selected" data-val="tg" onclick="pickMode(\'tg\',\'\U0001f4f8 Original TG Thumb\',this)">\U0001f4f8 Original TG Thumb<span class="cdd-radio"><span class="cdd-radio-dot"></span></span></div>'
-                    '<div class="cdd-item" data-val="none" onclick="pickMode(\'none\',\'\u26a1 Text Only (Fastest)\',this)">\u26a1 Text Only (Fastest)<span class="cdd-radio"><span class="cdd-radio-dot"></span></span></div>'
-                '</div>'
-            '</div>'
+            '<select class="filter-select" id="colSelect" onchange="changeCol(this.value)">'
+                '<option value="all">\U0001f4c2 All Collections</option>'
+                '<option value="primary">\U0001f7e2 Primary</option>'
+                '<option value="cloud">\U0001f535 Cloud</option>'
+                '<option value="archive">\U0001f7e0 Archive</option>'
+            '</select>'
+            '<select id="posterMode" onchange="changePosterMode()" class="filter-select">'
+                '<option value="tg">\U0001f4f8 Original TG Thumb</option>'
+                '<option value="none">\u26a1 Text Only (Fastest)</option>'
+            '</select>'
         '</div>'
     '</div>'
     '<div class="main" style="padding-top:4px;">'
