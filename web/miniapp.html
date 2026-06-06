@@ -381,11 +381,12 @@
                         </div>`;
                     }
 
+                    let safeName = htmlEntities(f.name);
                     html += `
-                    <div class="file-card" onclick="openStream('${f.file_id}','watch')">
+                    <div class="file-card" onclick="openStream('${f.file_id}','watch','${f.name.replace(/'/g,'\'').replace(/`/g,'\`')}')">
                         ${posterHtml}
                         <div class="fc-body">
-                            <div class="fc-name">${htmlEntities(f.name)}</div>
+                            <div class="fc-name">${safeName}</div>
                             <div class="fc-meta">${htmlEntities(f.size||'')} • ${htmlEntities(f.type||'')}</div>
                         </div>
                     </div>`;
@@ -412,29 +413,9 @@
         let plyrInstance = null;
         let currentStreamUrl = '';
 
-        async function openStream(fileId, mode) {
-            showToast('⏳ Loading...');
-            tg.MainButton.setText('🎬 Preparing...');
-            tg.MainButton.show();
-            tg.MainButton.showProgress();
-
-            try {
-                let res = await fetch('/setup_stream', {
-                    method: 'POST',
-                    headers: { 'X-Telegram-Init-Data': INIT_DATA, 'Content-Type': 'application/json' },
-                    body: JSON.stringify({ file_id: fileId, mode: 'watch' })
-                });
-                if (res.status === 403) { showToast('🔒 Access denied'); return; }
-                if (!res.ok) { showToast('❌ Server busy, retry karo'); return; }
-                let data = await res.json().catch(() => ({}));
-                let streamUrl = data.url ? window.location.origin + data.url : `${window.location.origin}/setup_stream?file_id=${fileId}&mode=watch`;
-                openPlayerSheet(streamUrl, data.name || fileId);
-            } catch {
-                showToast('❌ Connection fail');
-            } finally {
-                tg.MainButton.hideProgress();
-                tg.MainButton.hide();
-            }
+        function openStream(fileId, mode, fileName) {
+            let streamUrl = `${window.location.origin}/download/${fileId}`;
+            openPlayerSheet(streamUrl, fileName || fileId);
         }
 
         function openPlayerSheet(url, title) {
