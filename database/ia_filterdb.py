@@ -14,9 +14,9 @@ logger = logging.getLogger(__name__)
 # ─────────────────────────────────────────────────────────
 client = motor.motor_asyncio.AsyncIOMotorClient(
     DATABASE_URL,
-    maxPoolSize=15,             # हैवी प्रीमियम ट्रैफिक के लिए पर्याप्त कनेक्शंस
-    minPoolSize=0,              # आइडल टाइम पर 0 कनेक्शन (कोएब की रैम 100% सुरक्षित)
-    maxIdleTimeMS=30000,        # 30 सेकंड तक शांत रहने पर सॉकेट्स बंद करें
+    maxPoolSize=50,             # ⚡ UPGRADE: कनेक्शन पूल 15 से बढ़ाकर 50 किया ताकि रिक्वेस्ट लाइन में न फंसे
+    minPoolSize=5,              # ⚡ UPGRADE: न्यूनतम 5 कनेक्शंस हमेशा एक्टिव रखें ताकि इंस्टेंट रिपॉन्स मिले
+    maxIdleTimeMS=30000,        
     serverSelectionTimeoutMS=5000,
     connectTimeoutMS=10000,
     socketTimeoutMS=20000,
@@ -36,18 +36,22 @@ COLLECTIONS = {
 }
 
 # ─────────────────────────────────────────────────────────
-# ⚡ INDEXES — Fixed Illegal Specs (Zero Warning Logs)
+# ⚡ INDEXES — Speed Booster Compounded Indexes
 # ─────────────────────────────────────────────────────────
 async def ensure_indexes():
     for name, col in COLLECTIONS.items():
         try:
-            # ✅ कम्पाउंड टेक्स्ट इंडेक्स को सुरक्षित रखा गया
+            # 1. कम्पाउंड टेक्स्ट इंडेक्स
             await col.create_index(
                 [("file_name", "text"), ("caption", "text")],
                 name=f"{name}_text"
             )
-            # ✅ अवैध _id: -1 इंडेक्स को हमेशा के लिए हटा दिया गया है
-            logger.info(f"✅ Fast Search Index OK: {name}")
+            # 2. ⚡ NEW: सॉर्टिंग और सर्चिंग को 0 सेकंड करने के लिए कम्पाउंड इंडेक्स
+            await col.create_index([("file_name", 1), ("_id", -1)], name=f"{name}_fname_sort")
+            if USE_CAPTION_FILTER:
+                await col.create_index([("caption", 1), ("_id", -1)], name=f"{name}_caption_sort")
+                
+            logger.info(f"✅ Fast Search & Sort Indexes OK: {name}")
         except Exception as e:
             if "already exists" in str(e) or "IndexKeySpecsConflict" in str(e):
                 pass
@@ -55,7 +59,7 @@ async def ensure_indexes():
                 logger.warning(f"Index warning [{name}]: {e}")
 
 # ─────────────────────────────────────────────────────────
-# 📊 DB STATS — With Live Thumbnail Breakdown Sync
+# 📊 DB STATS — With Fast Estimated Counter Sync
 # ─────────────────────────────────────────────────────────
 async def db_count_documents():
     try:
@@ -88,21 +92,17 @@ async def db_count_documents():
 async def save_file(media, collection_type="primary"):
     try:
         file_id = unpack_new_file_id(media.file_id)
-        if not file_id:
-            return "err"
+        if not file_id: return "err"
 
         f_name  = re.sub(r"@\w+|(_|\-|\.|\+)", " ", str(media.file_name or "")).strip()
         caption = re.sub(r"@\w+|(_|\-|\.|\+)", " ", str(media.caption  or "")).strip()
         file_type = type(media).__name__.lower()
 
         col = COLLECTIONS.get(collection_type, primary)
-        
         existing_doc = await col.find_one({"_id": file_id}, {"file_ref": 1, "thumb_url": 1})
         
         if existing_doc:
-            if existing_doc.get("file_ref") == media.file_id:
-                return "dup"
-            
+            if existing_doc.get("file_ref") == media.file_id: return "dup"
             old_thumb = existing_doc.get("thumb_url")
             thumb_url = old_thumb if old_thumb and "TG_ID:" in old_thumb else None
         else:
@@ -121,7 +121,6 @@ async def save_file(media, collection_type="primary"):
 
         await col.replace_one({"_id": file_id}, doc, upsert=True)
         return "suc"
-
     except Exception as e:
         logger.error(f"save_file error: {e}")
         return "err"
@@ -137,14 +136,13 @@ def _build_regex(query: str):
         raw = r'(\b|[\.\+\-_])' + re.escape(query) + r'(\b|[\.\+\-_])'
     else:
         raw = re.escape(query).replace(r'\ ', r'.*[\s\.\+\-_]')
-
     try:
         return re.compile(raw, flags=re.IGNORECASE)
     except Exception:
         return re.compile(re.escape(query), flags=re.IGNORECASE)
 
 # ─────────────────────────────────────────────────────────
-# 🚀 SMART SEARCH (Instant Response Projection Engine)
+# 🚀 SMART SEARCH — Zero Count Overhead Response Engine
 # ─────────────────────────────────────────────────────────
 async def _search(col, raw_query: str, regex, offset: int, limit: int, lang=None):
     clean_query = raw_query.replace('"', '').replace("'", "")
@@ -154,18 +152,25 @@ async def _search(col, raw_query: str, regex, offset: int, limit: int, lang=None
     if lang:
         text_flt = {"$and": [text_flt, {"file_name": re.compile(lang, re.IGNORECASE)}]}
 
-    count = await col.count_documents(text_flt)
-    
-    if count > 0:
-        # ✅ UPGRADE: प्रोजेक्शन इंजन में "thumb_url" को सिंक किया गया ताकि फ़्रंटएंड इमेज कैशे बस्टर तेज़ी से लोड हो
-        cursor = col.find(text_flt, {"_id": 1, "file_name": 1, "file_size": 1, "file_type": 1, "file_ref": 1, "caption": 1, "thumb_url": 1, "score": {"$meta": "textScore"}})
+    # ⚡ PROJECTION TUNING
+    projection = {"_id": 1, "file_name": 1, "file_size": 1, "file_type": 1, "file_ref": 1, "caption": 1, "thumb_url": 1}
+
+    try:
+        # 🎯 भारी .count_documents() हटाया! सीधे लिमिट तक डेटा उठाकर डिलीवर करो।
+        cursor = col.find(text_flt, {**projection, "score": {"$meta": "textScore"}})
         cursor.sort([("score", {"$meta": "textScore"})])
         cursor.skip(offset).limit(limit)
         docs = await cursor.to_list(length=limit)
-        for doc in docs:
-            doc["file_id"] = doc["_id"]
-        return docs, count
+        
+        if docs:
+            for doc in docs: doc["file_id"] = doc["_id"]
+            # वर्चुअल काउंट: अगर पूरे रिजल्ट्स मिले हैं तो ऑफसेट + लिमिट + 1, वरना करंट लेंथ
+            virtual_count = offset + len(docs) + (1 if len(docs) == limit else 0)
+            return docs, virtual_count
+    except Exception:
+        pass
 
+    # Fallback to Regex
     if USE_CAPTION_FILTER:
         reg_flt = {"$or": [{"file_name": regex}, {"caption": regex}]}
     else:
@@ -174,21 +179,22 @@ async def _search(col, raw_query: str, regex, offset: int, limit: int, lang=None
     if lang:
         reg_flt = {"$and": [reg_flt, {"file_name": re.compile(lang, re.IGNORECASE)}]}
 
-    # ✅ UPGRADE: यहाँ भी प्रोजेक्शन में "thumb_url" और "file_type" को प्रोजेक्ट किया गया है ताकि सर्च रिज़ल्ट्स रॉकेट स्पीड से काम करें
-    cursor = col.find(reg_flt, {"_id": 1, "file_name": 1, "file_size": 1, "file_type": 1, "file_ref": 1, "caption": 1, "thumb_url": 1}).sort('_id', -1)
+    # ⚡ यहाँ भी भारी काउंट क्वेरी बाईपास की गई है
+    cursor = col.find(reg_flt, projection).sort('_id', -1)
     cursor.skip(offset).limit(limit)
     docs = await cursor.to_list(length=limit)
-    for doc in docs:
+    
+    for doc in docs: 
         doc["file_id"] = doc["_id"]
 
-    return docs, await col.count_documents(reg_flt)
+    virtual_count = offset + len(docs) + (1 if len(docs) == limit else 0)
+    return docs, virtual_count
 
 # ─────────────────────────────────────────────────────────
-# 🌐 PUBLIC SEARCH API — Adaptive Result Sync (Bot 12 vs Web 21)
+# 🌐 PUBLIC SEARCH API — Adaptive Result Sync
 # ─────────────────────────────────────────────────────────
 async def get_search_results(query, max_results, offset=0, lang=None, collection_type="primary"):
-    if not query:
-        return [], "", 0, collection_type
+    if not query: return [], "", 0, collection_type
 
     raw_query  = str(query).strip()
     regex      = _build_regex(raw_query)
@@ -209,7 +215,7 @@ async def get_search_results(query, max_results, offset=0, lang=None, collection
         results, total = await _search(col, raw_query, regex, offset, max_results, lang)
 
     next_offset = offset + max_results
-    next_offset = "" if next_offset >= total else next_offset
+    next_offset = "" if len(results) < max_results else next_offset # सिंपल लेंथ चेक फॉर फास्ट पेजिनेशन
 
     return results, next_offset, total, actual_src
 
@@ -228,11 +234,9 @@ async def delete_files(query, collection_type="all"):
 
         flt   = {"file_name": _build_regex(str(query))}
         cols  = [col for name, col in COLLECTIONS.items() if collection_type == "all" or name == collection_type]
-
         for col in cols:
             res = await col.delete_many(flt)
             deleted += res.deleted_count
-
         return deleted
     except Exception as e:
         logger.error(f"delete_files error: {e}")
