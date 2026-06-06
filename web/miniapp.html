@@ -201,7 +201,7 @@
 
     <!-- Player Sheet -->
     <div class="player-sheet" id="playerSheet">
-        <div class="sheet-backdrop" onclick="closePlayer()"></div>
+        <div class="sheet-backdrop" id="sheetBackdrop"></div>
         <div class="sheet-body" id="sheetBody">
             <div class="sheet-handle"></div>
             <button class="sheet-close" onclick="closePlayer()">✕</button>
@@ -413,9 +413,25 @@
         let plyrInstance = null;
         let currentStreamUrl = '';
 
-        function openStream(fileId, mode, fileName) {
-            let streamUrl = `${window.location.origin}/download/${fileId}`;
-            openPlayerSheet(streamUrl, fileName || fileId);
+        async function openStream(fileId, mode, fileName) {
+            showToast('⏳ Loading...');
+            try {
+                let res = await fetch('/setup_stream', {
+                    method: 'POST',
+                    headers: { 'X-Telegram-Init-Data': INIT_DATA, 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ file_id: fileId, mode: 'watch' })
+                });
+                if (res.status === 403) { showToast('🔒 Access denied'); return; }
+                if (!res.ok) { showToast('❌ Server error'); return; }
+                let data = await res.json().catch(() => ({}));
+                if (data.error) { showToast('❌ ' + data.error); return; }
+                // /watch/{id} → /download/{id} for direct binary stream
+                let streamUrl = (data.url || '').replace('/watch/', '/download/');
+                if (!streamUrl) { showToast('❌ Stream URL missing'); return; }
+                openPlayerSheet(window.location.origin + streamUrl, fileName || fileId);
+            } catch(e) {
+                showToast('❌ Connection fail');
+            }
         }
 
         function openPlayerSheet(url, title) {
@@ -461,6 +477,10 @@
             }
             document.getElementById('sheetPlayer').innerHTML = '<video id="sheetVideo" playsinline controls></video>';
         }
+
+        document.getElementById('sheetBackdrop').addEventListener('click', function(e) {
+            if (e.target === this) closePlayer();
+        });
 
         function copyStreamLink() {
             navigator.clipboard.writeText(currentStreamUrl).catch(() => {});
