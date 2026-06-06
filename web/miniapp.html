@@ -90,8 +90,7 @@
 
         /* ── Card body ── */
         .fc-body{padding:9px 10px 11px}
-        .fc-name{color:var(--text);font-size:12.5px;font-weight:600;line-height:1.45;display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden;margin-bottom:5px}
-        .fc-meta{font-size:11px;color:var(--muted);font-weight:500;margin-bottom:10px}
+.fc-meta{font-size:11px;color:var(--muted);font-weight:500;margin-bottom:2px}
 
         /* ── Text mode info ── */
         .fc-text-info{display:flex;align-items:center;gap:6px;padding:9px 10px 0;flex-wrap:wrap;margin-bottom:4px}
@@ -102,12 +101,9 @@
         .tc-pill.cloud{background:#1e3a5f;color:#93c5fd;border:1px solid #60a5fa}
         .tc-pill.archive{background:#7c2d12;color:#fdba74;border:1px solid #fb923c}
 
-        /* ── Action buttons ── */
-        .fc-actions{display:flex;gap:6px}
-        .btn{flex:1;text-align:center;padding:9px 0;border-radius:6px;font-size:12px;font-weight:700;cursor:pointer;border:none;display:flex;align-items:center;justify-content:center;gap:4px;font-family:inherit;transition:transform .1s,opacity .1s}
-        .btn:active{transform:scale(.95);opacity:.85}
-        .btn-play{background:var(--text);color:var(--bg)}
-        .btn-dl{background:rgba(128,128,128,.15);color:var(--text);border:1px solid var(--border)}
+        /* ── Card name clickable ── */
+        .fc-name{color:var(--text);font-size:12.5px;font-weight:600;line-height:1.45;display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden;cursor:pointer;transition:color .18s}
+        .fc-name:active{color:var(--accent)}
 
         /* ── States ── */
         .state-box{text-align:center;padding:60px 20px;color:var(--muted);grid-column:1/-1;font-weight:500;line-height:1.6}
@@ -347,14 +343,11 @@
                     }
 
                     html += `
-                    <div class="file-card">
+                    <div class="file-card" onclick="openStream('${f.file_id}','watch')">
                         ${posterHtml}
                         <div class="fc-body">
                             <div class="fc-name">${htmlEntities(f.name)}</div>
-                            <div class="fc-actions">
-                                <button class="btn btn-play" onclick="openStream('${f.file_id}','watch')">▶ Play</button>
-                                <button class="btn btn-dl" onclick="openStream('${f.file_id}','download')">⬇ DL</button>
-                            </div>
+                            <div class="fc-meta">${htmlEntities(f.size||'')} • ${htmlEntities(f.type||'')}</div>
                         </div>
                     </div>`;
                 });
