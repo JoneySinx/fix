@@ -82,7 +82,7 @@ Please check the commands below 👇</b>"""
 • /rm_prm - Revoke premium status
 • /prm_list - Export premium users list
 • /web_users - View Web Dashboard users
-• /warmup_thumbs - Lock missing thumbnails
+• /warmup_thumbs - Update Thumbnails
 • /restart - Hard restart the bot session
 
 ⚙️ <u>Group Management Guide:</u> 👇
