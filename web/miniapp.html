@@ -215,7 +215,7 @@
             </div>
         </div>
     </div>
-    <div id="sheetToast" style="position:fixed;bottom:80px;left:50%;transform:translateX(-50%) translateY(100px);background:var(--accent);color:#fff;padding:10px 22px;border-radius:30px;font-weight:700;font-size:13px;transition:.3s;z-index:10000;white-space:nowrap;pointer-events:none">Link Copied!</div>
+    <div id="sheetToast" style="position:fixed;bottom:80px;left:50%;transform:translateX(-50%) translateY(200px);background:var(--accent);color:#fff;padding:10px 22px;border-radius:30px;font-weight:700;font-size:13px;transition:.3s;z-index:10000;white-space:nowrap;pointer-events:none;opacity:0">Link Copied!</div>
 
 
     <script>
@@ -490,8 +490,9 @@
         function copyStreamLink() {
             navigator.clipboard.writeText(currentStreamUrl).catch(() => {});
             let t = document.getElementById('sheetToast');
+            t.style.opacity = '1';
             t.style.transform = 'translateX(-50%) translateY(0)';
-            setTimeout(() => t.style.transform = 'translateX(-50%) translateY(100px)', 2500);
+            setTimeout(() => { t.style.opacity = '0'; t.style.transform = 'translateX(-50%) translateY(200px)'; }, 2500);
         }
 
         function next() { if (nextOff) { curPage++; doSearch(nextOff); } }
