@@ -28,7 +28,7 @@ class WebAuthDB:
         self.col = db["web_users"] 
         
     async def create_user(self, tg_id, email, password):
-        # ✅ FIX: कर्सर लोड बचाने के लिए स्ट्रिक्ट प्रोजेक्शन {"_id": 1} लागू
+        # कर्सर लोड बचाने के लिए स्ट्रिक्ट प्रोजेक्शन {"_id": 1} लागू
         if await self.col.find_one({"$or": [{"tg_id": tg_id}, {"email": email}]}, {"_id": 1}):
             return False, "Telegram ID or Email already registered!"
             
@@ -92,13 +92,24 @@ class Database:
         self.delete_queue = self.db.AutoDeleteQueue 
 
     async def _ensure_indexes(self):
+        # बोट कलेक्शंस के लिए इंडेक्स सिंक
         for col in [self.users, self.groups, self.premium, self.settings]:
             try: 
                 await col.create_index("id", unique=True)
             except Exception as e: 
                 logger.warning(f"Index warn: {e}")
         
-        # ✅ FIX: अगर डेटाबेस कतार में पुरानी 'id_1' अवैध इंडेक्स मौजूद है, तो उसे पूरी तरह से डिस्ट्रॉय करो
+        # ✅ NEW UPGRADE: WebAuthDB (web_users) के लिए स्ट्रिक्ट यूनिक इंडेक्सेस ट्यूनिंग (रैम और COLLSCAN से सुरक्षा)
+        try:
+            web_users = self.db["web_users"]
+            await web_users.create_index("tg_id", unique=True)
+            await web_users.create_index("email", unique=True)
+            logger.info("✅ Web Auth unique indexes (tg_id, email) initialized successfully.")
+        except Exception as e:
+            if "already exists" not in str(e):
+                logger.warning(f"Web Auth Index warn: {e}")
+        
+        # अगर डेटाबेस कतार में पुरानी 'id_1' अवैध इंडेक्स मौजूद है, तो उसे पूरी तरह से डिस्ट्रॉय करो
         try:
             await self.delete_queue.drop_index("id_1")
             logger.info("🗑️ Old defective unique index 'id_1' dropped from AutoDeleteQueue.")
@@ -140,7 +151,7 @@ class Database:
     async def total_users_count(self): 
         return await self.users.count_documents({})
     
-    # ❌ FIX: 'get_all_users' (पुराना ब्रॉडकास्ट कर्सर) पूरी तरह हटा दिया गया है ताकि रैम लीक न हो।
+    # 'get_all_users' (पुराना ब्रॉडकास्ट कर्सर) पूरी तरह हटा दिया गया है ताकि रैम लीक न हो।
     
     async def delete_user(self, uid): 
         await self.users.delete_many({"id": int(uid)})
@@ -206,7 +217,7 @@ class Database:
         await self.premium.update_one({"id": int(uid)}, {"$set": {"status": data}}, upsert=True)
         
     async def get_premium_users(self): 
-        # ✅ FIX: प्रीमियम लिस्ट एक्सपोर्ट करते समय केवल काम के फील्ड्स प्रोजेक्ट करें (Zero RAM Overhead)
+        # प्रीमियम लिस्ट एक्सपोर्ट करते समय केवल काम के फील्ड्स प्रोजेक्ट करें (Zero RAM Overhead)
         return self.premium.find({}, {"id": 1, "status": 1})
 
     # ───────────────── SECURITY STATS BREAKDOWN ─────────────────
@@ -218,11 +229,11 @@ class Database:
     # ───────────────── ⏳ PERSISTENT AUTO-DELETE QUEUE ENGINE ─────────────────
     async def add_to_delete_queue(self, chat_id, message_id, delay_seconds):
         if not chat_id or not message_id:
-            return False # कचरा एंट्री वैलिडेटर गेटवे लॉक
+            return False # कचरा एंट्री वैलिडेटर गेटवे锁
             
         delete_at = get_local_now() + timedelta(seconds=delay_seconds) # ग्लोबल टाइमज़ोन सिंक
         
-        # ✅ FIX: चैट आईडी और मैसेज आईडी का एकदम यूनिक कॉम्बो स्ट्रिंग बनाओ ताकि 'id: null' का लफड़ा हमेशा के लिए खत्म हो जाए!
+        # चैट आईडी और मैसेज आईडी का एकदम यूनिक कॉम्बो स्ट्रिंग बनाओ ताकि 'id: null' का लफड़ा हमेशा के लिए खत्म हो जाए!
         task_id = f"{int(chat_id)}_{int(message_id)}"
         
         await self.delete_queue.update_one(
@@ -243,7 +254,7 @@ class Database:
         return self.delete_queue.find({"delete_at": {"$lte": now}})
 
     async def remove_from_delete_queue(self, chat_id, message_id):
-        # ✅ FIX: डिलीट टास्क रिमूव करते समय भी सीधे यूनिक कॉम्बो की को टारगेट करें
+        # डिलीट टास्क रिमूव करते समय भी सीधे यूनिक कॉम्बो की को टारगेट करें
         task_id = f"{int(chat_id)}_{int(message_id)}"
         await self.delete_queue.delete_one({"_id": task_id})
 
