@@ -43,7 +43,6 @@ MINI_APP_URL = _build_mini_app_url(URL)
 # ─────────────────────────────────────────────
 @Client.on_message(filters.command("start") & filters.incoming)
 async def start(client, message):
-
     # 1. Connected Chat Groups Sync Route
     if message.chat.type in [enums.ChatType.GROUP, enums.ChatType.SUPERGROUP]:
         if not await db.get_chat(message.chat.id):
@@ -68,11 +67,11 @@ async def start(client, message):
             message.from_user.mention, message.from_user.id
         ))
 
-    # ✅ FIX: स्ट्रिक्ट प्रीमियम मॉडल लॉक - फ्री यूज़र्स को तुरंत UPI सब्सक्रिप्शन लॉक स्क्रीन फ्लैश करें
+    # स्ट्रिक्ट प्रीमियम मॉडल लॉक - फ्री यूज़र्स को तुरंत UPI सब्सक्रिप्शन लॉक स्क्रीन फ्लैश करें
     if IS_PREMIUM and message.from_user.id not in ADMINS and not await is_premium(message.from_user.id, client):
         return await message.reply_photo(
             random.choice(PICS),
-            caption=script.PLAN_TXT.format(10, "@admin"), # info.py और Script.py प्लान सिंक
+            caption=script.PLAN_TXT.format(10, "@admin"),
             reply_markup=InlineKeyboardMarkup([[
                 InlineKeyboardButton("💎 Buy Premium Plan", callback_data="activate_plan")
             ]])
@@ -116,7 +115,6 @@ async def start(client, message):
                         f"⚠️ This message will delete in {get_readable_time(PM_FILE_DELETE_TIME)}."
                     )
                     
-                    # डेटाबेस आधारित रीस्टार्ट-प्रूफ ऑटो-डिलीट इंजन कतार सिंक
                     await db.add_to_delete_queue(message.chat.id, msg.id, PM_FILE_DELETE_TIME)
                     await db.add_to_delete_queue(message.chat.id, del_msg.id, PM_FILE_DELETE_TIME)
                     
@@ -160,7 +158,6 @@ async def stats(_, message):
         db.premium.count_documents({"status.premium": True})
     )
     
-    # ✅ FIX: 'ia_filterdb.py' से मिलने वाले नए थंबनेल एरे वेरिएबल्स को स्क्रिप्ट में सिंक पास किया
     stats_text = script.STATUS_TXT.format(
         users, chats, premium,
         files['total'],
@@ -171,7 +168,6 @@ async def stats(_, message):
         get_readable_time(time_now() - temp.START_TIME)
     )
     
-    # ✅ FIX: स्टैट्स कमांड यूआई के ठीक नीचे थंबनेल वार्मअप करने का नया इनलाइन कीबोर्ड बटन
     buttons = [
         [InlineKeyboardButton("🔄 WARMUP THUMBNAILS", callback_data="warmup_trigger_all")],
         [InlineKeyboardButton("❌ CLOSE PANEL", callback_data=f"close_{message.from_user.id}")]
@@ -300,7 +296,6 @@ async def ui_cb(client, query):
                 db.total_chat_count(),
                 db.premium.count_documents({"status.premium": True})
             )
-            # ✅ FIX: इनलाइन कॉलबैक स्टैट्स रेंडरर में थंबनेल ब्रेकडाउन मैट्रिक्स बाइंड किया गया
             text = script.STATUS_TXT.format(
                 users, chats, premium,
                 files['total'],
@@ -309,7 +304,6 @@ async def ui_cb(client, query):
                 files['archive'], files['archive_thumb'],
                 files['total_thumb'], uptime
             )
-            # ✅ FIX: इनलाइन कीबोर्ड स्टैट्स पैनल के नीचे थंबनेल वार्मअप करने का नया बटन सिंक किया
             btn = [
                 [InlineKeyboardButton("🔄 WARMUP THUMBNAILS", callback_data="warmup_trigger_all")],
                 [InlineKeyboardButton("⬅️ Back Menu", callback_data="back_start")]
@@ -380,13 +374,19 @@ async def close_cb(c, q):
         chat_id = q.message.chat.id
         current_msg_id = q.message.id
 
-        msg_ids_to_clean = [current_msg_id, current_msg_id - 1, current_msg_id + 1]
+        # ✅ BUG FIX: यहाँ भी ब्लाइंड -1/+1 को हटाकर सिर्फ टारगेटेड मैसेज साफ किए गए
+        msg_ids_to_clean = [current_msg_id]
+        if q.message.reply_to_message:
+            msg_ids_to_clean.append(q.message.reply_to_message.id)
+        elif getattr(q.message, "reply_to_message_id", None):
+            msg_ids_to_clean.append(q.message.reply_to_message_id)
 
         if hasattr(temp, 'PM_FILES'):
             target_key = None
             for k, v in temp.PM_FILES.items():
                 if v.get('file_msg') == current_msg_id or k == current_msg_id:
-                    msg_ids_to_clean.append(v.get('note_msg'))
+                    if v.get('note_msg'):
+                        msg_ids_to_clean.append(v.get('note_msg'))
                     target_key = k
                     break
             if target_key:
@@ -400,3 +400,4 @@ async def close_cb(c, q):
     except Exception as e:
         try: await q.message.delete()
         except: pass
+
