@@ -186,7 +186,6 @@ async def close_admin_panel(client, query):
 # ─────────────────────────────────────────────
 @Client.on_message(filters.command("button_style") & (filters.group | filters.private))
 async def button_style_toggle(client, message):
-    # अगर ग्रुप है तो एडमिन चेक करें, PM है तो बाईपास करें
     if message.chat.type in [enums.ChatType.GROUP, enums.ChatType.SUPERGROUP]:
         if not await is_check_admin(client, message.chat.id, message.from_user.id): return
 
@@ -268,7 +267,6 @@ async def auto_filter(client, msg, collection_type="all", settings=None):
                 cap = f"❌ **{search}** not found.\n\n🤔 **Did you mean:** __{suggestion}__?"
                 try:
                     m = await msg.reply(cap, reply_markup=InlineKeyboardMarkup(btn), quote=True)
-                    # बिना एक्टिविटी वाले डिलीट टास्क में डालें (5 मिनट)
                     asyncio.create_task(start_auto_delete_timer(client, m.chat.id, m.id, delay=300))
                 except: pass
                 return
@@ -287,7 +285,6 @@ async def auto_filter(client, msg, collection_type="all", settings=None):
 
     try:
         res = await msg.reply(cap, reply_markup=markup, disable_web_page_preview=True, quote=True)
-        # 📢 फ्रेश 5 मिनट का नो-एक्टिविटी डिलीट टाइमर एक्टिवेट करें
         asyncio.create_task(start_auto_delete_timer(client, res.chat.id, res.id, delay=300))
     except Exception as e: 
         logger.error(f"Auto filter response error: {e}")
@@ -301,13 +298,17 @@ async def close_callback(client, query):
         chat_id = query.message.chat.id
         current_msg_id = query.message.id
         
-        # एक्टिविटी डिलीट टास्क को भी लिस्ट से रिमूव करें
         task_key = f"{chat_id}_{current_msg_id}"
         if task_key in ACTIVE_DELETE_TASKS:
             ACTIVE_DELETE_TASKS[task_key].cancel()
             ACTIVE_DELETE_TASKS.pop(task_key, None)
 
-        msg_ids_to_clean = [current_msg_id, current_msg_id - 1, current_msg_id + 1]
+        # ✅ BUG FIX: अंधे की तरह -1/+1 डिलीट करने के बजाय सिर्फ बोट रिस्पांस और मूल यूज़र क्वेरी को ही डिलीट करें
+        msg_ids_to_clean = [current_msg_id]
+        if query.message.reply_to_message:
+            msg_ids_to_clean.append(query.message.reply_to_message.id)
+        elif getattr(query.message, "reply_to_message_id", None):
+            msg_ids_to_clean.append(query.message.reply_to_message_id)
         
         for mid in msg_ids_to_clean:
             await db.remove_from_delete_queue(chat_id, mid)
@@ -342,7 +343,6 @@ async def spell_check_handler(client, query):
         cap, markup = get_filter_ui(suggestion, files, total, act_src, 0, query.message.chat.id, query.from_user.id, key, next_offset, is_simple_mode)
         await query.message.edit_text(cap, reply_markup=markup, disable_web_page_preview=True)
         
-        # 🔄 स्पेलचेक रिजल्ट पर क्लिक हुआ -> टाइमर रिसेट/फ्रेश स्टार्ट (5 मिनट)
         asyncio.create_task(start_auto_delete_timer(client, query.message.chat.id, query.message.id, delay=300))
             
     except Exception as e:
@@ -352,7 +352,7 @@ async def spell_check_handler(client, query):
         gc.collect()
 
 # ─────────────────────────────────────────────
-# 🔄 PAGINATION & PERFECT TIMER RESET SYNCHRONIZER (Next / Prev Reset Lock)
+# 🔄 PAGINATION & PERFECT TIMER RESET SYNCHRONIZER
 # ─────────────────────────────────────────────
 @Client.on_callback_query(filters.regex(r"^(nav_|coll_)"))
 async def pagination_handler(client, query):
@@ -385,12 +385,9 @@ async def pagination_handler(client, query):
 
     try: 
         await query.message.edit_text(cap, reply_markup=markup, disable_web_page_preview=True)
-        
-        # 🔄 ✅ NEXT/PREV बटन दबाया गया -> पुराना टाइमर रिसेट करके फिर से नए 5 मिनट अलॉट किए गए!
         asyncio.create_task(start_auto_delete_timer(client, query.message.chat.id, query.message.id, delay=300))
     except Exception as e:
         logger.error(f"Pagination delivery failure: {e}")
-        # फेल होने की दशा में भी बैकअप सेफ्टी टाइमर चालू रखें
         asyncio.create_task(start_auto_delete_timer(client, query.message.chat.id, query.message.id, delay=300))
         
     await query.answer()
