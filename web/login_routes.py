@@ -4,7 +4,7 @@ import time
 from aiohttp import web
 from web.web_assets import build_page, form_wrapper
 from utils import temp
-from database.users_chats_db import web_db
+from database.users_chats_db import web_db, get_local_now  # <-- समय सिंक के लिए इम्पोर्ट किया
 
 login_routes = web.RouteTableDef()
 
@@ -18,6 +18,12 @@ async def api_login_user(req):
     d = await req.post()
     user = await web_db.verify_login(d.get('email'), d.get('password'))
     if user:
+        # ✅ LOGIN TRACK ENGINE: डेटाबेस में यूजर का अंतिम लॉगिन टाइमस्टैम्प अभी का सेट करें
+        await web_db.col.update_one(
+            {"tg_id": user['tg_id']},
+            {"$set": {"last_login": get_local_now()}}
+        )
+
         s = str(uuid.uuid4())
         if not hasattr(temp, 'USER_SESSIONS'): temp.USER_SESSIONS = {}
         temp.USER_SESSIONS[s] = {'tg_id': user['tg_id'], 'expiry': time.time() + 86400 * 7}
