@@ -27,9 +27,9 @@ search_routes = web.RouteTableDef()
 # ─────────────────────────────────────────────────────────
 MAX_CACHE = MAX_THUMB_CACHE             
 thumb_cache = OrderedDict()
-thumb_semaphore = asyncio.Semaphore(5) 
+thumb_semaphore = asyncio.Semaphore(10) # कंकरेंसी लिमिट बढ़ाकर १० कर दी गई है
 
-# डुप्लीकेट थंबनेल फेच रेस कंडीशन को रोकने के लिए锁 रजिस्ट्री
+# डुप्लीकेट थंबनेल फेच रेस कंडीशन को रोकने के लिए लॉक रजिस्ट्री
 thumb_locks = {}
 
 # इन-मेमोरी सर्च कैशे को अनकैप्ड बढ़ने से रोकने के लिए True LRU बाउंडेड कैशे
@@ -38,10 +38,10 @@ TRENDING_CACHE = OrderedDict()  # {'col_mode_query': {'data': [...], 'next_offse
 TRENDING_CACHE_TTL = 300  
 
 # ─────────────────────────────────────────────────────────
-# 📸 CORE THUMBNAIL ENGINE (True LRU String ID Storage)
+# 📸 SPEED OPTIMIZED THUMBNAIL ENGINE (Direct ID Fetcher)
 # ─────────────────────────────────────────────────────────
-async def _get_or_fetch_thumb(fid, col_name="primary", is_retry=False):
-    """कलेक्शन स्पेसिफिक कंपोजिट की के आधार पर थंबनेल आईडी रैम में सेव रखकर ऑन-डिमांड बाइट्स डिलीवर करेगा"""
+async def _get_or_fetch_thumb_url(fid, col_name="primary", is_retry=False):
+    """कलेक्शन स्पेसिफिक कंपोजिट की के आधार पर थंबनेल आईडी रैम में सेव रखकर डायरेक्ट टेलीग्राम यूआरएल के लिए आईडी टोकन देगा"""
     cache_key = f"{col_name}:{fid}"
 
     if is_retry and cache_key in thumb_cache:
@@ -51,35 +51,20 @@ async def _get_or_fetch_thumb(fid, col_name="primary", is_retry=False):
     # True LRU: हिट होने पर की को कतार के अंत में ट्रांसफर करें
     if cache_key in thumb_cache:
         thumb_cache.move_to_end(cache_key)
-        cached_val = thumb_cache[cache_key]
-        if cached_val == "NO_THUMB":
-            return "NO_THUMB"
-        try:
-            file_data = await temp.BOT.download_media(cached_val, in_memory=True)
-            return file_data.getvalue() if file_data else None
-        except Exception:
-            return None
+        return thumb_cache[cache_key]
 
     lock = thumb_locks.setdefault(cache_key, asyncio.Lock())
     
     try:
         async with lock:
             if cache_key in thumb_cache:
-                cached_val = thumb_cache[cache_key]
-                if cached_val == "NO_THUMB": return "NO_THUMB"
-                try:
-                    file_data = await temp.BOT.download_media(cached_val, in_memory=True)
-                    return file_data.getvalue() if file_data else None
-                except Exception: return None
+                return thumb_cache[cache_key]
 
             async def _fetch():
                 if len(thumb_cache) >= MAX_CACHE:
                     for _ in range(max(1, MAX_CACHE // 4)):
                         if thumb_cache:
                             thumb_cache.popitem(last=False)
-
-                if cache_key in thumb_cache:
-                    return thumb_cache[cache_key]
 
                 target_collection = COLLECTIONS.get(col_name, COLLECTIONS["primary"])
                 existing = await target_collection.find_one({"_id": fid}, {"thumb_url": 1})
@@ -89,17 +74,12 @@ async def _get_or_fetch_thumb(fid, col_name="primary", is_retry=False):
                     saved_thumb_id = existing.get("thumb_url").replace("TG_ID:", "")
 
                 if saved_thumb_id:
-                    try:
-                        file_data = await temp.BOT.download_media(saved_thumb_id, in_memory=True)
-                        if file_data:
-                            thumb_cache[cache_key] = saved_thumb_id
-                            return file_data.getvalue()
-                    except Exception:
-                        pass
+                    thumb_cache[cache_key] = saved_thumb_id
+                    return saved_thumb_id
 
-                await asyncio.sleep(0.2)
+                await asyncio.sleep(0.1)
                 
-                for attempt in range(5): 
+                for attempt in range(3): 
                     try:
                         msg = await temp.BOT.send_cached_media(chat_id=BIN_CHANNEL, file_id=fid)
                         thumb_id = None
@@ -110,28 +90,22 @@ async def _get_or_fetch_thumb(fid, col_name="primary", is_retry=False):
                             thumb_id = msg.document.thumbs[0].file_id
 
                         if thumb_id:
-                            file_data = await temp.BOT.download_media(thumb_id, in_memory=True)
-                            if file_data:
-                                thumb_cache[cache_key] = thumb_id
-                                db_save_value = f"TG_ID:{thumb_id}"
-                                await target_collection.update_one({"_id": fid}, {"$set": {"thumb_url": db_save_value}})
-                                await db.add_to_delete_queue(BIN_CHANNEL, msg.id, 5)
-                                return file_data.getvalue()
+                            thumb_cache[cache_key] = thumb_id
+                            db_save_value = f"TG_ID:{thumb_id}"
+                            await target_collection.update_one({"_id": fid}, {"$set": {"thumb_url": db_save_value}})
+                            await db.add_to_delete_queue(BIN_CHANNEL, msg.id, 5)
+                            return thumb_id
                         else:
                             thumb_cache[cache_key] = "NO_THUMB"
                             await db.add_to_delete_queue(BIN_CHANNEL, msg.id, 5)
                             return "NO_THUMB"
 
                     except Exception as e:
-                        err_text = str(e)
-                        if "FLOOD_WAIT" in err_text or "420" in err_text:
-                            match = re.search(r'wait of (\d+) second', err_text)
-                            wait_time = int(match.group(1)) if match else 20
-                            await asyncio.sleep(wait_time + 2)
-                            continue 
-                        await asyncio.sleep(2)
-                        continue
-                return None
+                        if "FLOOD_WAIT" in str(e):
+                            await asyncio.sleep(5)
+                            continue
+                        break
+                return "NO_THUMB"
 
             async with thumb_semaphore:
                 return await _fetch()
@@ -147,7 +121,6 @@ async def bg_prefetch_worker(tg_id, q, col, mode, prefetch_offset, lim):
         if cache_key in PREFETCH_CACHE:
             return
 
-        # अनयूज़्ड 'total_v' और 'act_src' को क्लीन करके '_' असाइन किया
         docs, next_off, _, _ = await get_search_results(
             q, lim, offset=prefetch_offset, collection_type=col, bypass_count=True
         )
@@ -162,7 +135,7 @@ async def bg_prefetch_worker(tg_id, q, col, mode, prefetch_offset, lim):
             if mode != "none":
                 warmup_docs = docs if tg_id in ADMINS else docs[:5]
                 for doc in warmup_docs:
-                    asyncio.create_task(_get_or_fetch_thumb(doc["_id"], col_name=doc.get("source_col", "primary")))
+                    asyncio.create_task(_get_or_fetch_thumb_url(doc["_id"], col_name=doc.get("source_col", "primary")))
                     
     except Exception as e:
         logger.error(f"❌ Prefetch worker execution failed: {e}")
@@ -251,7 +224,6 @@ async def api_search(req):
         logger.info(f"⚡ [PREFETCH HIT] Serving Page Pipeline directly from Cache.")
 
     if not all_m:
-        # अनयूज़्ड 'total_v' और 'act_src' को क्लीन करके '_' असाइन किया
         all_m, next_offset, _, _ = await get_search_results(
             q, lim, offset=off, collection_type=col, bypass_count=True
         )
@@ -307,7 +279,7 @@ async def api_search(req):
     })
 
 # ─────────────────────────────────────────────────────────
-# 📸 THUMBNAIL API 
+# 📸 HIGH-SPEED THUMBNAIL REDIRECT STREAMER (No RAM Download)
 # ─────────────────────────────────────────────────────────
 @search_routes.get("/api/thumb")
 async def get_telegram_thumb(req):
@@ -316,16 +288,13 @@ async def get_telegram_thumb(req):
     is_retry = req.query.get("retry", "false").lower() == "true"
     if not fid: return web.Response(status=400)
 
-    headers = {
-        "Content-Disposition": 'inline; filename="poster.jpg"',
-        "Cache-Control": "max-age=86400"
-    }
-    
-    res = await _get_or_fetch_thumb(fid, col_name=col_name, is_retry=is_retry)
-    if res == "NO_THUMB" or res is None:
-        return web.Response(status=404 if res == "NO_THUMB" else 429)
+    t_id = await _get_or_fetch_thumb_url(fid, col_name=col_name, is_retry=is_retry)
+    if t_id == "NO_THUMB" or t_id is None:
+        return web.Response(status=404)
         
-    return web.Response(body=res, content_type="image/jpeg", headers=headers)
+    # ⚡ SPEED UPGRADE: सीधे टेलीग्राम के सुपरफास्ट CDN लिंक पर 302 रीडायरेक्ट!
+    tg_cdn_url = f"https://api.telegram.org/file/bot{BOT_TOKEN}/{t_id}"
+    return web.HTTPFound(tg_cdn_url)
 
 # ─────────────────────────────────────────────────────────
 # 🎥 STREAM SETUP PIPELINE
@@ -422,7 +391,7 @@ async def api_upload_thumb(req):
             msg = await temp.BOT.send_photo(chat_id=BIN_CHANNEL, photo=img_buffer)
         if not msg or not msg.photo: return web.json_response({"error": "Telegram Node failed!"}, status=500)
         
-        # ✅ FIX: टूटे हुए try ब्लॉक को पूरी तरह से रिकवर करके सिंक्रनाइज कर दिया गया है
+        # ✅ FIX SUCCESSFULLY SATISFIED: कंपाइल एरर को पूरी तरह फिक्स कर दिया गया है
         try: 
             new_thumb_id = msg.photo.sizes[-1].file_id if hasattr(msg.photo, "sizes") and msg.photo.sizes else msg.photo.file_id
         except Exception: 
