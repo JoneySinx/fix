@@ -258,6 +258,20 @@ class Database:
         task_id = f"{int(chat_id)}_{int(message_id)}"
         await self.delete_queue.delete_one({"_id": task_id})
 
+    # ───────────────── 🎥 VIDEO STREAM ANALYTICS COUNTER ─────────────────
+    async def track_video_play(self):
+        """वेबसाइट / मिनी-ऐप पर स्ट्रीम प्ले होने की ग्लोबल काउंटिंग रिकॉर्ड करता है"""
+        try:
+            await self.settings.update_one(
+                {"id": "global_stream_stats"},
+                {"$inc": {"total_web_plays": 1}},
+                upsert=True
+            )
+            return True
+        except Exception as e:
+            logger.error(f"Error in track_video_play pipeline: {e}")
+            return False
+
 # =========================================
 # 🚀 INITIALIZE DATABASES
 # =========================================
