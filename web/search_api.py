@@ -13,7 +13,7 @@ from aiohttp import web
 
 # कस्टमाइज्ड कोर यूटिल्स और कन्फर्म कंट्रोल्स इम्पोर्ट्स
 from utils import temp, get_size, is_rate_limited, is_premium
-# ✅ SCREENSHOT FIX: 'USE_CAPTION_FILTER' इम्पोर्ट सिंक किया गया ताकि NameError न आए
+# info.py से आवश्यक वेरिएबल्स इम्पोर्ट सिंक किए गए
 from info import BIN_CHANNEL, ADMINS, BOT_TOKEN, MAX_WEB_RESULTS, MAX_THUMB_CACHE, IS_PREMIUM, USE_CAPTION_FILTER
 from database.ia_filterdb import COLLECTIONS, get_search_results
 from database.users_chats_db import db
@@ -29,7 +29,7 @@ MAX_CACHE = MAX_THUMB_CACHE
 thumb_cache = OrderedDict()
 thumb_semaphore = asyncio.Semaphore(5) 
 
-# डुप्लीकेट थंबनेल फेच रेस कंडीशन को रोकने के लिए लॉक रजिस्ट्री
+# डुप्लीकेट थंबनेल फेच रेस कंडीशन को रोकने के लिए锁 रजिस्ट्री
 thumb_locks = {}
 
 # इन-मेमोरी सर्च कैशे को अनकैप्ड बढ़ने से रोकने के लिए True LRU बाउंडेड कैशे
@@ -147,7 +147,7 @@ async def bg_prefetch_worker(tg_id, q, col, mode, prefetch_offset, lim):
         if cache_key in PREFETCH_CACHE:
             return
 
-        # ✅ SCREENSHOT FIX: अनयूज़्ड 'total_v' और 'act_src' को क्लीन करके '_' असाइन किया
+        # अनयूज़्ड 'total_v' और 'act_src' को क्लीन करके '_' असाइन किया
         docs, next_off, _, _ = await get_search_results(
             q, lim, offset=prefetch_offset, collection_type=col, bypass_count=True
         )
@@ -251,7 +251,7 @@ async def api_search(req):
         logger.info(f"⚡ [PREFETCH HIT] Serving Page Pipeline directly from Cache.")
 
     if not all_m:
-        # ✅ SCREENSHOT FIX: अनयूज़्ड 'total_v' और 'act_src' को क्लीन करके '_' असाइन किया
+        # अनयूज़्ड 'total_v' और 'act_src' को क्लीन करके '_' असाइन किया
         all_m, next_offset, _, _ = await get_search_results(
             q, lim, offset=off, collection_type=col, bypass_count=True
         )
@@ -390,7 +390,6 @@ async def api_edit_name(req):
         new_name = data.get("new_name", "").strip()
         if not fid or col not in COLLECTIONS or not new_name: return web.json_response({"error": "Missing structural inputs!"}, status=400)
         
-        # ✅ SCREENSHOT FIX: मोंगो पॉलिसी कंसिस्टेंसी अलाइनमेंट गार्ड
         update_fields = {"file_name": new_name}
         if USE_CAPTION_FILTER:
             update_fields["caption"] = new_name
@@ -422,4 +421,25 @@ async def api_upload_thumb(req):
             img_buffer.name = "poster.jpg"
             msg = await temp.BOT.send_photo(chat_id=BIN_CHANNEL, photo=img_buffer)
         if not msg or not msg.photo: return web.json_response({"error": "Telegram Node failed!"}, status=500)
-        try: new_thumb_id = msg.photo.sizes
+        
+        # ✅ FIX: टूटे हुए try ब्लॉक को पूरी तरह से रिकवर करके सिंक्रनाइज कर दिया गया है
+        try: 
+            new_thumb_id = msg.photo.sizes[-1].file_id if hasattr(msg.photo, "sizes") and msg.photo.sizes else msg.photo.file_id
+        except Exception: 
+            new_thumb_id = msg.photo.file_id
+            
+        db_save_value = f"TG_ID:{new_thumb_id}"
+        await COLLECTIONS[collection_field].update_one({"_id": file_id_field}, {"$set": {"thumb_url": db_save_value}})
+        await db.add_to_delete_queue(BIN_CHANNEL, msg.id, 5)
+        return web.json_response({"success": True})
+    except Exception as e:
+        logger.error(f"❌ Upload thumb endpoint crash: {e}")
+        return web.json_response({"error": str(e)}, status=500)
+
+@search_routes.get("/miniapp")
+async def miniapp_page(req):
+    base_dir = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+    html_path = os.path.join(base_dir, "web", "miniapp.html")
+    if not os.path.exists(html_path): html_path = os.path.join(base_dir, "Web", "miniapp.html")
+    if not os.path.exists(html_path): return web.Response(text="miniapp.html page template not found.", status=404)
+    return web.FileResponse(html_path)
