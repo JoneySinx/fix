@@ -68,11 +68,21 @@ async def stats(req):
 
     # ─── 🎥 VIDEO PLAYS TRACK DATA ENGINE ───
     try:
-        # users_chats_db में बनाए गए कलेक्शन 'global_stream_stats' से कुल वीडियो प्ले फ़ेच करना
         stats_doc = await user_db.settings.find_one({"id": "global_stream_stats"}, {"total_web_plays": 1})
         total_plays = stats_doc.get("total_web_plays", 0) if stats_doc else 0
     except:
         total_plays = 0
+
+    # ─── 📈 LIVE ADAPTIVE COUNTERS PIPELINE ───
+    try: 
+        logged_in_today = await user_db.get_today_logged_in_users_count()
+    except: 
+        logged_in_today = 0
+
+    try: 
+        premium_users = await user_db.get_premium_users_count()
+    except: 
+        premium_users = 0
 
     p_tot, c_tot, a_tot = s.get('primary', 0), s.get('cloud', 0), s.get('archive', 0)
     grand_total = s.get('total', 1) or 1
@@ -129,7 +139,22 @@ async def stats(req):
     </div>
   </div>
   <div class="stats-grid-2">
-    <div class="st-card anim-card"><div class="st-card-bar" style="background:var(--muted);"></div><div class="st-label">Total System Subscribers</div><div class="st-val" data-count="{u}" data-delay="350">{u:,}</div><div class="st-sub">Active database records</div><div class="user-sub-row"><div class="user-sub-cell"><div class="user-sub-cell-lbl">Today</div><div class="user-sub-cell-val">—</div></div><div class="user-sub-cell"><div class="user-sub-cell-lbl">This Week</div><div class="user-sub-cell-val">—</div></div></div></div>
+    <div class="st-card anim-card">
+        <div class="st-card-bar" style="background:var(--muted);"></div>
+        <div class="st-label">Total System Subscribers</div>
+        <div class="st-val" data-count="{u}" data-delay="350">{u:,}</div>
+        <div class="st-sub">Active database records</div>
+        <div class="user-sub-row">
+            <div class="user-sub-cell">
+                <div class="user-sub-cell-lbl">Logged In Today</div>
+                <div class="user-sub-cell-val" style="color:#00d2c4;" data-count="{logged_in_today}" data-delay="380">{logged_in_today}</div>
+            </div>
+            <div class="user-sub-cell">
+                <div class="user-sub-cell-lbl">Premium Users</div>
+                <div class="user-sub-cell-val" style="color:#ff9933;" data-count="{premium_users}" data-delay="400">{premium_users}</div>
+            </div>
+        </div>
+    </div>
   </div>
   <div class="telemetry-title anim-card">💻 Server Core Telemetry Diagnostics</div>
   <div class="telemetry-grid">
