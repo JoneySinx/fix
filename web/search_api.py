@@ -10,10 +10,10 @@ import logging
 import urllib.parse
 from collections import OrderedDict
 from aiohttp import web
+import aiohttp
 
 # कस्टमाइज्ड कोर यूटिल्स और कन्फर्म कंट्रोल्स इम्पोर्ट्स
 from utils import temp, get_size, is_rate_limited, is_premium
-# info.py से आवश्यक वेरिएबल्स इम्पोर्ट सिंक किए गए
 from info import BIN_CHANNEL, ADMINS, BOT_TOKEN, MAX_WEB_RESULTS, MAX_THUMB_CACHE, IS_PREMIUM, USE_CAPTION_FILTER
 from database.ia_filterdb import COLLECTIONS, get_search_results
 from database.users_chats_db import db
@@ -27,21 +27,21 @@ search_routes = web.RouteTableDef()
 # ─────────────────────────────────────────────────────────
 MAX_CACHE = MAX_THUMB_CACHE             
 thumb_cache = OrderedDict()
-thumb_semaphore = asyncio.Semaphore(10) # कंकरेंसी लिमिट बढ़ाकर १० कर दी गई है
+thumb_semaphore = asyncio.Semaphore(10) 
 
 # डुप्लीकेट थंबनेल फेच रेस कंडीशन को रोकने के लिए लॉक रजिस्ट्री
 thumb_locks = {}
 
 # इन-मेमोरी सर्च कैशे को अनकैप्ड बढ़ने से रोकने के लिए True LRU बाउंडेड कैशे
-PREFETCH_CACHE = OrderedDict()  # {'user_id_query_col_mode_offset': (docs, next_offset)}
-TRENDING_CACHE = OrderedDict()  # {'col_mode_query': {'data': [...], 'next_offset': '...', 'expiry': timestamp}}
+PREFETCH_CACHE = OrderedDict()  
+TRENDING_CACHE = OrderedDict()  
 TRENDING_CACHE_TTL = 300  
 
 # ─────────────────────────────────────────────────────────
 # 📸 SPEED OPTIMIZED THUMBNAIL ENGINE (Direct ID Fetcher)
 # ─────────────────────────────────────────────────────────
 async def _get_or_fetch_thumb_url(fid, col_name="primary", is_retry=False):
-    """कलेक्शन स्पेसिफिक कंपोजिट की के आधार पर थंबनेल आईडी रैम में सेव रखकर डायरेक्ट टेलीग्राम यूआरएल के लिए आईडी टोकन देगा"""
+    """कलेक्शन स्पेसिफिक कंपोजिट की के आधार पर थंबनेल फ़ाइल पाथ टोकन निकाल कर देगा"""
     cache_key = f"{col_name}:{fid}"
 
     if is_retry and cache_key in thumb_cache:
@@ -90,11 +90,15 @@ async def _get_or_fetch_thumb_url(fid, col_name="primary", is_retry=False):
                             thumb_id = msg.document.thumbs[0].file_id
 
                         if thumb_id:
-                            thumb_cache[cache_key] = thumb_id
-                            db_save_value = f"TG_ID:{thumb_id}"
+                            # टेलीग्राम नोड से सीधे सर्वर फ़ाइल पाथ स्ट्रिंग निकालें
+                            file_info = await temp.BOT.get_file(thumb_id)
+                            file_path = file_info.file_path
+                            
+                            thumb_cache[cache_key] = file_path
+                            db_save_value = f"TG_ID:{file_path}"
                             await target_collection.update_one({"_id": fid}, {"$set": {"thumb_url": db_save_value}})
                             await db.add_to_delete_queue(BIN_CHANNEL, msg.id, 5)
-                            return thumb_id
+                            return file_path
                         else:
                             thumb_cache[cache_key] = "NO_THUMB"
                             await db.add_to_delete_queue(BIN_CHANNEL, msg.id, 5)
@@ -113,7 +117,7 @@ async def _get_or_fetch_thumb_url(fid, col_name="primary", is_retry=False):
         thumb_locks.pop(cache_key, None)
 
 # ─────────────────────────────────────────────────────────
-# 🔄 BACKGROUND PRE-FETCH WORKER (Controlled Warmup Load)
+# 🔄 BACKGROUND PRE-FETCH WORKER
 # ─────────────────────────────────────────────────────────
 async def bg_prefetch_worker(tg_id, q, col, mode, prefetch_offset, lim):
     try:
@@ -131,7 +135,6 @@ async def bg_prefetch_worker(tg_id, q, col, mode, prefetch_offset, lim):
                 PREFETCH_CACHE.popitem(last=False)
                 
             logger.info(f"🔮 [PREFETCH ENGINE] Background loaded {len(docs)} results.")
-            
             if mode != "none":
                 warmup_docs = docs if tg_id in ADMINS else docs[:5]
                 for doc in warmup_docs:
@@ -203,8 +206,6 @@ async def api_search(req):
         now_ts = time.time()
         if trend_key in TRENDING_CACHE and TRENDING_CACHE[trend_key]["expiry"] > now_ts:
             cached = TRENDING_CACHE[trend_key]
-            logger.info(f"🔥 [TRENDING RAM HIT] Serving payload for: {q}")
-            
             if cached["next_offset"]:
                 asyncio.create_task(bg_prefetch_worker(tg_id, q, col, mode, cached["next_offset"], lim))
                 
@@ -221,7 +222,6 @@ async def api_search(req):
 
     if current_cache_key in PREFETCH_CACHE:
         all_m, next_offset = PREFETCH_CACHE.pop(current_cache_key) 
-        logger.info(f"⚡ [PREFETCH HIT] Serving Page Pipeline directly from Cache.")
 
     if not all_m:
         all_m, next_offset, _, _ = await get_search_results(
@@ -229,7 +229,6 @@ async def api_search(req):
         )
 
     has_more = bool(next_offset)
-    
     if has_more:
         asyncio.create_task(bg_prefetch_worker(tg_id, q, col, mode, next_offset, lim))
 
@@ -279,7 +278,7 @@ async def api_search(req):
     })
 
 # ─────────────────────────────────────────────────────────
-# 📸 HIGH-SPEED THUMBNAIL REDIRECT STREAMER (No RAM Download)
+# 📸 ULTRA-FAST CHUNKED STREAMER ENGINE (Anti-Blackout Fix)
 # ─────────────────────────────────────────────────────────
 @search_routes.get("/api/thumb")
 async def get_telegram_thumb(req):
@@ -288,13 +287,35 @@ async def get_telegram_thumb(req):
     is_retry = req.query.get("retry", "false").lower() == "true"
     if not fid: return web.Response(status=400)
 
-    t_id = await _get_or_fetch_thumb_url(fid, col_name=col_name, is_retry=is_retry)
-    if t_id == "NO_THUMB" or t_id is None:
+    t_path = await _get_or_fetch_thumb_url(fid, col_name=col_name, is_retry=is_retry)
+    if t_path == "NO_THUMB" or t_path is None:
         return web.Response(status=404)
-        
-    # ⚡ SPEED UPGRADE: सीधे टेलीग्राम के सुपरफास्ट CDN लिंक पर 302 रीडायरेक्ट!
-    tg_cdn_url = f"https://api.telegram.org/file/bot{BOT_TOKEN}/{t_id}"
-    return web.HTTPFound(tg_cdn_url)
+
+    # ✅ CORS और रिमोट पॉलिसी ब्लॉकिंग से बचने के लिए सर्वर-साइड री-स्ट्रीमिंग इंजन
+    # डाउनलोड लिंक को पूरी तरह रैम में होल्ड करने के बजाय १00% चंक्स में क्लाइंट को पास करेंगे
+    tg_url = f"https://api.telegram.org/file/bot{BOT_TOKEN}/{t_path}"
+    
+    try:
+        async with aiohttp.ClientSession() as session:
+            async with session.get(tg_url) as resp:
+                if resp.status != 200:
+                    return web.Response(status=resp.status)
+                
+                response = web.StreamResponse(status=200, reason='OK', headers={
+                    "Content-Type": "image/jpeg",
+                    "Cache-Control": "max-age=86400",
+                    "Content-Disposition": 'inline; filename="poster.jpg"'
+                })
+                await response.prepare(req)
+                
+                # चंक बाय चंक ट्रांसफर इंजन (Zero Memory Footprint)
+                async for chunk in resp.content.iter_chunked(16384):
+                    await response.write(chunk)
+                await response.write_eof()
+                return response
+    except Exception as e:
+        logger.error(f"Error streaming thumb bytes: {e}")
+        return web.Response(status=500)
 
 # ─────────────────────────────────────────────────────────
 # 🎥 STREAM SETUP PIPELINE
@@ -338,12 +359,12 @@ async def setup_stream_post(req):
 @search_routes.post("/api/delete")
 async def api_delete(req):
     role, _ = await get_user_role(req)
-    if role != "admin": return web.json_response({"error": "Core Admin Authorization Required!"}, status=403)
+    if role != "admin": return web.json_response({"error": "Core Admin Required!"}, status=403)
     try:
         data = await req.json()
         fid = data.get("file_id")
         col = data.get("collection", "primary").lower()
-        if col not in COLLECTIONS: return web.json_response({"error": "Invalid target collection!"}, status=400)
+        if col not in COLLECTIONS: return web.json_response({"error": "Invalid collection!"}, status=400)
         res = await COLLECTIONS[col].delete_one({"_id": fid})
         return web.json_response({"success": bool(res.deleted_count)})
     except Exception as e: return web.json_response({"error": str(e)}, status=500)
@@ -351,7 +372,7 @@ async def api_delete(req):
 @search_routes.post("/api/edit_name")
 async def api_edit_name(req):
     role, _ = await get_user_role(req)
-    if role != "admin": return web.json_response({"error": "Core Admin Authorization Required!"}, status=403)
+    if role != "admin": return web.json_response({"error": "Core Admin Required!"}, status=403)
     try:
         data = await req.json()
         fid = data.get("file_id")
@@ -373,7 +394,7 @@ async def api_edit_name(req):
 @search_routes.post("/api/upload_thumb")
 async def api_upload_thumb(req):
     role, _ = await get_user_role(req)
-    if role != "admin": return web.json_response({"error": "Core Admin Authorization Required!"}, status=403)
+    if role != "admin": return web.json_response({"error": "Core Admin Required!"}, status=403)
     try:
         reader = await req.multipart()
         file_id_field, collection_field, image_bytes = None, None, None
@@ -391,13 +412,15 @@ async def api_upload_thumb(req):
             msg = await temp.BOT.send_photo(chat_id=BIN_CHANNEL, photo=img_buffer)
         if not msg or not msg.photo: return web.json_response({"error": "Telegram Node failed!"}, status=500)
         
-        # ✅ FIX SUCCESSFULLY SATISFIED: कंपाइल एरर को पूरी तरह फिक्स कर दिया गया है
         try: 
             new_thumb_id = msg.photo.sizes[-1].file_id if hasattr(msg.photo, "sizes") and msg.photo.sizes else msg.photo.file_id
         except Exception: 
             new_thumb_id = msg.photo.file_id
             
-        db_save_value = f"TG_ID:{new_thumb_id}"
+        file_info = await temp.BOT.get_file(new_thumb_id)
+        file_path = file_info.file_path
+        
+        db_save_value = f"TG_ID:{file_path}"
         await COLLECTIONS[collection_field].update_one({"_id": file_id_field}, {"$set": {"thumb_url": db_save_value}})
         await db.add_to_delete_queue(BIN_CHANNEL, msg.id, 5)
         return web.json_response({"success": True})
@@ -410,5 +433,5 @@ async def miniapp_page(req):
     base_dir = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
     html_path = os.path.join(base_dir, "web", "miniapp.html")
     if not os.path.exists(html_path): html_path = os.path.join(base_dir, "Web", "miniapp.html")
-    if not os.path.exists(html_path): return web.Response(text="miniapp.html page template not found.", status=404)
+    if not os.path.exists(html_path): return web.Response(text="miniapp.html template not found.", status=404)
     return web.FileResponse(html_path)
