@@ -14,7 +14,7 @@ from aiohttp import web
 # कस्टमाइज्ड कोर यूटिल्स और कन्फर्म कंट्रोल्स इम्पोर्ट्स
 from utils import temp, get_size, is_rate_limited, is_premium
 from info import BIN_CHANNEL, ADMINS, BOT_TOKEN, MAX_WEB_RESULTS, MAX_THUMB_CACHE, IS_PREMIUM
-from database.ia_filterdb import COLLECTIONS
+from database.ia_filterdb import COLLECTIONS, get_search_results
 from database.users_chats_db import db
 
 logger = logging.getLogger(__name__)
@@ -25,26 +25,24 @@ search_routes = web.RouteTableDef()
 # 📸 TRUE LRU THUMBNAIL STORAGE & CONCURRENCY SYSTEM
 # ─────────────────────────────────────────────────────────
 MAX_CACHE = MAX_THUMB_CACHE             
-# ✅ SCREENSHOT FIX 2: सच्चे साइज-बेस्ड LRU कैशे के लिए OrderedDict का उपयोग
 thumb_cache = OrderedDict()
 thumb_semaphore = asyncio.Semaphore(5) 
 
-# ✅ SCREENSHOT FIX 1: डुप्लीकेट थंबनेल फेच रेस कंडीशन को रोकने के लिए लॉक रजिस्ट्री
+# डुप्लीकेट थंबनेल फेच रेस रोकने के लिए सेंट्रलाइज्ड लॉक रजिस्ट्री
 thumb_locks = {}
 
-# ✅ SCREENSHOT FIX 2: इन-मेमोरी सर्च कैशे को अनकैप्ड बढ़ने से रोकने के लिए True LRU बाउंडेड कैशे
-PREFETCH_CACHE = OrderedDict()  # {'user_id_query_col_mode_offset': [...]}
-TRENDING_CACHE = OrderedDict()  # {'col_mode_query': {'data': [...], 'next_offset': '...', 'expiry': timestamp}}
+# GLOBAL PRE-FETCH ENGINE CACHE
+PREFETCH_CACHE = OrderedDict()  
+TRENDING_CACHE = OrderedDict()  
 TRENDING_CACHE_TTL = 300  
 
-# ✅ SCREENSHOT FIX: २-अक्षर के महत्वपूर्ण शॉर्ट क्वालिटी कीवर्ड्स की व्हाइटलिस्ट सुरक्षा दीवार
+# शॉर्ट कीवर्ड्स व्हाइटलिस्ट पूल (मोंगोडीबी सुरक्षा कवच)
 ALLOWED_SHORT = {"hd", "4k", "3d", "8k", "5.1", "7.1", "kg", "rr", "uhd", "hevc", "x265", "x264"}
 
 def _build_web_regex(query: str):
     query = query.strip()
     q_lower = query.lower()
     
-    # यदि सर्च टर्म १ अक्षर का है या २ अक्षर का होकर व्हाइटलिस्ट में नहीं है, तो COLLSCAN रोकने के लिए बायपास करें
     if len(query) < 2 or (len(query) == 2 and q_lower not in ALLOWED_SHORT):
         return None
         
@@ -55,7 +53,7 @@ def _build_web_regex(query: str):
     return re.compile(raw, flags=re.IGNORECASE)
 
 # ─────────────────────────────────────────────────────────
-# 📸 CORE THUMBNAIL ENGINE (True LRU String ID Storage)
+# 📸 CORE THUMBNAIL ENGINE (Pristine Database Lock)
 # ─────────────────────────────────────────────────────────
 async def _get_or_fetch_thumb(fid, col_name="primary", is_retry=False):
     """कलेक्शन स्पेसिफिक कंपोजिट की के आधार पर थंबनेल आईडी रैम में सेव रखकर ऑन-डिमांड बाइट्स डिलीवर करेगा"""
@@ -65,25 +63,22 @@ async def _get_or_fetch_thumb(fid, col_name="primary", is_retry=False):
         if thumb_cache[cache_key] == "NO_THUMB": 
             thumb_cache.pop(cache_key, None)
 
-    # True LRU: हिट होने पर की को कतार के अंत (सबसे नया) में ट्रांसफर करें
+    # True LRU: हिट होने पर की को कतार के अंत में ट्रांसफर करें
     if cache_key in thumb_cache:
         thumb_cache.move_to_end(cache_key)
         cached_val = thumb_cache[cache_key]
         if cached_val == "NO_THUMB":
             return "NO_THUMB"
         try:
-            # रैम में पूरी इमेज रखने के बजाय ऑन-डिमांड टेलीग्राम नोड से डाउनलोड (Zero RAM Pressure)
             file_data = await temp.BOT.download_media(cached_val, in_memory=True)
             return file_data.getvalue() if file_data else None
         except Exception:
             return None
 
-    # Concurrency Race Shield Lock
     lock = thumb_locks.setdefault(cache_key, asyncio.Lock())
     
     try:
         async with lock:
-            # डबल-चेक लॉक बैरियर गेटवे
             if cache_key in thumb_cache:
                 cached_val = thumb_cache[cache_key]
                 if cached_val == "NO_THUMB": return "NO_THUMB"
@@ -93,7 +88,6 @@ async def _get_or_fetch_thumb(fid, col_name="primary", is_retry=False):
                 except Exception: return None
 
             async def _fetch():
-                # True LRU Cleanup Strategy: कैशे फुल होने पर कतार से केवल 25% सबसे पुरानी अप्रयुक्त कीज़ पॉप करें
                 if len(thumb_cache) >= MAX_CACHE:
                     for _ in range(max(1, MAX_CACHE // 4)):
                         if thumb_cache:
@@ -113,7 +107,6 @@ async def _get_or_fetch_thumb(fid, col_name="primary", is_retry=False):
                     try:
                         file_data = await temp.BOT.download_media(saved_thumb_id, in_memory=True)
                         if file_data:
-                            # ✅ KOYEB FREE FIX: रैम में इमेज बाइट्स के बजाय केवल स्ट्रिंग टेलीग्राम आईडी स्टोर करें!
                             thumb_cache[cache_key] = saved_thumb_id
                             return file_data.getvalue()
                     except Exception:
@@ -134,7 +127,6 @@ async def _get_or_fetch_thumb(fid, col_name="primary", is_retry=False):
                         if thumb_id:
                             file_data = await temp.BOT.download_media(thumb_id, in_memory=True)
                             if file_data:
-                                # ✅ KOYEB FREE FIX: केवल स्ट्रिंग आईडी कैशे में लॉक
                                 thumb_cache[cache_key] = thumb_id
                                 db_save_value = f"TG_ID:{thumb_id}"
                                 await target_collection.update_one({"_id": fid}, {"$set": {"thumb_url": db_save_value}})
@@ -156,7 +148,6 @@ async def _get_or_fetch_thumb(fid, col_name="primary", is_retry=False):
                         continue
                 return None
 
-            # ✅ SCREENSHOT FIX 1: अनपेक्षित एक्सेप्शन आने पर भी लॉक को कतार से उड़ाने के लिए स्ट्रिक्ट Try-Finally सुरक्षा घेरा
             async with thumb_semaphore:
                 return await _fetch()
     finally:
@@ -166,106 +157,27 @@ async def _get_or_fetch_thumb(fid, col_name="primary", is_retry=False):
 # 🔄 BACKGROUND PRE-FETCH WORKER (Controlled Warmup Load)
 # ─────────────────────────────────────────────────────────
 async def bg_prefetch_worker(tg_id, q, col, mode, prefetch_offset, lim):
-    """यह वर्कर बैकग्राउंड में चुपचाप अगले पेज का डेटा और थंबनेल्स दोनों रैम में लॉक कर देगा"""
     try:
         cache_key = f"{tg_id}_{q}_{col}_{mode}_{prefetch_offset}"
         if cache_key in PREFETCH_CACHE:
             return
 
-        clean_query = q.replace('"', '').replace("'", "")
-        strict_query = " ".join(f'"{word}"' for word in clean_query.split()) if clean_query.split() else ""
+        docs, next_off, total, act_src = await get_search_results(
+            q, lim, offset=prefetch_offset, collection_type=col, bypass_count=True
+        )
 
-        tgt_cols = {col: COLLECTIONS[col]} if col in COLLECTIONS else COLLECTIONS
-        bg_docs = []
-        remaining_skip = prefetch_offset
-
-        for n, c in tgt_cols.items():
-            if len(bg_docs) >= lim: 
-                break
-            local_limit = lim - len(bg_docs)
-            docs = []
-            
-            if strict_query:
-                if mode == "none":
-                    projection = {"_id": 1, "file_name": 1, "file_size": 1, "file_type": 1, "score": {"$meta": "textScore"}}
-                else:
-                    projection = {"_id": 1, "file_name": 1, "file_size": 1, "file_type": 1, "file_ref": 1, "thumb_url": 1, "score": {"$meta": "textScore"}}
-                flt_text = {"$text": {"$search": strict_query}}
-                try:
-                    docs = await c.find(flt_text, projection).sort([("score", {"$meta": "textScore"})]).skip(remaining_skip).limit(local_limit).to_list(length=local_limit)
-                except Exception: 
-                    pass
-            
-            # यदि कीवर्ड १ या २ अक्षर का होकर व्हाइटलिस्ट में नहीं है तो रेगेक्स क्लस्टर स्कैन को पूरी तरह बायपास करें
-            if not docs:
-                reg_comp = _build_web_regex(q)
-                if reg_comp:
-                    try:
-                        flt_regex = {"file_name": reg_comp}
-                        reg_proj = {"_id": 1, "file_name": 1, "file_size": 1, "file_type": 1} if mode == "none" else {"_id": 1, "file_name": 1, "file_size": 1, "file_type": 1, "file_ref": 1, "thumb_url": 1}
-                        docs = await c.find(flt_regex, reg_proj).sort("_id", -1).skip(remaining_skip).limit(local_limit).to_list(length=local_limit)
-                    except Exception:
-                        pass
-                
-            if docs:
-                for d in docs: 
-                    d["source_col"] = n.lower()
-                bg_docs.extend(docs)
-                remaining_skip = max(0, remaining_skip - len(docs))
-
-        if bg_docs:
-            PREFETCH_CACHE[cache_key] = bg_docs
-            # बाउंडेड कैशे लिमिट कंट्रोल फॉर प्री-फ़ेच कंटेनर
+        if docs:
+            PREFETCH_CACHE[cache_key] = docs
             if len(PREFETCH_CACHE) > 100:
                 PREFETCH_CACHE.popitem(last=False)
                 
-            logger.info(f"🔮 [PREFETCH ENGINE] Background loaded {len(bg_docs)} results.")
-            
             if mode != "none":
-                # एडमिन को फुल गति (21), सामान्य यूज़र्स के लिए कंट्रोल्ड सुरक्षित लोड (सिर्फ टॉप 5 थंबनेल्स)
-                warmup_docs = bg_docs if tg_id in ADMINS else bg_docs[:5]
+                warmup_docs = docs if tg_id in ADMINS else docs[:5]
                 for doc in warmup_docs:
                     asyncio.create_task(_get_or_fetch_thumb(doc["_id"], col_name=doc.get("source_col", "primary")))
                     
     except Exception as e:
         logger.error(f"❌ Prefetch worker execution failed: {e}")
-
-# ─────────────────────────────────────────────────────────
-# 🔒 STRICT SECURITY: Telegram initData HMAC Verification
-# ─────────────────────────────────────────────────────────
-def verify_telegram_init_data(init_data: str) -> dict | None:
-    try:
-        parsed = dict(urllib.parse.parse_qsl(init_data, keep_blank_values=True))
-        received_hash = parsed.pop("hash", None)
-        if not received_hash: return None
-        data_check_string = "\n".join(f"{k}={v}" for k, v in sorted(parsed.items()))
-        secret_key = hmac.new(b"WebAppData", BOT_TOKEN.encode(), hashlib.sha256).digest()
-        expected_hash = hmac.new(secret_key, data_check_string.encode(), hashlib.sha256).hexdigest()
-        if not hmac.compare_digest(expected_hash, received_hash): return None
-        user_str = parsed.get("user", "{}")
-        return json.loads(user_str)
-    except Exception: return None
-
-async def get_user_role(req):
-    init_data = req.headers.get("X-Telegram-Init-Data", "").strip()
-    if init_data:
-        user = verify_telegram_init_data(init_data)
-        if user:
-            tg_id = int(user.get("id", 0))
-            if tg_id:
-                if tg_id in ADMINS: return "admin", tg_id
-                if await is_premium(tg_id): return "user", tg_id
-                if not IS_PREMIUM: return "user", tg_id
-        return None, None
-        
-    s_user = req.cookies.get("user_session")
-    if s_user and hasattr(temp, "USER_SESSIONS"):
-        session = temp.USER_SESSIONS.get(s_user, {})
-        if session.get("expiry", 0) > time.time():
-            tg_id = session["tg_id"]
-            if tg_id in ADMINS: return "admin", tg_id
-            if await is_premium(tg_id): return "user", tg_id
-    return None, None
 
 # ─────────────────────────────────────────────────────────
 # 🔍 SEARCH API — Smart Pre-fetch Grid Engine
@@ -293,7 +205,6 @@ async def api_search(req):
         now_ts = time.time()
         if trend_key in TRENDING_CACHE and TRENDING_CACHE[trend_key]["expiry"] > now_ts:
             cached = TRENDING_CACHE[trend_key]
-            logger.info(f"🔥 [TRENDING RAM HIT] Serving payload for: {q}")
             
             if cached["next_offset"]:
                 asyncio.create_task(bg_prefetch_worker(tg_id, q, col, mode, cached["next_offset"], lim))
@@ -310,48 +221,11 @@ async def api_search(req):
 
     if current_cache_key in PREFETCH_CACHE:
         all_m = PREFETCH_CACHE.pop(current_cache_key) 
-        logger.info(f"⚡ [PREFETCH HIT] Serving Page Pipeline directly from Cache.")
 
     if not all_m:
-        clean_query = q.replace('"', '').replace("'", "")
-        strict_query = " ".join(f'"{word}"' for word in clean_query.split()) if clean_query.split() else ""
-
-        tgt_cols = {col: COLLECTIONS[col]} if col in COLLECTIONS else COLLECTIONS
-        remaining_skip = off
-
-        for n, c in tgt_cols.items():
-            if len(all_m) >= lim: 
-                break
-            
-            local_limit = lim - len(all_m)
-            docs = []
-            
-            if strict_query:
-                if mode == "none":
-                    projection = {"_id": 1, "file_name": 1, "file_size": 1, "file_type": 1, "score": {"$meta": "textScore"}}
-                else:
-                    projection = {"_id": 1, "file_name": 1, "file_size": 1, "file_type": 1, "file_ref": 1, "thumb_url": 1, "score": {"$meta": "textScore"}}
-                flt_text = {"$text": {"$search": strict_query}}
-                try:
-                    docs = await c.find(flt_text, projection).sort([("score", {"$meta": "textScore"})]).skip(remaining_skip).limit(local_limit).to_list(length=local_limit)
-                except Exception: 
-                    pass
-            
-            # व्हाइटीलिस्ट कीवर्ड्स गार्ड के साथ ही फॉलबैक एक्सीक्यूशन ट्रिगर करें
-            if not docs:
-                reg_comp = _build_web_regex(q)
-                if reg_comp:
-                    try:
-                        flt_regex = {"file_name": reg_comp}
-                        reg_proj = {"_id": 1, "file_name": 1, "file_size": 1, "file_type": 1} if mode == "none" else {"_id": 1, "file_name": 1, "file_size": 1, "file_type": 1, "file_ref": 1, "thumb_url": 1}
-                        docs = await c.find(flt_regex, reg_proj).sort("_id", -1).skip(remaining_skip).limit(local_limit).to_list(length=local_limit)
-                    except Exception:
-                        pass
-                
-            if docs:
-                for d in docs: d["source_col"] = n.lower()
-                all_m.extend(docs)
-                remaining_skip = max(0, remaining_skip - len(docs))
+        all_m, next_offset, total_v, source_col_v = await get_search_results(
+            q, lim, offset=off, collection_type=col, bypass_count=True
+        )
 
     has_more = len(all_m) == lim
     next_offset = off + lim if has_more else ""
@@ -394,7 +268,6 @@ async def api_search(req):
             "next_offset": next_offset,
             "expiry": time.time() + TRENDING_CACHE_TTL
         }
-        # बाउंडेड कैशे लिमिट कंट्रोल फॉर ट्रेंडिंग कंटेनर
         if len(TRENDING_CACHE) > 100:
             TRENDING_CACHE.popitem(last=False)
 
@@ -404,27 +277,6 @@ async def api_search(req):
         "next_offset": next_offset,
         "is_admin": role == "admin",
     })
-
-# ─────────────────────────────────────────────────────────
-# 📸 THUMBNAIL API 
-# ─────────────────────────────────────────────────────────
-@search_routes.get("/api/thumb")
-async def get_telegram_thumb(req):
-    fid = req.query.get("file_id")
-    col_name = req.query.get("col", "primary").lower() 
-    is_retry = req.query.get("retry", "false").lower() == "true"
-    if not fid: return web.Response(status=400)
-
-    headers = {
-        "Content-Disposition": 'inline; filename="poster.jpg"',
-        "Cache-Control": "max-age=86400"
-    }
-    
-    res = await _get_or_fetch_thumb(fid, col_name=col_name, is_retry=is_retry)
-    if res == "NO_THUMB" or res is None:
-        return web.Response(status=404 if res == "NO_THUMB" else 429)
-        
-    return web.Response(body=res, content_type="image/jpeg", headers=headers)
 
 # ─────────────────────────────────────────────────────────
 # 🎥 STREAM SETUP PIPELINE
