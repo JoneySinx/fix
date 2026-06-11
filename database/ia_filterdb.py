@@ -14,9 +14,9 @@ logger = logging.getLogger(__name__)
 # ─────────────────────────────────────────────────────────
 client = motor.motor_asyncio.AsyncIOMotorClient(
     DATABASE_URL,
-    maxPoolSize=15,             # हैवी प्रीमियम ट्रैफिक के लिए पर्याप्त कनेक्शंस
-    minPoolSize=0,              # आइडल टाइम पर 0 कनेक्शन (कोएब की रैम 100% सुरक्षित)
-    maxIdleTimeMS=30000,        # 30 सेकंड तक शांत रहने पर सॉकेट्स बंद करें
+    maxPoolSize=15,             
+    minPoolSize=0,              
+    maxIdleTimeMS=30000,        
     serverSelectionTimeoutMS=5000,
     connectTimeoutMS=10000,
     socketTimeoutMS=20000,
@@ -41,19 +41,11 @@ COLLECTIONS = {
 async def ensure_indexes():
     for name, col in COLLECTIONS.items():
         try:
-            # ✅ कम्पाउंड टेक्स्ट इंडेक्स को सुरक्षित रखा गया
             await col.create_index(
                 [("file_name", "text"), ("caption", "text")],
                 name=f"{name}_text"
             )
-            
-            # ✅ NEW UPGRADE: रेगेक्स सर्च (COLLSCAN) से बचने के लिए सिंगल-फील्ड इंडेक्स जोड़ा गया
-            await col.create_index(
-                "file_name", 
-                name=f"{name}_filename_idx"
-            )
-            
-            logger.info(f"✅ Fast Search & Regex Indexes OK: {name}")
+            logger.info(f"✅ Fast Search Index OK: {name}")
         except Exception as e:
             if "already exists" in str(e) or "IndexKeySpecsConflict" in str(e):
                 pass
@@ -160,18 +152,20 @@ async def _search(col, raw_query: str, regex, offset: int, limit: int, lang=None
     if lang:
         text_flt = {"$and": [text_flt, {"file_name": re.compile(lang, re.IGNORECASE)}]}
 
-    count = await col.count_documents(text_flt)
+    # ✅ FIX 4: भारी count_documents को पहले चलाने का बोझ खत्म! सीधे कर्सर से डेटा फेच करें।
+    cursor = col.find(text_flt, {"_id": 1, "file_name": 1, "file_size": 1, "file_type": 1, "file_ref": 1, "caption": 1, "thumb_url": 1, "score": {"$meta": "textScore"}})
+    cursor.sort([("score", {"$meta": "textScore"})])
+    cursor.skip(offset).limit(limit)
+    docs = await cursor.to_list(length=limit)
     
-    if count > 0:
-        # ✅ प्रोजेक्शन इंजन में "thumb_url" को सिंक किया गया ताकि फ़्रंटएंड इमेज कैशे बस्टर तेज़ी से लोड हो
-        cursor = col.find(text_flt, {"_id": 1, "file_name": 1, "file_size": 1, "file_type": 1, "file_ref": 1, "caption": 1, "thumb_url": 1, "score": {"$meta": "textScore"}})
-        cursor.sort([("score", {"$meta": "textScore"})])
-        cursor.skip(offset).limit(limit)
-        docs = await cursor.to_list(length=limit)
+    if docs:
         for doc in docs:
             doc["file_id"] = doc["_id"]
+        # काउंट केवल तभी करें जब डेटा मिला हो, डबल क्वेरी का बोझ खत्म
+        count = await col.count_documents(text_flt)
         return docs, count
 
+    # अगर टेक्स्ट सर्च में कुछ न मिले तभी रेगेक्स पर आएं
     if USE_CAPTION_FILTER:
         reg_flt = {"$or": [{"file_name": regex}, {"caption": regex}]}
     else:
@@ -180,14 +174,14 @@ async def _search(col, raw_query: str, regex, offset: int, limit: int, lang=None
     if lang:
         reg_flt = {"$and": [reg_flt, {"file_name": re.compile(lang, re.IGNORECASE)}]}
 
-    # ✅ यहाँ भी प्रोजेक्शन में "thumb_url" और "file_type" को प्रोजेक्ट किया गया है ताकि सर्च रिज़ल्ट्स रॉकेट स्पीड से काम करें
     cursor = col.find(reg_flt, {"_id": 1, "file_name": 1, "file_size": 1, "file_type": 1, "file_ref": 1, "caption": 1, "thumb_url": 1}).sort('_id', -1)
     cursor.skip(offset).limit(limit)
     docs = await cursor.to_list(length=limit)
     for doc in docs:
         doc["file_id"] = doc["_id"]
 
-    return docs, await col.count_documents(reg_flt)
+    count = await col.count_documents(reg_flt) if docs else 0
+    return docs, count
 
 # ─────────────────────────────────────────────────────────
 # 🌐 PUBLIC SEARCH API — Adaptive Result Sync (Bot 12 vs Web 21)
