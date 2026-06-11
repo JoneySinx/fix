@@ -1,4 +1,3 @@
-import gc
 from aiohttp import web
 from web.web_assets import build_page, get_auth, form_wrapper, MAX_WEB_RESULTS
 from database.users_chats_db import db as user_db
@@ -71,7 +70,6 @@ CARD_CSS = """
 
 /* ── Poster box ── */
 .poster-box{position:relative;padding-top:56.25%;background:var(--bg3);overflow:hidden}
-/* ✅ POINT 4 UPGRADE: इमेज पॉपिंग/फ्लिकर को रोकने के लिए ओपेसिटी ट्रांजिशन लॉक */
 .fc-poster{position:absolute;inset:0;width:100%;height:100%;object-fit:cover;opacity:0;transition:opacity 0.25s ease-in-out, transform 0.35s ease}
 .fc-poster.loaded{opacity:1}
 .file-card:hover .fc-poster{transform:scale(1.05)}
@@ -132,7 +130,7 @@ CARD_CSS = """
 """
 
 # ─────────────────────────────────────────────────────────────────────────────
-# 🎬 JS ENGINE — Rebuilt Smart Double Pre-fetching Engine Live
+# 🏠 JS ENGINE — Rebuilt Smart Double Pre-fetching Engine Live
 # ─────────────────────────────────────────────────────────────────────────────
 JS_ENGINE = """
 var curQ='',curOff=0,nextOff='',curCol='all',curPage=1;
@@ -191,7 +189,6 @@ document.querySelectorAll('.cdd-menu').forEach(function(m){
 });
 function changeCol(val){curCol=val;if(curQ)doSearch(0);}
 
-/* ✅ FIX: थंबनेल एरर होने पर इमेज छुपाएगा, लेकिन बटन्स और चिप्स को सुरक्षित रखेगा */
 function handleThumbError(fileId) {
     var img = document.getElementById('img-poster-' + fileId);
     if (img) { img.style.opacity = '0'; }
@@ -208,7 +205,6 @@ function handleThumbError(fileId) {
     }
 }
 
-/* ✅ BUG FIX: अब एडिट करने के बाद केवल विशिष्ट इमेज का 'src' बदलेगा, पूरा कार्ड री-राइट नहीं होगा! */
 async function reloadThumb(fileId) {
     var timestamp = new Date().getTime();
     var img = document.getElementById('img-poster-' + fileId);
@@ -222,7 +218,6 @@ async function reloadThumb(fileId) {
 
 function triggerRipple(btn){btn.classList.remove('ripple-go');void btn.offsetWidth;btn.classList.add('ripple-go');setTimeout(function(){btn.classList.remove('ripple-go');},460);}
 
-/* ── Admin buttons: click to show/hide ── */
 function toggleAdminBtns(card,e){
     e.stopPropagation();
     var isActive=card.classList.contains('admin-active');
@@ -267,7 +262,6 @@ async function doSearch(o){
 
             var posterHtml='';
             if(pMode!=='none'){
-                /* ✅ UPGRADE: इमेज लोड होने पर ही Fade-in ट्रिगर करने के लिए 'onload' हैंडलर बाइंड */
                 posterHtml='<div class="poster-box" id="poster-box-'+f.file_id+'" onclick="toggleAdminBtns(this.closest(\\'.file-card\\'),event)">'+
                     '<img src="'+f.tg_thumb+'" id="img-poster-'+f.file_id+'" class="fc-poster" onload="this.classList.add(\\'loaded\\')" onerror="handleThumbError(\\''+f.file_id+'\\')" loading="lazy">'+
                     '<div class="poster-top">'+
@@ -310,8 +304,9 @@ async function doSearch(o){
         document.getElementById('nBtn').disabled=!nextOff;
         document.getElementById('pgInfo').textContent='Page '+curPage;
 
-        /* ✅ Frontend silent prefetch हटाया — Backend bg_prefetch_worker पहले से यह काम करता है
-           दोनों एक साथ चलने से duplicate DB queries और RAM cache जल्दी भरती थी */
+        if(nextOff) {
+            fetch('/api/search?q='+encodeURIComponent(q)+'&offset='+nextOff+'&col='+curCol+'&mode='+pMode);
+        }
     }catch(e){showToast('Network error','error');}
 }
 
@@ -322,7 +317,6 @@ function showToast(m,t){t=t||'success';var x=document.getElementById('toast');x.
 
 document.addEventListener('DOMContentLoaded',function(){
     var q=document.getElementById('q');if(q)q.addEventListener('keydown',function(e){if(e.key==='Enter')doSearch(0);});
-    /* restore saved posterMode in custom dropdown */
     if(pMode==='none'){
         var mItems=document.querySelectorAll('#cddModeMenu .cdd-item');
         mItems.forEach(function(i){i.classList.remove('selected');if(i.dataset.val===pMode)i.classList.add('selected');});
@@ -487,7 +481,6 @@ async def logout(req):
         del temp.USER_SESSIONS[s_user]
     res = web.HTTPFound('/login')
     res.del_cookie('user_session')
-    gc.collect()
     return res
 
 
