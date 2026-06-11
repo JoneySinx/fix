@@ -130,7 +130,7 @@ CARD_CSS = """
 """
 
 # ─────────────────────────────────────────────────────────────────────────────
-# 🏠 JS ENGINE — Rebuilt Smart Double Pre-fetching Engine Live
+# 🎬 JS ENGINE — Rebuilt Smart Double Pre-fetching Engine Live
 # ─────────────────────────────────────────────────────────────────────────────
 JS_ENGINE = """
 var curQ='',curOff=0,nextOff='',curCol='all',curPage=1;
@@ -205,11 +205,11 @@ function handleThumbError(fileId) {
     }
 }
 
-async function reloadThumb(fileId) {
+async function reloadThumb(fileId, col) {
     var timestamp = new Date().getTime();
     var img = document.getElementById('img-poster-' + fileId);
     if (img) {
-        img.src = '/api/thumb?file_id=' + fileId + '&retry=true&t=' + timestamp;
+        img.src = '/api/thumb?file_id=' + fileId + '&col=' + col + '&retry=true&t=' + timestamp;
         img.classList.remove('loaded');
     }
     var errBox = document.getElementById('thumb-err-' + fileId);
@@ -342,7 +342,8 @@ function editFile(fid,col,currentName){
     document.getElementById('cropContainer').style.display='none';
     var prevBox=document.getElementById('emPreviewBox');
     prevBox.style.display='flex';
-    prevBox.innerHTML='<img src="/api/thumb?file_id='+fid+'" class="t-prev-img" onerror="this.src=\\'https://placehold.co/600x338/181818/FFF?text=No+Thumbnail\\';">';
+    // ✅ SCREENSHOT FIX: डबल कमेंट क्लीनअप सिंक सुनिश्चित किया गया
+    prevBox.innerHTML='<img src="/api/thumb?file_id='+fid+'&col='+activeCol+'" class="t-prev-img" onerror="this.src=\\'https://placehold.co/600x338/181818/FFF?text=No+Thumbnail\\';">';
     document.getElementById('editCombinedModal').classList.add('open');
 }
 
@@ -397,7 +398,7 @@ async function saveAllChanges(){
         var res=await r.json();
         if(res.success||cropperInstance){
             showToast('\\u2728 Metadata & Studio Poster saved successfully!');
-            closeCombinedModal();reloadThumb(activeFid);doSearch(curOff);
+            closeCombinedModal();reloadThumb(activeFid, activeCol);doSearch(curOff);
         }else{showToast(res.error||'Metadata save failed!','error');}
     }catch(e){showToast('Network synchronization error','error');}
     finally{btn.disabled=false;btn.innerText='Save Changes';}
