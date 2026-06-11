@@ -7,7 +7,7 @@ from utils import temp
 dashboard_routes = web.RouteTableDef()
 
 # ─────────────────────────────────────────────────────────────────────────────
-# 🎨 NEW CARD UI CSS — With Smooth Fade-In Placeholder Support
+# 🎨 NEW CARD UI CSS
 # ─────────────────────────────────────────────────────────────────────────────
 CARD_CSS = """
 <style>
@@ -71,14 +71,12 @@ CARD_CSS = """
 
 /* ── Poster box ── */
 .poster-box{position:relative;padding-top:56.25%;background:var(--bg3);overflow:hidden}
-/* ✅ POINT 4 UPGRADE: इमेज पॉपिंग/फ्लिकर को रोकने के लिए ओपेसिटी ट्रांजिशन लॉक */
-.fc-poster{position:absolute;inset:0;width:100%;height:100%;object-fit:cover;opacity:0;transition:opacity 0.25s ease-in-out, transform 0.35s ease}
-.fc-poster.loaded{opacity:1}
+.fc-poster{position:absolute;inset:0;width:100%;height:100%;object-fit:cover;transition:transform .35s ease}
 .file-card:hover .fc-poster{transform:scale(1.05)}
-.thumb-error{position:absolute;inset:0;display:flex;align-items:center;justify-content:center;background:#1f1f1f;z-index:2}
+.thumb-error{position:absolute;inset:0;display:flex;align-items:center;justify-content:center;background:#1f1f1f}
 
 /* ── Poster top row: Type · Size · Source ── */
-.poster-top{position:absolute;top:0;left:0;right:0;display:flex;align-items:center;gap:5px;padding:8px;z-index:3}
+.poster-top{position:absolute;top:0;left:0;right:0;display:flex;align-items:center;gap:5px;padding:8px}
 .type-chip{background:rgba(0,0,0,.72);backdrop-filter:blur(8px);color:#fff;border-radius:5px;padding:3px 8px;font-size:10px;font-weight:800;letter-spacing:.8px;border:1px solid rgba(255,255,255,.14);line-height:1.4}
 .size-chip{background:rgba(0,0,0,.60);backdrop-filter:blur(8px);color:#e0e0e0;border-radius:5px;padding:3px 8px;font-size:10px;font-weight:600;border:1px solid rgba(255,255,255,.08);line-height:1.4}
 .source-pill{margin-left:auto;border-radius:20px;padding:3px 8px;font-size:9px;font-weight:700;letter-spacing:.4px;display:inline-flex;align-items:center;gap:4px;backdrop-filter:blur(8px)}
@@ -91,7 +89,7 @@ CARD_CSS = """
 .archive .source-dot{background:#fb923c;box-shadow:0 0 4px #fb923c}
 
 /* ── Poster bottom row: Edit | Delete (admin only) ── */
-.poster-admin{position:absolute;bottom:0;left:0;right:0;display:flex;gap:6px;padding:7px 8px;opacity:0;transform:translateY(8px);transition:opacity .2s ease,transform .22s ease;pointer-events:none;z-index:4}
+.poster-admin{position:absolute;bottom:0;left:0;right:0;display:flex;gap:6px;padding:7px 8px;opacity:0;transform:translateY(8px);transition:opacity .2s ease,transform .22s ease;pointer-events:none}
 .file-card.admin-active .poster-admin{opacity:1;transform:translateY(0);pointer-events:all}
 /* text-only admin row */
 .text-admin-row{display:none;gap:5px;padding:5px 11px 0}
@@ -132,7 +130,7 @@ CARD_CSS = """
 """
 
 # ─────────────────────────────────────────────────────────────────────────────
-# 🎬 JS ENGINE — Rebuilt Smart Double Pre-fetching Engine Live
+# 🎬 JS ENGINE — Smart Double Pre-fetching Engine Live
 # ─────────────────────────────────────────────────────────────────────────────
 JS_ENGINE = """
 var curQ='',curOff=0,nextOff='',curCol='all',curPage=1;
@@ -191,33 +189,19 @@ document.querySelectorAll('.cdd-menu').forEach(function(m){
 });
 function changeCol(val){curCol=val;if(curQ)doSearch(0);}
 
-/* ✅ FIX: थंबनेल एरर होने पर इमेज छुपाएगा, लेकिन बटन्स और चिप्स को सुरक्षित रखेगा */
 function handleThumbError(fileId) {
-    var img = document.getElementById('img-poster-' + fileId);
-    if (img) { img.style.opacity = '0'; }
-    var errBox = document.getElementById('thumb-err-' + fileId);
-    if (!errBox) {
-        var box = document.getElementById('poster-box-' + fileId);
-        if (box) {
-            var div = document.createElement('div');
-            div.id = 'thumb-err-' + fileId;
-            div.className = 'thumb-error';
-            div.innerHTML = '<span style="font-size:11px;color:var(--muted);">थंबनेल लोड नहीं हुआ</span>';
-            box.appendChild(div);
-        }
+    var box = document.getElementById('poster-box-' + fileId);
+    if (box) {
+        box.innerHTML = '<div class="thumb-error"><span style="font-size:11px;color:var(--muted);">थंबनेल लोड नहीं हुआ</span></div>';
     }
 }
 
-/* ✅ BUG FIX: अब एडिट करने के बाद केवल विशिष्ट इमेज का 'src' बदलेगा, पूरा कार्ड री-राइट नहीं होगा! */
 async function reloadThumb(fileId) {
     var timestamp = new Date().getTime();
-    var img = document.getElementById('img-poster-' + fileId);
-    if (img) {
-        img.src = '/api/thumb?file_id=' + fileId + '&retry=true&t=' + timestamp;
-        img.classList.remove('loaded');
+    var box = document.getElementById('poster-box-' + fileId);
+    if (box) {
+        box.innerHTML = '<img src="/api/thumb?file_id=' + fileId + '&retry=true&t=' + timestamp + '" class="fc-poster" onerror="handleThumbError(\\'' + fileId + '\\')">';
     }
-    var errBox = document.getElementById('thumb-err-' + fileId);
-    if (errBox) { errBox.remove(); }
 }
 
 function triggerRipple(btn){btn.classList.remove('ripple-go');void btn.offsetWidth;btn.classList.add('ripple-go');setTimeout(function(){btn.classList.remove('ripple-go');},460);}
@@ -267,9 +251,8 @@ async function doSearch(o){
 
             var posterHtml='';
             if(pMode!=='none'){
-                /* ✅ UPGRADE: इमेज लोड होने पर ही Fade-in ट्रिगर करने के लिए 'onload' हैंडलर बाइंड */
                 posterHtml='<div class="poster-box" id="poster-box-'+f.file_id+'" onclick="toggleAdminBtns(this.closest(\\'.file-card\\'),event)">'+
-                    '<img src="'+f.tg_thumb+'" id="img-poster-'+f.file_id+'" class="fc-poster" onload="this.classList.add(\\'loaded\\')" onerror="handleThumbError(\\''+f.file_id+'\\')" loading="lazy">'+
+                    '<img src="'+f.tg_thumb+'" class="fc-poster" onerror="handleThumbError(\\''+f.file_id+'\\')" loading="lazy">'+
                     '<div class="poster-top">'+
                         '<span class="type-chip">'+f.type.toUpperCase()+'</span>'+
                         '<span class="size-chip">'+f.size+'</span>'+
@@ -310,10 +293,9 @@ async function doSearch(o){
         document.getElementById('nBtn').disabled=!nextOff;
         document.getElementById('pgInfo').textContent='Page '+curPage;
 
-        /* 🔮 [FRONTEND SILENT PRE-FETCH ENGINE TRIGGER] */
-        if(nextOff) {
-            fetch('/api/search?q='+encodeURIComponent(q)+'&offset='+nextOff+'&col='+curCol+'&mode='+pMode);
-        }
+        # ✅ FIX 2: [FRONTEND SILENT PRE-FETCH] वाला पुराना डुप्लीकेट ब्लॉक पूरी तरह डिलीट कर दिया गया है।
+        # अब बैकएंड का टास्क अलोन ही इसे हैंडल करेगा, डबल-पेलोड लोड का संकट खत्म।
+        
     }catch(e){showToast('Network error','error');}
 }
 
@@ -467,7 +449,6 @@ SEARCH_ZONE = (
     '<div class="toast" id="toast"></div>'
 )
 
-
 @dashboard_routes.get('/dashboard')
 async def dash(req):
     role, tg_id = await get_auth(req)
@@ -481,7 +462,6 @@ async def dash(req):
     body = CARD_CSS + SEARCH_ZONE + f"<script>{JS_ENGINE}</script>"
     return build_page("Home - Fast Finder", body, "", "dash", role)
 
-
 @dashboard_routes.get('/logout')
 async def logout(req):
     s_user = req.cookies.get('user_session')
@@ -491,7 +471,6 @@ async def logout(req):
     res.del_cookie('user_session')
     gc.collect()
     return res
-
 
 @dashboard_routes.get('/premium_expired')
 async def premium_expired(req):
