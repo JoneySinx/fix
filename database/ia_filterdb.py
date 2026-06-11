@@ -2,6 +2,7 @@ import logging
 import re
 import base64
 import asyncio
+import time
 from struct import pack
 import motor.motor_asyncio
 from hydrogram.file_id import FileId
@@ -14,9 +15,9 @@ logger = logging.getLogger(__name__)
 # ─────────────────────────────────────────────────────────
 client = motor.motor_asyncio.AsyncIOMotorClient(
     DATABASE_URL,
-    maxPoolSize=15,             # हैवी प्रीमियम ट्रैफिक के लिए पर्याप्त कनेक्शंस
-    minPoolSize=0,              # आइडल टाइम पर 0 कनेक्शन (कोएब की रैम 100% सुरक्षित)
-    maxIdleTimeMS=30000,        # 30 सेकंड तक शांत रहने पर सॉकेट्स बंद करें
+    maxPoolSize=15,             
+    minPoolSize=0,              
+    maxIdleTimeMS=30000,        
     serverSelectionTimeoutMS=5000,
     connectTimeoutMS=10000,
     socketTimeoutMS=20000,
@@ -35,21 +36,36 @@ COLLECTIONS = {
     "archive": archive,
 }
 
+# ⚡ GLOBAL STATUS EXPENSIVE COUNT CACHE
+_stats_cache = None
+_stats_cache_time = 0
+STATS_CACHE_TTL = 60  # ६० सेकंड का सेफ कैशे बैरियर
+
 # ─────────────────────────────────────────────────────────
-# ⚡ INDEXES — Fixed Illegal Specs (Zero Warning Logs)
+# ⚡ INDEXES — Dynamic Configuration (No Index Bloat)
 # ─────────────────────────────────────────────────────────
 async def ensure_indexes():
     for name, col in COLLECTIONS.items():
         try:
+            # ✅ कम्पाउंड टेक्स्ट इंडेक्स में से ब्लोट हटाया गया
+            if USE_CAPTION_FILTER:
+                await col.create_index(
+                    [("file_name", "text"), ("caption", "text")],
+                    name=f"{name}_text"
+                )
+            else:
+                await col.create_index(
+                    [("file_name", "text")],
+                    name=f"{name}_text"
+                )
+            
+            # रेगेक्स सर्च (COLLSCAN) से बचने के लिए सिंगल-फील्ड इंडेक्स जोड़ा गया
             await col.create_index(
-                [("file_name", "text"), ("caption", "text")],
-                name=f"{name}_text"
-            )
-            await col.create_index(
-                "file_name",
+                "file_name", 
                 name=f"{name}_filename_idx"
             )
-            logger.info(f"✅ Fast Search & Regex Indexes OK: {name}")
+            
+            logger.info(f"✅ Fast Search & Non-Bloated Indexes OK: {name}")
         except Exception as e:
             if "already exists" in str(e) or "IndexKeySpecsConflict" in str(e):
                 pass
@@ -57,26 +73,43 @@ async def ensure_indexes():
                 logger.warning(f"Index warning [{name}]: {e}")
 
 # ─────────────────────────────────────────────────────────
-# 📊 DB STATS — With Live Thumbnail Breakdown Sync
+# 📊 DB STATS — With Smart String-Type Query & 60s Cache Guard
 # ─────────────────────────────────────────────────────────
 async def db_count_documents():
+    global _stats_cache, _stats_cache_time
+    now = time.time()
+    
+    if _stats_cache and (now - _stats_cache_time < STATS_CACHE_TTL):
+        return _stats_cache
+
     try:
         p_task = primary.estimated_document_count()
         c_task = cloud.estimated_document_count()
         a_task = archive.estimated_document_count()
         
-        pt_task = primary.count_documents({"thumb_url": {"$regex": "^TG_ID:"}})
-        ct_task = cloud.count_documents({"thumb_url": {"$regex": "^TG_ID:"}})
-        at_task = archive.count_documents({"thumb_url": {"$regex": "^TG_ID:"}})
+        # ✅ SCREENSHOT FIX 4 & 5: थंबनेल काउंट को एकदम सटीक बनाने के लिए स्ट्रिक्ट स्ट्रिंग-टाइप क्वेरी
+        # यह खाली स्ट्रिंग्स ("") या कचरा वैल्यूज को पूरी तरह बाईपास करके केवल असली इमेज डेटा काउंट करेगा
+        thumb_query = {
+            "thumb_url": {
+                "$exists": True, 
+                "$type": "string",
+                "$ne": "NO_THUMB"
+            }
+        }
+        pt_task = primary.count_documents(thumb_query)
+        ct_task = cloud.count_documents(thumb_query)
+        at_task = archive.count_documents(thumb_query)
 
         p, c, a, pt, ct, at = await asyncio.gather(
             p_task, c_task, a_task, pt_task, ct_task, at_task
         )
         
-        return {
+        _stats_cache = {
             "primary": p, "cloud": c, "archive": a, "total": p + c + a,
             "primary_thumb": pt, "cloud_thumb": ct, "archive_thumb": at, "total_thumb": pt + ct + at
         }
+        _stats_cache_time = now
+        return _stats_cache
     except Exception as e:
         logger.error(f"Count Breakdown error: {e}")
         return {
@@ -85,7 +118,7 @@ async def db_count_documents():
         }
 
 # ─────────────────────────────────────────────────────────
-# 💾 SAVE FILE (Auto-PreFetch Thumbnail & Write IOPS Protection)
+# 💾 SAVE FILE (Ghost Caption Deletion & Redundancy Free Engine)
 # ─────────────────────────────────────────────────────────
 async def save_file(media, collection_type="primary"):
     try:
@@ -99,28 +132,42 @@ async def save_file(media, collection_type="primary"):
 
         col = COLLECTIONS.get(collection_type, primary)
         
-        existing_doc = await col.find_one({"_id": file_id}, {"file_ref": 1, "thumb_url": 1})
+        existing_doc = await col.find_one({"_id": file_id}, {"file_ref": 1, "thumb_url": 1, "caption": 1})
         
         if existing_doc:
             if existing_doc.get("file_ref") == media.file_id:
                 return "dup"
+            
             old_thumb = existing_doc.get("thumb_url")
-            thumb_url = old_thumb if old_thumb and "TG_ID:" in old_thumb else None
+            thumb_url = old_thumb if old_thumb and old_thumb != "NO_THUMB" else None
         else:
             thumb_url = None
 
-        doc = {
-            "_id":       file_id,
-            "file_id":   file_id,
+        # रिडंडेंट 'file_id' फ़ील्ड को हटाकर क्लीन पेलोड मैपिंग
+        update_set = {
             "file_ref":  media.file_id,
             "file_name": f_name,
             "file_size": media.file_size,
-            "caption":   caption,
-            "file_type": file_type,
-            "thumb_url": thumb_url
+            "file_type": file_type,   
         }
+        
+        if thumb_url:
+            update_set["thumb_url"] = thumb_url
 
-        await col.replace_one({"_id": file_id}, doc, upsert=True)
+        update_payload = {"$set": update_set}
+        unset_payload = {}
+
+        # ✅ SCREENSHOT FIX 1 & 2: घोस्ट कैप्शन (Ghost Caption) डेटाबेस क्लीनअप सुरक्षा कवच
+        # यदि कैप्शन फ़िल्टर चालू है और कैप्शन मौजूद है, तो उसे अपडेट करें; अन्यथा डेटाबेस से उसे जड़ से मिटाएं ($unset)
+        if USE_CAPTION_FILTER and caption:
+            update_set["caption"] = caption
+        else:
+            unset_payload["caption"] = ""
+
+        if unset_payload:
+            update_payload["$unset"] = unset_payload
+
+        await col.update_one({"_id": file_id}, update_payload, upsert=True)
         return "suc"
 
     except Exception as e:
@@ -128,13 +175,18 @@ async def save_file(media, collection_type="primary"):
         return "err"
 
 # ─────────────────────────────────────────────────────────
-# 🔍 REGEX BUILDER
+# 🔍 REGEX BUILDER WITH SHORT-QUERY SHIELD
 # ─────────────────────────────────────────────────────────
+ALLOWED_SHORT = {"hd", "4k", "3d", "8k", "5.1", "7.1", "kg", "rr", "uhd", "hevc", "x265", "x264"}
+
 def _build_regex(query: str):
     query = query.strip()
-    if not query:
-        raw = r'.'
-    elif ' ' not in query:
+    q_lower = query.lower()
+    
+    if len(query) < 2 or (len(query) == 2 and q_lower not in ALLOWED_SHORT):
+        return None
+
+    if ' ' not in query:
         raw = r'(\b|[\.\+\-_])' + re.escape(query) + r'(\b|[\.\+\-_])'
     else:
         raw = re.escape(query).replace(r'\ ', r'.*[\s\.\+\-_]')
@@ -145,42 +197,32 @@ def _build_regex(query: str):
         return re.compile(re.escape(query), flags=re.IGNORECASE)
 
 # ─────────────────────────────────────────────────────────
-# 🚀 SMART SEARCH — Fixed: No double count_documents
-# FIX 1: count_documents हटाया — पहले find करो, अगर docs मिले तो
-#         text search सफल। Total का estimate len(docs) से करो।
-# FIX 2: Regex fallback का count भी हटाया — same logic।
+# 🚀 SMART SEARCH (Instant Response Projection Engine)
 # ─────────────────────────────────────────────────────────
-async def _search(col, raw_query: str, regex, offset: int, limit: int, lang=None):
+async def _search(col, raw_query: str, regex, offset: int, limit: int, lang=None, bypass_count=False):
     clean_query = raw_query.replace('"', '').replace("'", "")
-    strict_query = " ".join(f'"{word}"' for word in clean_query.split())
+    words = clean_query.split()
+    strict_query = " ".join(f'"{word}"' for word in words) if words else ""
 
-    text_flt = {"$text": {"$search": strict_query}}
-    if lang:
-        text_flt = {"$and": [text_flt, {"file_name": re.compile(lang, re.IGNORECASE)}]}
+    if strict_query:
+        text_flt = {"$text": {"$search": strict_query}}
+        if lang:
+            text_flt = {"$and": [text_flt, {"file_name": re.compile(lang, re.IGNORECASE)}]}
 
-    projection = {"_id": 1, "file_name": 1, "file_size": 1, "file_type": 1,
-                  "file_ref": 1, "caption": 1, "thumb_url": 1,
-                  "score": {"$meta": "textScore"}}
-
-    # ✅ FIX 1: count_documents हटाया — सीधे find करो
-    # $text search के साथ सिर्फ textScore sort — _id sort नहीं (MongoDB restriction)
-    try:
-        cursor = col.find(text_flt, projection)
+        cursor = col.find(text_flt, {"_id": 1, "file_name": 1, "file_size": 1, "file_type": 1, "file_ref": 1, "caption": 1, "thumb_url": 1, "score": {"$meta": "textScore"}})
         cursor.sort([("score", {"$meta": "textScore"})])
         cursor.skip(offset).limit(limit)
         docs = await cursor.to_list(length=limit)
-    except Exception:
-        docs = []
+        
+        if docs:
+            for doc in docs:
+                doc["file_id"] = doc["_id"] 
+            count = 0 if bypass_count else await col.count_documents(text_flt)
+            return docs, count
 
-    if docs:
-        for doc in docs:
-            doc["file_id"] = doc["_id"]
-        # Total estimate: अगर full page मिली तो और results हो सकते हैं
-        # exact count की जरूरत नहीं — pagination के लिए has_more काफी है
-        estimated_total = offset + len(docs) + (limit if len(docs) == limit else 0)
-        return docs, estimated_total
+    if not regex:
+        return [], 0
 
-    # ── Regex Fallback ──
     if USE_CAPTION_FILTER:
         reg_flt = {"$or": [{"file_name": regex}, {"caption": regex}]}
     else:
@@ -189,61 +231,52 @@ async def _search(col, raw_query: str, regex, offset: int, limit: int, lang=None
     if lang:
         reg_flt = {"$and": [reg_flt, {"file_name": re.compile(lang, re.IGNORECASE)}]}
 
-    proj_regex = {"_id": 1, "file_name": 1, "file_size": 1, "file_type": 1,
-                  "file_ref": 1, "caption": 1, "thumb_url": 1}
-
-    cursor = col.find(reg_flt, proj_regex).sort('_id', -1)
+    cursor = col.find(reg_flt, {"_id": 1, "file_name": 1, "file_size": 1, "file_type": 1, "file_ref": 1, "caption": 1, "thumb_url": 1}).sort('_id', -1)
     cursor.skip(offset).limit(limit)
     docs = await cursor.to_list(length=limit)
     for doc in docs:
         doc["file_id"] = doc["_id"]
 
-    # ✅ FIX 2: Regex count_documents हटाया — same estimate logic
-    estimated_total = offset + len(docs) + (limit if len(docs) == limit else 0)
-    return docs, estimated_total
+    count = 0 if bypass_count else (await col.count_documents(reg_flt) if docs else 0)
+    return docs, count
 
 # ─────────────────────────────────────────────────────────
-# 🌐 PUBLIC SEARCH API — Parallel Collection Search
-# FIX 3: "all" mode में sequential loop हटाया।
-#         asyncio.gather से तीनों collections एक साथ search।
-#         जो पहले results दे, वही use होगी।
+# 🌐 PUBLIC SEARCH API — Adaptive Result Sync (Bot 12 vs Web 21)
 # ─────────────────────────────────────────────────────────
-async def get_search_results(query, max_results, offset=0, lang=None, collection_type="primary"):
+async def get_search_results(query, max_results, offset=0, lang=None, collection_type="primary", bypass_count=False):
     if not query:
         return [], "", 0, collection_type
 
     raw_query  = str(query).strip()
     regex      = _build_regex(raw_query)
+    
+    clean_query = raw_query.replace('"', '').replace("'", "")
+    if not clean_query.split() and not regex:
+        return [], "", 0, collection_type
+
     results    = []
     total      = 0
     actual_src = collection_type
 
     if collection_type == "all":
-        # ✅ FIX 3: तीनों एक साथ parallel — पहले मिला वो use करो
-        tasks = [
-            _search(primary, raw_query, regex, offset, max_results, lang),
-            _search(cloud,   raw_query, regex, offset, max_results, lang),
-            _search(archive, raw_query, regex, offset, max_results, lang),
-        ]
-        all_results = await asyncio.gather(*tasks, return_exceptions=True)
-
-        src_names = ["primary", "cloud", "archive"]
-        for i, res in enumerate(all_results):
-            if isinstance(res, Exception):
-                logger.warning(f"Search error in {src_names[i]}: {res}")
-                continue
-            docs, cnt = res
+        for src, col in [("primary", primary), ("cloud", cloud), ("archive", archive)]:
+            docs, cnt = await _search(col, raw_query, regex, offset, max_results, lang, bypass_count=bypass_count)
             if docs:
                 results    = docs
                 total      = cnt
-                actual_src = src_names[i]
-                break
+                actual_src = src
+                break  
     else:
         col = COLLECTIONS.get(collection_type, primary)
-        results, total = await _search(col, raw_query, regex, offset, max_results, lang)
+        results, total = await _search(col, raw_query, regex, offset, max_results, lang, bypass_count=bypass_count)
 
-    next_offset = offset + max_results
-    next_offset = "" if next_offset >= total else next_offset
+    if bypass_count:
+        has_more = len(results) == max_results
+        next_offset = offset + max_results if has_more else ""
+        total = offset + len(results) + (1 if has_more else 0)
+    else:
+        next_offset = offset + max_results
+        next_offset = "" if next_offset >= total else next_offset
 
     return results, next_offset, total, actual_src
 
@@ -260,7 +293,11 @@ async def delete_files(query, collection_type="all"):
                 deleted += res.deleted_count
             return deleted
 
-        flt   = {"file_name": _build_regex(str(query))}
+        regex = _build_regex(str(query))
+        if not regex:
+            return 0
+
+        flt   = {"file_name": regex}
         cols  = [col for name, col in COLLECTIONS.items() if collection_type == "all" or name == collection_type]
 
         for col in cols:
@@ -277,18 +314,13 @@ async def delete_files(query, collection_type="all"):
 # ─────────────────────────────────────────────
 async def get_file_details(file_id):
     try:
-        # ✅ Parallel lookup — तीनों एक साथ
-        tasks = [
-            col.find_one(
+        for col in [primary, cloud, archive]:
+            doc = await col.find_one(
                 {"_id": file_id},
                 {"_id": 1, "file_name": 1, "file_size": 1, "file_ref": 1, "caption": 1, "thumb_url": 1}
             )
-            for col in [primary, cloud, archive]
-        ]
-        results = await asyncio.gather(*tasks, return_exceptions=True)
-        for doc in results:
-            if doc and not isinstance(doc, Exception):
-                doc["file_id"] = doc["_id"]
+            if doc:
+                doc["file_id"] = doc["_id"]  
                 return doc
         return None
     except Exception as e:
