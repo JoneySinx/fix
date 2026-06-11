@@ -21,7 +21,7 @@ def get_local_now():
 # 🌐 WEB AUTHENTICATION DATABASE (RAM Protected)
 # =========================================
 def hash_password(password):
-    return hashlib.sha256(password.encode()).hexdigest() Precision
+    return hashlib.sha256(password.encode()).hexdigest()
 
 class WebAuthDB:
     def __init__(self, db):
