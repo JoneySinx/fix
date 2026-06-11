@@ -21,7 +21,7 @@ def get_local_now():
 # 🌐 WEB AUTHENTICATION DATABASE (RAM Protected)
 # =========================================
 def hash_password(password):
-    return hashlib.sha256(password.encode()).hexdigest()
+    return hashlib.sha256(password.encode()).hexdigest() Precision
 
 class WebAuthDB:
     def __init__(self, db):
@@ -229,7 +229,7 @@ class Database:
     # ───────────────── ⏳ PERSISTENT AUTO-DELETE QUEUE ENGINE ─────────────────
     async def add_to_delete_queue(self, chat_id, message_id, delay_seconds):
         if not chat_id or not message_id:
-            return False # कचरा एंट्री वैलिडेटर गेटवे锁
+            return False 
             
         delete_at = get_local_now() + timedelta(seconds=delay_seconds) # ग्लोबल टाइमज़ोन सिंक
         
@@ -271,6 +271,40 @@ class Database:
         except Exception as e:
             logger.error(f"Error in track_video_play pipeline: {e}")
             return False
+
+    # ───────────────── 👥 LIVE DASHBOARD WEB LOGINERS COUNTERS ─────────────────
+    async def get_today_logged_in_users_count(self):
+        """आज वेबसाइट पर लॉगिन करने वाले एक्टिव यूज़र्स की संख्या देता है"""
+        try:
+            from utils import temp
+            ram_users = set()
+            
+            # 1. Active Live RAM Sessions से एक्टिव टोकन्स स्कैन करें
+            if hasattr(temp, "USER_SESSIONS"):
+                import time
+                now = time.time()
+                for session_id, session_data in temp.USER_SESSIONS.items():
+                    if session_data.get("expiry", 0) > now:
+                        ram_users.add(session_data.get("tg_id"))
+
+            # 2. Database `web_users` कलेक्शन से पिछले 24 घंटे की लॉगिन हिस्ट्री चेक करें
+            today_start = datetime.now() - timedelta(days=1)
+            db_cursor = self.db["web_users"].find({"last_login": {"$gte": today_start}}, {"tg_id": 1})
+            async for user in db_cursor:
+                ram_users.add(user.get("tg_id"))
+
+            return len(ram_users)
+        except Exception as e:
+            logger.error(f"Error counting logged in users: {e}")
+            return 0
+
+    async def get_premium_users_count(self):
+        """डेटाबेस में कुल एक्टिव प्रीमियम यूज़र्स की सटीक संख्या देता है"""
+        try:
+            return await self.premium.count_documents({"status.premium": True})
+        except Exception as e:
+            logger.error(f"Error counting premium users: {e}")
+            return 0
 
 # =========================================
 # 🚀 INITIALIZE DATABASES
