@@ -40,8 +40,7 @@ def get_warmup_ui(col_name, processed, total, success, skipped, elapsed, eta, sp
 async def start_warmup_engine(client, status_msg, user_id):
     logger.info(f"⚡ [WARMUP] Strict smart pipeline triggered by admin: {user_id}")
 
-    # ✅ फिक्स 1: क्वेरी को एकदम सटीक बनाया। यह उन सभी फाइलों को उठाएगा जिनमें थंबनेल नहीं है,
-    # और जो पहले से 'NO_THUMB' मार्क नहीं की गई हैं। (फालतू $and/$or ब्लोट हटा दिया)
+    # ✅ फिक्स 1: मोंगोडीबी टेक्स्ट क्वेरी (re.compile के साथ)
     query = {
         "thumb_url": {
             "$not": re.compile(r"^TG_ID:"),
@@ -72,14 +71,6 @@ async def start_warmup_engine(client, status_msg, user_id):
     processed, success, skipped = 0, 0, 0
     start_time = time.time()
 
-    # ─── Adaptive delay state ───────────────────────────────
-    DELAY_MIN   = 0.4
-    DELAY_MAX   = 3.0
-    DELAY_STEP_UP   = 0.5   
-    DELAY_STEP_DOWN = 0.05  
-    cur_delay = 0.8
-    # ────────────────────────────────────────────────────────
-
     for col_name, collection in COLLECTIONS.items():
         if col_counts[col_name] == 0:
             continue
@@ -89,7 +80,7 @@ async def start_warmup_engine(client, status_msg, user_id):
 
         try:
             async for doc in cursor:
-                # ✅ फिक्स 2: पुरानी फाइलों के लिए '_id' का बैकअप जोड़ा (जैसे आपके search_api में है)
+                # ✅ फिक्स 2: पुरानी फाइलों के लिए '_id' बैकअप सपोर्ट
                 fid = doc.get("file_ref") or doc.get("file_id") or doc.get("_id")
                 if not fid:
                     skipped += 1
@@ -124,7 +115,7 @@ async def start_warmup_engine(client, status_msg, user_id):
                             success += 1
                             print(f"💾 [LOCKED] ({processed}/{total_to_process}) ✅ {file_label}", flush=True)
                     else:
-                        # ✅ फिक्स 3: डेटाबेस में 'NO_THUMB' मार्क करना जरूरी है ताकि अगली बार यह फाइल क्वेरी में न आए
+                        # ✅ फिक्स 3: बिना थंबनेल वाली फाइलों को 'NO_THUMB' मार्क करना ताकि री-स्कैन लूप न बने
                         await collection.update_one(
                             {"_id": doc["_id"]},
                             {"$set": {"thumb_url": "NO_THUMB"}}
@@ -132,21 +123,20 @@ async def start_warmup_engine(client, status_msg, user_id):
                         skipped += 1
                         print(f"🚫 [NO POSTER] Marked NO_THUMB in DB: {file_label}", flush=True)
 
-                    # Message delete — background execution
+                    # Message delete — background execution (Non-blocking)
                     if msg:
                         asyncio.ensure_future(_safe_delete(msg))
 
-                    # Adaptive delay
-                    cur_delay = max(DELAY_MIN, cur_delay - DELAY_STEP_DOWN)
-                    await asyncio.sleep(cur_delay)
+                    # ✅ फिक्स 4: 0.9 से 2.0 सेकंड का शुद्ध रैंडम गैप (Fast Find Tuning)
+                    await asyncio.sleep(random.uniform(0.9, 2.0))
 
                 except FloodWait as e:
+                    # रेट लिमिट आने पर डेटाबेस में कोई छेड़छाड़ नहीं होगी
                     if msg:
                         asyncio.ensure_future(_safe_delete(msg))
 
                     wait_sec = e.value + 10
-                    cur_delay = min(DELAY_MAX, cur_delay + DELAY_STEP_UP)
-                    print(f"⏳ [FLOOD] Rate limit! Sleeping {wait_sec}s, next delay={cur_delay:.2f}s", flush=True)
+                    print(f"⏳ [FLOOD ACTIVE] Rate limit hit! Sleeping {wait_sec}s...", flush=True)
                     try:
                         await status_msg.edit(
                             f"⏳ <b>Telegram Rate Limit Hit!</b>\n"
@@ -158,7 +148,7 @@ async def start_warmup_engine(client, status_msg, user_id):
                     await asyncio.sleep(wait_sec)
 
                 except BadRequest:
-                    # ✅ फिक्स 4: टूटी हुई फाइलों को भी 'NO_THUMB' मार्क करें ताकि वे बार-बार कर्सर को न रोकें
+                    # टूटी हुई फाइलों को भी 'NO_THUMB' मार्क करें
                     await collection.update_one(
                         {"_id": doc["_id"]},
                         {"$set": {"thumb_url": "NO_THUMB"}}
@@ -209,7 +199,7 @@ async def start_warmup_engine(client, status_msg, user_id):
         pass
 
 # ─────────────────────────────────────────────────────────
-# 🗑 BACKGROUND DELETE HELPER
+# 🗑 BACKGROUND DELETE HELPER — Non-blocking node
 # ─────────────────────────────────────────────────────────
 async def _safe_delete(msg):
     try:
