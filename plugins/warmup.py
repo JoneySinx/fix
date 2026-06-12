@@ -40,7 +40,7 @@ def get_warmup_ui(col_name, processed, total, success, skipped, elapsed, eta, sp
 async def start_warmup_engine(client, status_msg, user_id):
     logger.info(f"⚡ [WARMUP] Strict smart pipeline triggered by admin: {user_id}")
 
-    # ✅ फिक्स 1: मोंगोडीबी टेक्स्ट क्वेरी (re.compile के साथ)
+    # ✅ फिक्स 1: मोंगोडीबी कम्पेल्ड टेक्स्ट क्वेरी (silently fail होने से सुरक्षा)
     query = {
         "thumb_url": {
             "$not": re.compile(r"^TG_ID:"),
@@ -80,7 +80,7 @@ async def start_warmup_engine(client, status_msg, user_id):
 
         try:
             async for doc in cursor:
-                # ✅ फिक्स 2: पुरानी फाइलों के लिए '_id' बैकअप सपोर्ट
+                # ✅ फिक्स 2: पुरानी फाइलों के लिए '_id' बैकअप सपोर्ट (ताकि पुरानी 62k फाइलें मिस न हों)
                 fid = doc.get("file_ref") or doc.get("file_id") or doc.get("_id")
                 if not fid:
                     skipped += 1
@@ -115,7 +115,7 @@ async def start_warmup_engine(client, status_msg, user_id):
                             success += 1
                             print(f"💾 [LOCKED] ({processed}/{total_to_process}) ✅ {file_label}", flush=True)
                     else:
-                        # ✅ फिक्स 3: बिना थंबनेल वाली फाइलों को 'NO_THUMB' मार्क करना ताकि री-स्कैन लूप न बने
+                        # ✅ फिक्स 3: बिना थंबनेल वाली फाइलों को 'NO_THUMB' मार्क करना ताकि बार-बार फालतू लूप न चले
                         await collection.update_one(
                             {"_id": doc["_id"]},
                             {"$set": {"thumb_url": "NO_THUMB"}}
@@ -123,15 +123,15 @@ async def start_warmup_engine(client, status_msg, user_id):
                         skipped += 1
                         print(f"🚫 [NO POSTER] Marked NO_THUMB in DB: {file_label}", flush=True)
 
-                    # Message delete — background execution (Non-blocking)
+                    # Message delete — background execution (Non-blocking Speed Booster)
                     if msg:
                         asyncio.ensure_future(_safe_delete(msg))
 
-                    # ✅ फिक्स 4: 0.9 से 2.0 सेकंड का शुद्ध रैंडम गैप (Fast Find Tuning)
-                    await asyncio.sleep(random.uniform(0.9, 2.0))
+                    # ✅ फिक्स 4: आपका सुझाया हुआ 1.2 से 3.0 सेकंड का शुद्ध रैंडम गैप
+                    await asyncio.sleep(random.uniform(1.2, 3.0))
 
                 except FloodWait as e:
-                    # रेट लिमिट आने पर डेटाबेस में कोई छेड़छाड़ नहीं होगी
+                    # ⚠️ रेट लिमिट आने पर डेटाबेस में NO_THUMB अपडेट नहीं होगा (डेटा 100% सेफ)
                     if msg:
                         asyncio.ensure_future(_safe_delete(msg))
 
@@ -148,7 +148,7 @@ async def start_warmup_engine(client, status_msg, user_id):
                     await asyncio.sleep(wait_sec)
 
                 except BadRequest:
-                    # टूटी हुई फाइलों को भी 'NO_THUMB' मार्क करें
+                    # टूटी हुई या डिलीटेड फाइलों को भी 'NO_THUMB' मार्क करें ताकि कर्सर स्टक न हो
                     await collection.update_one(
                         {"_id": doc["_id"]},
                         {"$set": {"thumb_url": "NO_THUMB"}}
