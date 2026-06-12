@@ -35,18 +35,30 @@ def get_warmup_ui(col_name, processed, total, success, skipped, elapsed, eta, sp
     return "\n".join(lines)
 
 # ─────────────────────────────────────────────────────────
-# 🧠 CORE ENGINE — Rebuilt With Strict Thumbnail Validation
+# 🧠 CORE ENGINE
 # ─────────────────────────────────────────────────────────
 async def start_warmup_engine(client, status_msg, user_id):
     logger.info(f"⚡ [WARMUP] Strict smart pipeline triggered by admin: {user_id}")
 
-    # ✅ फिक्स 1: क्वेरी को एकदम सटीक बनाया। यह उन सभी फाइलों को उठाएगा जिनमें थंबनेल नहीं है,
-    # और जो पहले से 'NO_THUMB' मार्क नहीं की गई हैं। (फालतू $and/$or ब्लोट हटा दिया)
+    # SMART FILTER: सिर्फ वही docs जिनमें thumb missing है, file_id मौजूद है
+    # FIX: $not के अंदर compiled re.compile() — plain {"$regex":...} dict Motor में silently fail करती है
     query = {
-        "thumb_url": {
-            "$not": re.compile(r"^TG_ID:"),
-            "$ne": "NO_THUMB"
-        }
+        "$and": [
+            {
+                "$or": [
+                    {"thumb_url": {"$exists": False}},
+                    {"thumb_url": None},
+                    {"thumb_url": "NO_THUMB"},
+                    {"thumb_url": {"$not": re.compile(r"^TG_ID:")}},
+                ]
+            },
+            {
+                "$or": [
+                    {"file_ref": {"$exists": True, "$ne": None}},
+                    {"file_id": {"$exists": True, "$ne": None}}
+                ]
+            }
+        ]
     }
 
     # पेंडिंग काउंट्स सिंक फेज
@@ -73,10 +85,12 @@ async def start_warmup_engine(client, status_msg, user_id):
     start_time = time.time()
 
     # ─── Adaptive delay state ───────────────────────────────
+    # Flood आने पर delay बढ़ता है, smooth रहने पर धीरे-धीरे घटता है
+    # Min: 0.4s  |  Max: 3.0s  |  Start: 0.8s
     DELAY_MIN   = 0.4
     DELAY_MAX   = 3.0
-    DELAY_STEP_UP   = 0.5   
-    DELAY_STEP_DOWN = 0.05  
+    DELAY_STEP_UP   = 0.5   # FloodWait के बाद बढ़ाव
+    DELAY_STEP_DOWN = 0.05  # हर सफल file पर घटाव
     cur_delay = 0.8
     # ────────────────────────────────────────────────────────
 
@@ -89,15 +103,14 @@ async def start_warmup_engine(client, status_msg, user_id):
 
         try:
             async for doc in cursor:
-                # ✅ फिक्स 2: पुरानी फाइलों के लिए '_id' का बैकअप जोड़ा (जैसे आपके search_api में है)
-                fid = doc.get("file_ref") or doc.get("file_id") or doc.get("_id")
+                fid = doc.get("file_ref") or doc.get("file_id")
                 if not fid:
                     skipped += 1
                     continue
 
                 processed += 1
                 file_label = doc.get("file_name", "Unknown File")[:35]
-                msg = None  
+                msg = None  # guard — FloodWait/Exception पर msg कभी None रहे
 
                 try:
                     msg = await client.send_cached_media(chat_id=BIN_CHANNEL, file_id=fid)
@@ -108,7 +121,7 @@ async def start_warmup_engine(client, status_msg, user_id):
                     elif msg.document and msg.document.thumbs:
                         thumb_id = msg.document.thumbs[0].file_id
 
-                    # ✅ Strict thumb validation
+                    # ✅ Strict thumb validation — NO_THUMB/garbage DB में घुसने नहीं देना
                     if (
                         thumb_id
                         and isinstance(thumb_id, str)
@@ -124,23 +137,20 @@ async def start_warmup_engine(client, status_msg, user_id):
                             success += 1
                             print(f"💾 [LOCKED] ({processed}/{total_to_process}) ✅ {file_label}", flush=True)
                     else:
-                        # ✅ फिक्स 3: डेटाबेस में 'NO_THUMB' मार्क करना जरूरी है ताकि अगली बार यह फाइल क्वेरी में न आए
-                        await collection.update_one(
-                            {"_id": doc["_id"]},
-                            {"$set": {"thumb_url": "NO_THUMB"}}
-                        )
+                        # thumb नहीं है — DB को हाथ मत लगाओ, बस skip
                         skipped += 1
-                        print(f"🚫 [NO POSTER] Marked NO_THUMB in DB: {file_label}", flush=True)
+                        print(f"🚫 [NO POSTER] Skipped (no real thumb): {file_label}", flush=True)
 
-                    # Message delete — background execution
-                    if msg:
-                        asyncio.ensure_future(_safe_delete(msg))
+                    # Message delete — background में, pipeline block नहीं होगा
+                    asyncio.ensure_future(_safe_delete(msg))
 
-                    # Adaptive delay
+                    # Adaptive delay — smooth चले तो थोड़ा और घटाओ
                     cur_delay = max(DELAY_MIN, cur_delay - DELAY_STEP_DOWN)
                     await asyncio.sleep(cur_delay)
 
                 except FloodWait as e:
+                    # ⚠️ CRITICAL: FloodWait पर thumb_url को TOUCH नहीं करना — NO_THUMB save नहीं होगा
+                    # Message delete करो अगर भेजा था
                     if msg:
                         asyncio.ensure_future(_safe_delete(msg))
 
@@ -156,17 +166,14 @@ async def start_warmup_engine(client, status_msg, user_id):
                     except Exception:
                         pass
                     await asyncio.sleep(wait_sec)
+                    # इस file को re-process नहीं करेंगे (processed count already बढ़ा)
+                    # अगली बार warmup चलाने पर यह file फिर से pick होगी
 
                 except BadRequest:
-                    # ✅ फिक्स 4: टूटी हुई फाइलों को भी 'NO_THUMB' मार्क करें ताकि वे बार-बार कर्सर को न रोकें
-                    await collection.update_one(
-                        {"_id": doc["_id"]},
-                        {"$set": {"thumb_url": "NO_THUMB"}}
-                    )
                     skipped += 1
                     if msg:
                         asyncio.ensure_future(_safe_delete(msg))
-                    print(f"❌ [BAD REF] Broken file_id skipped & marked: {file_label}", flush=True)
+                    print(f"❌ [BAD REF] Broken file_id skipped: {file_label}", flush=True)
 
                 except Exception as e:
                     if msg:
@@ -208,14 +215,16 @@ async def start_warmup_engine(client, status_msg, user_id):
     except Exception:
         pass
 
+
 # ─────────────────────────────────────────────────────────
-# 🗑 BACKGROUND DELETE HELPER
+# 🗑 BACKGROUND DELETE HELPER — Pipeline block नहीं होगा
 # ─────────────────────────────────────────────────────────
 async def _safe_delete(msg):
     try:
         await msg.delete()
     except Exception:
         pass
+
 
 # ─────────────────────────────────────────────────────────
 # 📢 COMMAND ROUTE — /warmup_thumbs (ADMIN ONLY)
@@ -224,6 +233,7 @@ async def _safe_delete(msg):
 async def warmup_thumbs_cmd(client, message):
     status_msg = await message.reply("⚙️ <b>Warmup Initialization Core Starting...</b>")
     await start_warmup_engine(client, status_msg, message.from_user.id)
+
 
 # ─────────────────────────────────────────────────────────
 # 🔘 BUTTON ROUTE — 🔄 WARMUP THUMBNAILS BUTTON CALLBACK
