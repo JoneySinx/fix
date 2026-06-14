@@ -293,7 +293,8 @@ async function doSearch(o){
                 posterHtml+
                 textInfo+
                 '<div class="fc-body">'+
-                    '<div class="fc-name" onclick="window.open(\\''+f.watch+'\\',\\'_blank\\')">'+f.name+'</div>'+
+                    // ✅ फिक्स: कार्ड टाइटल को एक यूनिक ID दी गई है ताकि लाइव AJAX री-रेंडर हो सके
+                    '<div class="fc-name" id="name-title-'+f.file_id+'" onclick="window.open(\\''+f.watch+'\\',\\'_blank\\')">'+f.name+'</div>'+
                 '</div>'+
             '</div>';
         });
@@ -342,7 +343,6 @@ function editFile(fid,col,currentName){
     document.getElementById('cropContainer').style.display='none';
     var prevBox=document.getElementById('emPreviewBox');
     prevBox.style.display='flex';
-    // ✅ SCREENSHOT FIX: डबल कमेंट क्लीनअप सिंक सुनिश्चित किया गया
     prevBox.innerHTML='<img src="/api/thumb?file_id='+fid+'&col='+activeCol+'" class="t-prev-img" onerror="this.src=\\'https://placehold.co/600x338/181818/FFF?text=No+Thumbnail\\';">';
     document.getElementById('editCombinedModal').classList.add('open');
 }
@@ -398,7 +398,16 @@ async function saveAllChanges(){
         var res=await r.json();
         if(res.success||cropperInstance){
             showToast('\\u2728 Metadata & Studio Poster saved successfully!');
-            closeCombinedModal();reloadThumb(activeFid, activeCol);doSearch(curOff);
+            closeCombinedModal();
+            
+            // ✅ फिक्स 1: थंबनेल को तुरंत इसी ब्राउज़र में बिना पुराना कैशे उठाए लाइव रिफ्रेश कराओ
+            reloadThumb(activeFid, activeCol);
+            
+            // ✅ फिक्स 2: पूरे ग्रिड को 'doSearch' से री-रेंडर करने के बजाय सिर्फ इसी कार्ड का नाम लाइव बदलें
+            // इससे पेज री-सर्च नहीं होगा और तुम्हारा कार्ड अपनी जगह से 1 मिलीमीटर भी नहीं हिलेगा!
+            var titleEl = document.getElementById('name-title-' + activeFid);
+            if(titleEl) { titleEl.textContent = newName; }
+            
         }else{showToast(res.error||'Metadata save failed!','error');}
     }catch(e){showToast('Network synchronization error','error');}
     finally{btn.disabled=false;btn.innerText='Save Changes';}
