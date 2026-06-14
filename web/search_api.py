@@ -285,7 +285,6 @@ async def api_search(req):
         asyncio.create_task(bg_prefetch_worker(tg_id, q, col, mode, next_offset, lim))
 
     results_list = []
-    thumb_salt = int(time.time() * 100) if mode != "none" else 0
 
     for d in all_m:
         fid = d.get("file_ref") or d.get("_id")
@@ -296,7 +295,12 @@ async def api_search(req):
             tg_thumb = ""
             poster_url = ""
         else:
-            tg_thumb = f"/api/thumb?file_id={db_id}&col={source_collection_name}&v={thumb_salt}"
+            # ✅ फिक्स 1: रैंडम टाइमस्टैम्प हटाकर डेटाबेस की थंबनेल ID आधारित स्थिर/डायनेमिक साल्ट मैपिंग
+            # इससे वार्मअप थंबनेल ब्राउज़र में सुपर-फास्ट लोड होंगे, और थंबनेल बदलते ही ब्राउज़र उसे तुरंत बदल देगा।
+            raw_thumb = d.get("thumb_url", "")
+            v_salt = raw_thumb[-8:] if (raw_thumb and raw_thumb.startswith("TG_ID:")) else "0"
+            
+            tg_thumb = f"/api/thumb?file_id={db_id}&col={source_collection_name}&v={v_salt}"
             poster_url = tg_thumb
 
         results_list.append({
@@ -438,6 +442,11 @@ async def api_edit_name(req):
             update_fields["caption"] = new_name
 
         res = await COLLECTIONS[col].update_one({"_id": fid}, {"$set": update_fields})
+        
+        # ✅ फिक्स 2: नाम एडिट होने पर सर्वर का पुराना सर्च कैशे क्लियर करें
+        PREFETCH_CACHE.clear()
+        TRENDING_CACHE.clear()
+
         return web.json_response({"success": bool(res.modified_count)})
     except Exception as e:
         return web.json_response({"error": str(e)}, status=500)
@@ -495,6 +504,11 @@ async def api_upload_thumb(req):
             {"$set": {"thumb_url": db_save_value}}
         )
         await db.add_to_delete_queue(BIN_CHANNEL, msg.id, 5)
+        
+        # ✅ फिक्स 3: नया थंबनेल अपलोड होने पर भी बैकएंड रैम कैशे पूरी तरह साफ़ करें
+        PREFETCH_CACHE.clear()
+        TRENDING_CACHE.clear()
+
         return web.json_response({"success": True})
 
     except Exception as e:
