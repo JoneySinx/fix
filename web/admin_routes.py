@@ -3,9 +3,9 @@ from web.login_routes import login_routes
 from web.dashboard_routes import dashboard_routes
 from web.stats_routes import stats_routes
 from web.profile_routes import profile_routes
-from web.actor_routes import actor_routes  # 👈 ✅ नई एक्टर फाइल के रूट्स यहाँ इम्पोर्ट किए
+from web.actor_routes import actor_routes
+from web.premium_routes import premium_routes  # 👈 नया प्रीमियम राउट इम्पोर्ट किया
 
-# एक मास्टर राउट टेबल डिफाइन करें
 admin_routes = web.RouteTableDef()
 
 def register_admin_components(app: web.Application):
@@ -14,5 +14,6 @@ def register_admin_components(app: web.Application):
     app.add_routes(dashboard_routes)
     app.add_routes(stats_routes)
     app.add_routes(profile_routes)
-    app.add_routes(actor_routes)  # 👈 ✅ नया एक्टर सेक्शन मास्टर सर्वर इंजन में सिंक किया
+    app.add_routes(actor_routes)
+    app.add_routes(premium_routes)  # 👈 मास्टर सर्वर में प्रीमियम का रास्ता ऑन किया
     app.add_routes(admin_routes)
