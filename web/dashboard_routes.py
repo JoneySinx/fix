@@ -141,10 +141,10 @@ var activeFid = '', activeCol = '', cropperInstance = null;
 
 /* ── Custom dropdown logic ── */
 function closeCdds(){
-    var m1=document.getElementById('cddColMenu');if(m1)m1.style.display='none';
-    var b1=document.getElementById('cddColBtn');if(b1)b1.classList.remove('open');
-    var m2=document.getElementById('cddModeMenu');if(m2)m2.style.display='none';
-    var b2=document.getElementById('cddModeBtn');if(b2)b2.classList.remove('open');
+    document.getElementById('cddColMenu').style.display='none';
+    document.getElementById('cddColBtn').classList.remove('open');
+    document.getElementById('cddModeMenu').style.display='none';
+    document.getElementById('cddModeBtn').classList.remove('open');
 }
 function toggleCdd(which,e){
     if(e){e.stopPropagation();}
@@ -154,10 +154,9 @@ function toggleCdd(which,e){
     var otherBtnId=which==='col'?'cddModeBtn':'cddColBtn';
     var menu=document.getElementById(menuId);
     var btn=document.getElementById(btnId);
-    if(!menu||!btn)return;
     var isOpen=menu.style.display!=='none';
-    var om=document.getElementById(otherId);if(om)om.style.display='none';
-    var ob=document.getElementById(otherBtnId);if(ob)ob.classList.remove('open');
+    document.getElementById(otherId).style.display='none';
+    document.getElementById(otherBtnId).classList.remove('open');
     if(isOpen){menu.style.display='none';btn.classList.remove('open');}
     else{menu.style.display='block';btn.classList.add('open');}
 }
@@ -185,11 +184,8 @@ function pickMode(val,label,el,e){
 document.addEventListener('click',function(e){
     if(!e.target.closest('.cdd-wrap')){closeCdds();}
 });
-// cdd-menu click propagation — DOMContentLoaded पर run करो
-document.addEventListener('DOMContentLoaded',function(){
-    document.querySelectorAll('.cdd-menu').forEach(function(m){
-        m.addEventListener('click',function(e){e.stopPropagation();});
-    });
+document.querySelectorAll('.cdd-menu').forEach(function(m){
+    m.addEventListener('click',function(e){e.stopPropagation();});
 });
 function changeCol(val){curCol=val;if(curQ)doSearch(0);}
 
@@ -431,25 +427,25 @@ SEARCH_ZONE = (
         '</div>'
         '<div class="search-row2">'
             '<div class="cdd-wrap" id="cddColWrap">'
-                '<div class="cdd-btn" id="cddColBtn" onclick="toggleCdd(\'col\',event)">'
+                '<div class="cdd-btn" id="cddColBtn" onclick="toggleCdd(\'col\')">'
                     '<span id="cddColLabel">\U0001f4c2 All Collections</span>'
                 '</div>'
                 '<span class="cdd-arrow">&#9660;</span>'
                 '<div class="cdd-menu" id="cddColMenu" style="display:none">'
-                    '<div class="cdd-item selected" data-val="all" onclick="pickCol(\'all\',\'\U0001f4c2 All Collections\',this,event)">\U0001f4c2 All Collections<span class="cdd-radio"><span class="cdd-radio-dot"></span></span></div>'
-                    '<div class="cdd-item" data-val="primary" onclick="pickCol(\'primary\',\'\U0001f7e2 Primary\',this,event)">\U0001f7e2 Primary<span class="cdd-radio"><span class="cdd-radio-dot"></span></span></div>'
-                    '<div class="cdd-item" data-val="cloud" onclick="pickCol(\'cloud\',\'\U0001f535 Cloud\',this,event)">\U0001f535 Cloud<span class="cdd-radio"><span class="cdd-radio-dot"></span></span></div>'
-                    '<div class="cdd-item" data-val="archive" onclick="pickCol(\'archive\',\'\U0001f7e0 Archive\',this,event)">\U0001f7e0 Archive<span class="cdd-radio"><span class="cdd-radio-dot"></span></span></div>'
+                    '<div class="cdd-item selected" data-val="all" onclick="pickCol(\'all\',\'\U0001f4c2 All Collections\',this)">\U0001f4c2 All Collections<span class="cdd-radio"><span class="cdd-radio-dot"></span></span></div>'
+                    '<div class="cdd-item" data-val="primary" onclick="pickCol(\'primary\',\'\U0001f7e2 Primary\',this)">\U0001f7e2 Primary<span class="cdd-radio"><span class="cdd-radio-dot"></span></span></div>'
+                    '<div class="cdd-item" data-val="cloud" onclick="pickCol(\'cloud\',\'\U0001f535 Cloud\',this)">\U0001f535 Cloud<span class="cdd-radio"><span class="cdd-radio-dot"></span></span></div>'
+                    '<div class="cdd-item" data-val="archive" onclick="pickCol(\'archive\',\'\U0001f7e0 Archive\',this)">\U0001f7e0 Archive<span class="cdd-radio"><span class="cdd-radio-dot"></span></span></div>'
                 '</div>'
             '</div>'
             '<div class="cdd-wrap" id="cddModeWrap">'
-                '<div class="cdd-btn" id="cddModeBtn" onclick="toggleCdd(\'mode\',event)">'
+                '<div class="cdd-btn" id="cddModeBtn" onclick="toggleCdd(\'mode\')">'
                     '<span id="cddModeLabel">\U0001f4f8 Original TG Thumb</span>'
                 '</div>'
                 '<span class="cdd-arrow">&#9660;</span>'
                 '<div class="cdd-menu" id="cddModeMenu" style="display:none">'
-                    '<div class="cdd-item selected" data-val="tg" onclick="pickMode(\'tg\',\'\U0001f4f8 Original TG Thumb\',this,event)">\U0001f4f8 Original TG Thumb<span class="cdd-radio"><span class="cdd-radio-dot"></span></span></div>'
-                    '<div class="cdd-item" data-val="none" onclick="pickMode(\'none\',\'\u26a1 Text Only (Fastest)\',this,event)">\u26a1 Text Only (Fastest)<span class="cdd-radio"><span class="cdd-radio-dot"></span></span></div>'
+                    '<div class="cdd-item selected" data-val="tg" onclick="pickMode(\'tg\',\'\U0001f4f8 Original TG Thumb\',this)">\U0001f4f8 Original TG Thumb<span class="cdd-radio"><span class="cdd-radio-dot"></span></span></div>'
+                    '<div class="cdd-item" data-val="none" onclick="pickMode(\'none\',\'\u26a1 Text Only (Fastest)\',this)">\u26a1 Text Only (Fastest)<span class="cdd-radio"><span class="cdd-radio-dot"></span></span></div>'
                 '</div>'
             '</div>'
         '</div>'
