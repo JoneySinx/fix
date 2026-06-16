@@ -21,6 +21,20 @@ def _actor_col():
     return user_db.db["actor_profiles"]
 
 
+def _photo_src(stored_value: str) -> str:
+    """
+    DB में stored "TG_ID:{file_id}" को /api/actor_photo?id={file_id} में convert करो।
+    यही pattern thumb_url (search_api.py) follow करता है — RAM में कुछ नहीं।
+    अगर legacy direct URL है तो as-is return करो।
+    """
+    if not stored_value:
+        return ""
+    if stored_value.startswith("TG_ID:"):
+        file_id = stored_value[6:]
+        return f"/api/actor_photo?id={file_id}"
+    return stored_value
+
+
 # ─────────────────────────────────────────────────────────
 # 🎨 ACTOR PAGE CSS
 # ─────────────────────────────────────────────────────────
@@ -166,8 +180,9 @@ async def actors_list(req):
         name = a.get('name', 'Unknown')
         prof = a.get('profession', '')
         photo = a.get('photo_url', '')
-        if photo:
-            img_html = f'<img class="actor-card-img" src="{photo}" alt="{name}" loading="lazy" onerror="this.style.display=\'none\';this.nextElementSibling.style.display=\'flex\'">'
+        photo_src = _photo_src(photo)
+        if photo_src:
+            img_html = f'<img class="actor-card-img" src="{photo_src}" alt="{name}" loading="lazy" onerror="this.style.display=\'none\';this.nextElementSibling.style.display=\'flex\'">'
             ph_html = f'<div class="actor-card-img placeholder" style="display:none">🎬</div>'
         else:
             img_html = ''
@@ -260,9 +275,10 @@ async def actor_profile(req):
 
     # ── Build HTML pieces ──────────────────────────────────────
     # Photo
-    if photo_url:
-        cover_img_html = f'<img class="ap-cover" src="{photo_url}" alt="{name}">'
-        pc_img_html    = f'<div class="ap-pc-img"><img src="{photo_url}" alt="{name}"></div>'
+    photo_src = _photo_src(photo_url)
+    if photo_src:
+        cover_img_html = f'<img class="ap-cover" src="{photo_src}" alt="{name}">'
+        pc_img_html    = f'<div class="ap-pc-img"><img src="{photo_src}" alt="{name}"></div>'
         ph_img_html    = ''
     else:
         cover_img_html = f'<div class="ap-cover-placeholder">🎬</div>'
@@ -389,8 +405,9 @@ def _build_files_html(files):
 def _build_gallery_html(gallery, is_admin, actor_id):
     items = ''
     for idx, url in enumerate(gallery):
-        del_attr = f'data-idx="{idx}" data-url="{url}"' if is_admin else ''
-        items += f'<img class="ap-gal-img" src="{url}" alt="Gallery {idx+1}" loading="lazy" onclick="openLb(\'{url}\',{idx})" {del_attr}>'
+        src = _photo_src(url)
+        del_attr = f'data-idx="{idx}" data-url="{src}"' if is_admin else ''
+        items += f'<img class="ap-gal-img" src="{src}" alt="Gallery {idx+1}" loading="lazy" onclick="openLb(\'{src}\',{idx})" {del_attr}>'
 
     if is_admin:
         items += '<div class="ap-gal-add" onclick="openGalleryUpload()"><span style="font-size:24px">➕</span><span>Add Photo</span></div>'
@@ -453,7 +470,8 @@ def _edit_modal_html(actor):
     bio  = actor.get('bio', '').replace("'", "&#39;")
     kw   = ', '.join(actor.get('keywords', []))
     photo= actor.get('photo_url', '')
-    prev = f'<img id="editPhotoPreview" class="am-photo-preview" src="{photo}" alt="" style="display:{"block" if photo else "none"}">'
+    photo_prev_src = _photo_src(photo)
+    prev = f'<img id="editPhotoPreview" class="am-photo-preview" src="{photo_prev_src}" alt="" style="display:{"block" if photo_prev_src else "none"}">'
     ph_d = f'style="display:{"none" if photo else "flex"}"'
 
     return f'''
@@ -618,35 +636,67 @@ function closeLb(){{document.getElementById('lbOverlay').classList.remove('open'
 
 async def _upload_photo_to_telegram(photo_bytes, filename="actor_photo.jpg"):
     """
-    Photo को Telegram के BIN_CHANNEL में भेजकर उसका file_url (direct link) return करें।
-    अगर Telegram direct link न मिले तो base64 data-URL fallback इस्तेमाल करें।
+    Photo को Telegram BIN_CHANNEL में भेजो → file_id लो → "TG_ID:{file_id}" return करो।
+    यही pattern thumb_url में use होता है (search_api.py देखो)।
+    RAM में कुछ store नहीं होता — सिर्फ file_id string DB में जाती है।
     """
     try:
         from info import BIN_CHANNEL
         from utils import temp
         import io
 
-        # Telegram को file send करो और उसका URL निकालो
+        photo_io = io.BytesIO(photo_bytes)
+        photo_io.name = filename
+
         msg = await temp.BOT.send_photo(
             chat_id=BIN_CHANNEL,
-            photo=photo_bytes,
+            photo=photo_io,
             caption=f"Actor Photo: {filename}"
         )
         if msg and msg.photo:
-            # सबसे बड़ी photo size लो
-            largest = msg.photo[-1] if isinstance(msg.photo, list) else msg.photo
-            file_obj = await temp.BOT.get_file(largest.file_id)
-            file_url = f"https://api.telegram.org/file/bot{__import__('info').BOT_TOKEN}/{file_obj.file_path}"
-            return file_url
+            try:
+                photo_id = (
+                    msg.photo.sizes[-1].file_id
+                    if hasattr(msg.photo, "sizes") and msg.photo.sizes
+                    else msg.photo.file_id
+                )
+            except Exception:
+                photo_id = msg.photo.file_id if hasattr(msg.photo, "file_id") else msg.photo[-1].file_id
+
+            # ✅ thumb_url pattern: "TG_ID:{file_id}" — RAM में कुछ नहीं, सिर्फ ID
+            return f"TG_ID:{photo_id}"
+
     except Exception as e:
         logger.warning(f"Telegram photo upload failed: {e}")
 
-    # Fallback: base64 data URL (works but heavy, use for small images only)
+    return ""
+
+
+@actor_routes.get('/api/actor_photo')
+async def actor_photo_serve(req):
+    """
+    Actor/gallery photo serve endpoint।
+    DB में "TG_ID:{file_id}" stored है — यहाँ Telegram से download करके serve करो।
+    यही pattern /api/thumb में use होता है (search_api.py)।
+    """
+    tg_id = req.query.get("id", "").strip()
+    if not tg_id:
+        return web.Response(status=400)
+
     try:
-        b64 = base64.b64encode(photo_bytes).decode()
-        return f"data:image/jpeg;base64,{b64}"
-    except Exception:
-        return ""
+        from utils import temp
+        file_data = await temp.BOT.download_media(tg_id, in_memory=True)
+        if file_data:
+            img_bytes = file_data.getvalue()
+            return web.Response(
+                body=img_bytes,
+                content_type="image/jpeg",
+                headers={"Cache-Control": "max-age=86400"}
+            )
+    except Exception as e:
+        logger.warning(f"Actor photo serve failed for id={tg_id}: {e}")
+
+    return web.Response(status=404)
 
 
 @actor_routes.post('/api/actors/create')
