@@ -221,8 +221,6 @@ async def get_user_role(req):
             tg_id = session["tg_id"]
             if tg_id in ADMINS: return "admin", tg_id
             if await is_premium(tg_id): return "user", tg_id
-            # ✅ FIX: IS_PREMIUM=False हो तो सभी logged-in users को allow करो
-            if not IS_PREMIUM: return "user", tg_id
     return None, None
 
 
