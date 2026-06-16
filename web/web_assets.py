@@ -18,29 +18,15 @@ JS = """
 function toggleThemeFixed(){var l=document.documentElement.classList.toggle('light');localStorage.setItem('theme',l?'light':'dark');}
 function openSidebar(){document.getElementById('sidebar').classList.add('open');document.getElementById('sbOverlay').classList.add('open');document.getElementById('hamBtn').classList.add('open');}
 function closeSidebar(){document.getElementById('sidebar').classList.remove('open');document.getElementById('sbOverlay').classList.remove('open');document.getElementById('hamBtn').classList.remove('open');}
-var curQ='',curOff=0,nextOff='',curCol='all',curPage=1;
-var pMode=localStorage.getItem('posterMode')||'tg';
-var LIMIT_VAL = __LIMIT_PLACEHOLDER__;
 
-var activeFid = '', activeCol = '', cropperInstance = null;
-
-function setCol(e){document.querySelectorAll('.ftab').forEach(t=>t.classList.remove('active'));e.classList.add('active');curCol=e.dataset.col;}
-function changePosterMode(){pMode=document.getElementById('posterMode').value;localStorage.setItem('posterMode',pMode);if(curQ)doSearch(curOff);}
-
-function handleThumbError(fileId) {
-    var img = document.getElementById('img-poster-' + fileId);
-    if (img) { img.style.opacity = '0'; }
-    var errBox = document.getElementById('thumb-err-' + fileId);
-    if (!errBox) {
-        var box = document.getElementById('poster-box-' + fileId);
-        if (box) {
-            var div = document.createElement('div');
-            div.id = 'thumb-err-' + fileId;
-            div.className = 'thumb-error';
-            div.innerHTML = '<div style="position:absolute; inset:0; display:flex; flex-direction:column; align-items:center; justify-content:center; background:#1f1f1f; padding:10px;"><span style="font-size:11px; color:var(--muted); text-align:center;">थंबनेल लोड नहीं हुआ</span></div>';
-            box.appendChild(div);
-        }
-    }
+function showToast(msg,type){
+    var t=document.getElementById('toast');
+    if(!t)return;
+    t.textContent=msg;
+    t.className='toast'+(type==='error'?' error':'');
+    void t.offsetWidth;
+    t.classList.add('show');
+    setTimeout(function(){t.classList.remove('show');},3000);
 }
 
 async function reloadThumb(fileId, col) {
@@ -65,7 +51,7 @@ async function triggerCacheFlush() {
         if (btn) { btn.innerText = "🧹 Flush RAM Cache"; btn.disabled = false; }
     }
 }
-""".replace("__LIMIT_PLACEHOLDER__", str(MAX_WEB_RESULTS))
+"""
 
 def _h(html): return web.Response(text=html.encode('utf-8','replace').decode('utf-8'), content_type='text/html', charset='utf-8')
 
