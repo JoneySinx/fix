@@ -1,4 +1,3 @@
-import gc
 from aiohttp import web
 from web.web_assets import build_page, get_auth, form_wrapper, MAX_WEB_RESULTS
 from database.users_chats_db import db as user_db
@@ -142,20 +141,6 @@ var LIMIT_VAL = __LIMIT_PLACEHOLDER__;
 
 var activeFid = '', activeCol = '', cropperInstance = null;
 
-// ✅ फ़िक्स 1: Toast नोटिफिकेशन फंक्शन को यहाँ डिफाइन कर दिया गया है
-function showToast(msg, type) {
-    var toast = document.getElementById('toast');
-    if (!toast) return;
-    toast.textContent = msg;
-    toast.className = 'toast show';
-    if (type === 'error') {
-        toast.classList.add('error');
-    }
-    setTimeout(function() {
-        toast.classList.remove('show');
-    }, 3000);
-}
-
 function closeCdds(){
     var m1 = document.getElementById('cddColMenu'); if(m1) m1.style.display='none';
     var b1 = document.getElementById('cddColBtn'); if(b1) b1.classList.remove('open');
@@ -258,7 +243,6 @@ async function doSearch(o){
     curQ=q; curOff=o; if(o===0) curPage=1;
 
     var resDiv=document.getElementById('results');
-    // ✅ फ़िक्स 2: इनवैलिड क्लास मैपिंग 'mode=' को बदलकर 'mode-' कर दिया गया है
     resDiv.className='res-grid mode-'+pMode;
     resDiv.innerHTML='<div class="spin-wrap"><div class="spinner"></div><span>Searching...</span></div>';
 
@@ -331,7 +315,8 @@ async function doSearch(o){
         document.getElementById('pgInfo').textContent='Page '+curPage;
 
         if(nextOff) {
-            fetch('/api/search?q='+encodeURIComponent(q)+'&offset='+nextOff+'&col='+curCol+'&mode='+pMode);
+            // ✅ Background prefetch — server side caching के लिए
+            fetch('/api/search?q='+encodeURIComponent(q)+'&offset='+nextOff+'&col='+curCol+'&mode='+pMode).catch(function(){});
         }
     }catch(e){showToast('Network error','error');}
 }
@@ -341,7 +326,7 @@ async function deleteFile(fid,col){
     try{
         var r=await fetch('/api/delete',{method:'POST',body:JSON.stringify({file_id:fid,collection:col}),headers:{'Content-Type':'application/json'}});
         var res=await r.json();
-        if(res.success){showToast('✅ File deleted successfully!');doSearch(curOff);}
+        if(res.success){showToast('\u2705 File deleted successfully!');doSearch(curOff);}
         else{showToast(res.error||'Delete failed!','error');}
     }catch(e){showToast('Delete failed','error');}
 }
@@ -391,7 +376,7 @@ async function saveAllChanges(){
     btn.disabled=true;btn.innerText='Processing pipeline...';
     try{
         if(cropperInstance){
-            showToast('✂️ Cropping & Uploading to Telegram...');
+            showToast('\u2702\ufe0f Cropping & Uploading to Telegram...');
             var canvas=cropperInstance.getCroppedCanvas({width:1280,height:720,imageSmoothingEnabled:true,imageSmoothingQuality:'high'});
             var blob=await new Promise(function(resolve){canvas.toBlob(resolve,'image/jpeg',0.9);});
             if(blob){
@@ -404,11 +389,11 @@ async function saveAllChanges(){
                 if(!upData.success){showToast(upData.error||'Telegram image sync failed!','error');btn.disabled=false;btn.innerText='Save Changes';return;}
             }
         }
-        showToast('💾 Indexing metadata to Database...');
+        showToast('\ud83d\udcbe Indexing metadata to Database...');
         var r=await fetch('/api/edit_name',{method:'POST',body:JSON.stringify({file_id:activeFid,collection:activeCol,new_name:newName}),headers:{'Content-Type':'application/json'}});
         var res=await r.json();
         if(res.success||cropperInstance){
-            showToast('✨ Metadata & Studio Poster saved successfully!');
+            showToast('\u2728 Metadata & Studio Poster saved successfully!');
             closeCombinedModal();
             reloadThumb(activeFid, activeCol);
             var titleEl = document.getElementById('name-title-' + activeFid);
@@ -518,7 +503,6 @@ async def dash(req):
     """ if role == "admin" else ""
 
     body = TOTAL_STYLE + SEARCH_ZONE + ADMIN_ACTOR_MODAL + f"<script>{TOTAL_JS}</script>"
-    gc.collect()
     return build_page("Home - Fast Finder", body, "", "dash", role)
 
 
@@ -529,5 +513,4 @@ async def logout(req):
         del temp.USER_SESSIONS[s_user]
     res = web.HTTPFound('/login')
     res.del_cookie('user_session')
-    gc.collect()
     return res
