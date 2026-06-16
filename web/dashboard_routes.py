@@ -142,6 +142,20 @@ var LIMIT_VAL = __LIMIT_PLACEHOLDER__;
 
 var activeFid = '', activeCol = '', cropperInstance = null;
 
+// ✅ फ़िक्स 1: Toast नोटिफिकेशन फंक्शन को यहाँ डिफाइन कर दिया गया है
+function showToast(msg, type) {
+    var toast = document.getElementById('toast');
+    if (!toast) return;
+    toast.textContent = msg;
+    toast.className = 'toast show';
+    if (type === 'error') {
+        toast.classList.add('error');
+    }
+    setTimeout(function() {
+        toast.classList.remove('show');
+    }, 3000);
+}
+
 function closeCdds(){
     var m1 = document.getElementById('cddColMenu'); if(m1) m1.style.display='none';
     var b1 = document.getElementById('cddColBtn'); if(b1) b1.classList.remove('open');
@@ -244,7 +258,8 @@ async function doSearch(o){
     curQ=q; curOff=o; if(o===0) curPage=1;
 
     var resDiv=document.getElementById('results');
-    resDiv.className='res-grid mode='+pMode;
+    // ✅ फ़िक्स 2: इनवैलिड क्लास मैपिंग 'mode=' को बदलकर 'mode-' कर दिया गया है
+    resDiv.className='res-grid mode-'+pMode;
     resDiv.innerHTML='<div class="spin-wrap"><div class="spinner"></div><span>Searching...</span></div>';
 
     try{
@@ -326,7 +341,7 @@ async function deleteFile(fid,col){
     try{
         var r=await fetch('/api/delete',{method:'POST',body:JSON.stringify({file_id:fid,collection:col}),headers:{'Content-Type':'application/json'}});
         var res=await r.json();
-        if(res.success){showToast('\u2705 File deleted successfully!');doSearch(curOff);}
+        if(res.success){showToast('✅ File deleted successfully!');doSearch(curOff);}
         else{showToast(res.error||'Delete failed!','error');}
     }catch(e){showToast('Delete failed','error');}
 }
@@ -376,7 +391,7 @@ async function saveAllChanges(){
     btn.disabled=true;btn.innerText='Processing pipeline...';
     try{
         if(cropperInstance){
-            showToast('\u2702\ufe0f Cropping & Uploading to Telegram...');
+            showToast('✂️ Cropping & Uploading to Telegram...');
             var canvas=cropperInstance.getCroppedCanvas({width:1280,height:720,imageSmoothingEnabled:true,imageSmoothingQuality:'high'});
             var blob=await new Promise(function(resolve){canvas.toBlob(resolve,'image/jpeg',0.9);});
             if(blob){
@@ -389,11 +404,11 @@ async function saveAllChanges(){
                 if(!upData.success){showToast(upData.error||'Telegram image sync failed!','error');btn.disabled=false;btn.innerText='Save Changes';return;}
             }
         }
-        showToast('\ud83d\udcbe Indexing metadata to Database...');
+        showToast('💾 Indexing metadata to Database...');
         var r=await fetch('/api/edit_name',{method:'POST',body:JSON.stringify({file_id:activeFid,collection:activeCol,new_name:newName}),headers:{'Content-Type':'application/json'}});
         var res=await r.json();
         if(res.success||cropperInstance){
-            showToast('\u2728 Metadata & Studio Poster saved successfully!');
+            showToast('✨ Metadata & Studio Poster saved successfully!');
             closeCombinedModal();
             reloadThumb(activeFid, activeCol);
             var titleEl = document.getElementById('name-title-' + activeFid);
