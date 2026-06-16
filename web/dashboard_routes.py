@@ -415,7 +415,7 @@ async function saveAllChanges(){
 """.replace("__LIMIT_PLACEHOLDER__", str(MAX_WEB_RESULTS))
 
 # ─────────────────────────────────────────────────────────────────────────────
-# 🏠 SEARCH ZONE HTML — 🎭 Added Actors Section Navigation Button
+# 🏠 SEARCH ZONE HTML — 🎭 Navigation Buttons & Drodown Fix Complete
 # ─────────────────────────────────────────────────────────────────────────────
 SEARCH_ZONE = (
     '<div class="search-zone">'
@@ -424,7 +424,6 @@ SEARCH_ZONE = (
                 '<input class="search-input" id="q" placeholder="Titles, people, genres\u2026">'
             '</div>'
             '<button class="search-btn" id="searchBtn" onclick="doSearch(0);triggerRipple(this)">Search</button>'
-            ''
             '<button class="search-btn" style="background:#dc2626; font-weight:700;" onclick="loadActorSection()">🎭 Actors</button>'
         '</div>'
         '<div class="search-row2">'
@@ -435,4 +434,118 @@ SEARCH_ZONE = (
                 '<span class="cdd-arrow">&#9660;</span>'
                 '<div class="cdd-menu" id="cddColMenu" style="display:none">'
                     '<div class="cdd-item selected" data-val="all" onclick="pickCol(\'all\',\'\U0001f4c2 All Collections\',this)">\U0001f4c2 All Collections<span class="cdd-radio"><span class="cdd-radio-dot"></span></span></div>'
-                    '<div class="cdd-item" data-val="primary" onclick="pickCol(\'primary\',\'\U0001f7e2 Primary\',this)">\U0001f7e2 Primary<span class="cdd-radio"><span class="cdd-radio-dot"></span></span></div>
+                    '<div class="cdd-item" data-val="primary" onclick="pickCol(\'primary\',\'\U0001f7e2 Primary\',this)">\U0001f7e2 Primary<span class="cdd-radio"><span class="cdd-radio-dot"></span></span></div>'
+                    '<div class="cdd-item" data-val="cloud" onclick="pickCol(\'cloud\',\'\U0001f535 Cloud\',this)">\U0001f535 Cloud<span class="cdd-radio"><span class="cdd-radio-dot"></span></span></div>'
+                    '<div class="cdd-item" data-val="archive" onclick="pickCol(\'archive\',\'\U0001f7e0 Archive\',this)">\U0001f7e0 Archive<span class="cdd-radio"><span class="cdd-radio-dot"></span></span></div>'
+                '</div>'
+            '</div>'
+            '<div class="cdd-wrap" id="cddModeWrap">'
+                '<div class="cdd-btn" id="cddModeBtn" onclick="toggleCdd(\'mode\')">'
+                    '<span id="cddModeLabel">\U0001f4f8 Original TG Thumb</span>'
+                '</div>'
+                '<span class="cdd-arrow">&#9660;</span>'
+                '<div class="cdd-menu" id="cddModeMenu" style="display:none">'
+                    '<div class="cdd-item selected" data-val="tg" onclick="pickMode(\'tg\',\'\U0001f4f8 Original TG Thumb\',this)">\U0001f4f8 Original TG Thumb<span class="cdd-radio"><span class="cdd-radio-dot"></span></span></div>'
+                    '<div class="cdd-item" data-val="none" onclick="pickMode(\'none\',\'\u26a1 Text Only (Fastest)\',this)">\u26a1 Text Only (Fastest)<span class="cdd-radio"><span class="cdd-radio-dot"></span></span></div>'
+                '</div>'
+            '</div>'
+        '</div>'
+    '</div>'
+    '<div class="main" style="padding-top:4px;">'
+        '<div class="results-info" id="resInfo" style="padding:0 12px 8px;">'
+            '<span class="results-count" id="resCount"></span>'
+        '</div>'
+        '<div style="padding:0 2px">'
+            '<div id="results" class="res-grid">'
+                '<div class="empty"><div class="empty-icon">&#8981;</div>'
+                '<p>Find your favorite movies and TV shows.</p></div>'
+            '</div>'
+            '<div class="pagination" id="pageBox" style="display:none;">'
+                '<button class="pg-btn" id="pBtn" onclick="prev()" disabled>Previous</button>'
+                '<span class="pg-info" id="pgInfo">Page 1</span>'
+                '<button class="pg-btn" id="nBtn" onclick="next()">Next</button>'
+            '</div>'
+        '</div>'
+    '</div>'
+    '<div class="toast" id="toast"></div>'
+)
+
+
+@dashboard_routes.get('/dashboard')
+async def dash(req):
+    role, tg_id = await get_auth(req)
+    if not role:
+        return web.HTTPFound('/login')
+    if role == 'user':
+        mp = await user_db.get_plan(tg_id)
+        if not mp.get("premium"):
+            return web.HTTPFound('/premium_expired')
+
+    # 🎭 कंबाइन स्टाइल्स और जावास्क्रिप्ट इंजन पाइपलाइन
+    TOTAL_STYLE = CARD_CSS + ACTOR_CSS
+    TOTAL_JS = JS_ENGINE + ACTOR_JS
+
+    # ➕ एडमिन के लिए एक्टर क्रिएशन मोडल बक्सा (Gallery Upload Input के साथ)
+    ADMIN_ACTOR_MODAL = """
+    <div id="actorModal" class="edit-modal" style="display:none;" onclick="if(event.target===this)this.style.display='none'">
+      <div class="em-card" style="max-width:480px;">
+        <button class="em-close" onclick="document.getElementById('actorModal').style.display='none'">&#10005;</button>
+        <div class="em-title">🎭 Create Actor Profile</div>
+        <div style="display:flex; flex-direction:column; gap:12px;">
+          <input type="text" id="actorName" class="em-input" placeholder="Actor Full Name" style="margin-bottom:0;">
+          <input type="text" id="actorDob" class="em-input" placeholder="Date of Birth (e.g. 27 Dec 1965)" style="margin-bottom:0;">
+          <input type="text" id="actorCountry" class="em-input" placeholder="Origin Country" style="margin-bottom:0;">
+          <textarea id="actorBio" class="em-input" placeholder="Short Biography/Details..." rows="4" style="margin-bottom:0; font-family:inherit; resize:none; height:auto; padding:12px;"></textarea>
+          
+          <div class="scard-label" style="margin-bottom:0;">Profile Picture (Main Avatar)</div>
+          <input type="file" id="actorImageFile" accept="image/*" style="color:#fff; font-size:13px;">
+          
+          <div class="scard-label" style="margin-bottom:0;">Gallery Portfolio Images (Select Multiple)</div>
+          <input type="file" id="actorGalleryFiles" accept="image/*" multiple style="color:#fff; font-size:13px;">
+          
+          <div style="display:flex; gap:10px; margin-top:8px;">
+             <button class="em-save-btn" id="actorSaveBtn" onclick="saveActorProfile()" style="flex:1;">Save Actor</button>
+             <button class="em-save-btn" onclick="document.getElementById('actorModal').style.display='none'" style="background:var(--bg4); flex:1;">Cancel</button>
+          </div>
+        </div>
+      </div>
+    </div>
+    """ if role == "admin" else ""
+
+    body = TOTAL_STYLE + SEARCH_ZONE + ADMIN_ACTOR_MODAL + f"<script>{TOTAL_JS}</script>"
+    gc.collect()
+    return build_page("Home - Fast Finder", body, "", "dash", role)
+
+
+@dashboard_routes.get('/logout')
+async def logout(req):
+    s_user = req.cookies.get('user_session')
+    if s_user and hasattr(temp, 'USER_SESSIONS') and s_user in temp.USER_SESSIONS:
+        del temp.USER_SESSIONS[s_user]
+    res = web.HTTPFound('/login')
+    res.del_cookie('user_session')
+    gc.collect()
+    return res
+
+
+@dashboard_routes.get('/premium_expired')
+async def premium_expired(req):
+    role, tg_id = await get_auth(req)
+    if not role:
+        return web.HTTPFound('/login')
+    content = (
+        '<div style="text-align:center;">'
+        '<div style="font-size:50px;margin-bottom:15px;">&#9203;</div>'
+        '<p style="color:var(--muted);margin-bottom:30px;">Your access to Fast Finder Web has expired. '
+        'Please renew your plan via our Telegram Bot.</p>'
+        '<div class="scard red" style="text-align:left;margin-bottom:25px;padding:15px;">'
+        '<div class="scard-label">How to Renew?</div>'
+        '<div class="scard-sub" style="color:var(--text)">1. Go to Telegram Bot</div>'
+        '<div class="scard-sub" style="color:var(--text)">2. Use command <b>/plan</b></div>'
+        '<div class="scard-sub" style="color:var(--text)">3. Pay & Activate instantly</div>'
+        '</div>'
+        f'<a href="https://t.me/{temp.U_NAME}" class="submit-btn" style="text-decoration:none;display:block;">Open Telegram Bot</a>'
+        '<a href="/logout" style="display:block;margin-top:20px;color:var(--muted);text-decoration:none;">Sign Out</a>'
+        '</div>'
+    )
+    return build_page("Premium Expired", form_wrapper("Premium Expired", content), "login-bg")
