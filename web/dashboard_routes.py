@@ -2,6 +2,8 @@ from aiohttp import web
 from web.web_assets import build_page, get_auth, form_wrapper, MAX_WEB_RESULTS
 from database.users_chats_db import db as user_db
 from utils import temp
+# 🎭 Actor CSS + JS import
+from web.actor_routes import ACTOR_CSS, ACTOR_JS
 
 dashboard_routes = web.RouteTableDef()
 
@@ -141,10 +143,10 @@ var activeFid = '', activeCol = '', cropperInstance = null;
 
 /* ── Custom dropdown logic ── */
 function closeCdds(){
-    document.getElementById('cddColMenu').style.display='none';
-    document.getElementById('cddColBtn').classList.remove('open');
-    document.getElementById('cddModeMenu').style.display='none';
-    document.getElementById('cddModeBtn').classList.remove('open');
+    var m1=document.getElementById('cddColMenu');if(m1)m1.style.display='none';
+    var b1=document.getElementById('cddColBtn');if(b1)b1.classList.remove('open');
+    var m2=document.getElementById('cddModeMenu');if(m2)m2.style.display='none';
+    var b2=document.getElementById('cddModeBtn');if(b2)b2.classList.remove('open');
 }
 function toggleCdd(which,e){
     if(e){e.stopPropagation();}
@@ -154,9 +156,10 @@ function toggleCdd(which,e){
     var otherBtnId=which==='col'?'cddModeBtn':'cddColBtn';
     var menu=document.getElementById(menuId);
     var btn=document.getElementById(btnId);
+    if(!menu||!btn)return;
     var isOpen=menu.style.display!=='none';
-    document.getElementById(otherId).style.display='none';
-    document.getElementById(otherBtnId).classList.remove('open');
+    var om=document.getElementById(otherId);if(om)om.style.display='none';
+    var ob=document.getElementById(otherBtnId);if(ob)ob.classList.remove('open');
     if(isOpen){menu.style.display='none';btn.classList.remove('open');}
     else{menu.style.display='block';btn.classList.add('open');}
 }
@@ -184,8 +187,11 @@ function pickMode(val,label,el,e){
 document.addEventListener('click',function(e){
     if(!e.target.closest('.cdd-wrap')){closeCdds();}
 });
-document.querySelectorAll('.cdd-menu').forEach(function(m){
-    m.addEventListener('click',function(e){e.stopPropagation();});
+// cdd-menu click propagation — DOMContentLoaded पर run करो
+document.addEventListener('DOMContentLoaded',function(){
+    document.querySelectorAll('.cdd-menu').forEach(function(m){
+        m.addEventListener('click',function(e){e.stopPropagation();});
+    });
 });
 function changeCol(val){curCol=val;if(curQ)doSearch(0);}
 
@@ -427,25 +433,25 @@ SEARCH_ZONE = (
         '</div>'
         '<div class="search-row2">'
             '<div class="cdd-wrap" id="cddColWrap">'
-                '<div class="cdd-btn" id="cddColBtn" onclick="toggleCdd(\'col\')">'
+                '<div class="cdd-btn" id="cddColBtn" onclick="toggleCdd(\'col\',event)">'
                     '<span id="cddColLabel">\U0001f4c2 All Collections</span>'
                 '</div>'
                 '<span class="cdd-arrow">&#9660;</span>'
                 '<div class="cdd-menu" id="cddColMenu" style="display:none">'
-                    '<div class="cdd-item selected" data-val="all" onclick="pickCol(\'all\',\'\U0001f4c2 All Collections\',this)">\U0001f4c2 All Collections<span class="cdd-radio"><span class="cdd-radio-dot"></span></span></div>'
-                    '<div class="cdd-item" data-val="primary" onclick="pickCol(\'primary\',\'\U0001f7e2 Primary\',this)">\U0001f7e2 Primary<span class="cdd-radio"><span class="cdd-radio-dot"></span></span></div>'
-                    '<div class="cdd-item" data-val="cloud" onclick="pickCol(\'cloud\',\'\U0001f535 Cloud\',this)">\U0001f535 Cloud<span class="cdd-radio"><span class="cdd-radio-dot"></span></span></div>'
-                    '<div class="cdd-item" data-val="archive" onclick="pickCol(\'archive\',\'\U0001f7e0 Archive\',this)">\U0001f7e0 Archive<span class="cdd-radio"><span class="cdd-radio-dot"></span></span></div>'
+                    '<div class="cdd-item selected" data-val="all" onclick="pickCol(\'all\',\'\U0001f4c2 All Collections\',this,event)">\U0001f4c2 All Collections<span class="cdd-radio"><span class="cdd-radio-dot"></span></span></div>'
+                    '<div class="cdd-item" data-val="primary" onclick="pickCol(\'primary\',\'\U0001f7e2 Primary\',this,event)">\U0001f7e2 Primary<span class="cdd-radio"><span class="cdd-radio-dot"></span></span></div>'
+                    '<div class="cdd-item" data-val="cloud" onclick="pickCol(\'cloud\',\'\U0001f535 Cloud\',this,event)">\U0001f535 Cloud<span class="cdd-radio"><span class="cdd-radio-dot"></span></span></div>'
+                    '<div class="cdd-item" data-val="archive" onclick="pickCol(\'archive\',\'\U0001f7e0 Archive\',this,event)">\U0001f7e0 Archive<span class="cdd-radio"><span class="cdd-radio-dot"></span></span></div>'
                 '</div>'
             '</div>'
             '<div class="cdd-wrap" id="cddModeWrap">'
-                '<div class="cdd-btn" id="cddModeBtn" onclick="toggleCdd(\'mode\')">'
+                '<div class="cdd-btn" id="cddModeBtn" onclick="toggleCdd(\'mode\',event)">'
                     '<span id="cddModeLabel">\U0001f4f8 Original TG Thumb</span>'
                 '</div>'
                 '<span class="cdd-arrow">&#9660;</span>'
                 '<div class="cdd-menu" id="cddModeMenu" style="display:none">'
-                    '<div class="cdd-item selected" data-val="tg" onclick="pickMode(\'tg\',\'\U0001f4f8 Original TG Thumb\',this)">\U0001f4f8 Original TG Thumb<span class="cdd-radio"><span class="cdd-radio-dot"></span></span></div>'
-                    '<div class="cdd-item" data-val="none" onclick="pickMode(\'none\',\'\u26a1 Text Only (Fastest)\',this)">\u26a1 Text Only (Fastest)<span class="cdd-radio"><span class="cdd-radio-dot"></span></span></div>'
+                    '<div class="cdd-item selected" data-val="tg" onclick="pickMode(\'tg\',\'\U0001f4f8 Original TG Thumb\',this,event)">\U0001f4f8 Original TG Thumb<span class="cdd-radio"><span class="cdd-radio-dot"></span></span></div>'
+                    '<div class="cdd-item" data-val="none" onclick="pickMode(\'none\',\'\u26a1 Text Only (Fastest)\',this,event)">\u26a1 Text Only (Fastest)<span class="cdd-radio"><span class="cdd-radio-dot"></span></span></div>'
                 '</div>'
             '</div>'
         '</div>'
@@ -480,7 +486,32 @@ async def dash(req):
         if not mp.get("premium"):
             return web.HTTPFound('/premium_expired')
 
-    body = CARD_CSS + SEARCH_ZONE + f"<script>{JS_ENGINE}</script>"
+    # ✅ Admin के लिए Actor Create Modal HTML
+    ADMIN_ACTOR_MODAL = """
+    <div id="actorModal" class="edit-modal" style="display:none;" onclick="if(event.target===this)this.style.display='none'">
+      <div class="em-card" style="max-width:500px;">
+        <button class="em-close" onclick="document.getElementById('actorModal').style.display='none'">&#10005;</button>
+        <div class="em-title">🎭 Create Actor Profile</div>
+        <div style="display:flex;flex-direction:column;gap:12px;">
+          <input type="text" id="actorName" class="em-input" placeholder="Actor Full Name" style="margin-bottom:0;">
+          <input type="text" id="actorDob" class="em-input" placeholder="Date of Birth (e.g. 27 Dec 1965)" style="margin-bottom:0;">
+          <input type="text" id="actorCountry" class="em-input" placeholder="Origin Country" style="margin-bottom:0;">
+          <textarea id="actorBio" class="em-input" placeholder="Short Biography..." rows="3" style="margin-bottom:0;font-family:inherit;resize:none;height:auto;padding:12px;"></textarea>
+          <div class="scard-label" style="margin-bottom:0;">Profile Picture (Main Avatar)</div>
+          <input type="file" id="actorImageFile" accept="image/*" style="color:#fff;font-size:13px;">
+          <div class="scard-label" style="margin-bottom:0;">Gallery Images (Optional, Multiple)</div>
+          <input type="file" id="actorGalleryFiles" accept="image/*" multiple style="color:#fff;font-size:13px;">
+          <div style="display:flex;gap:10px;margin-top:8px;">
+            <button class="em-save-btn" id="actorSaveBtn" onclick="saveActorProfile()" style="flex:1;">Save Actor</button>
+            <button class="em-save-btn" onclick="document.getElementById('actorModal').style.display='none'" style="background:var(--bg4);flex:1;">Cancel</button>
+          </div>
+        </div>
+      </div>
+    </div>
+    """ if role == "admin" else ""
+
+    TOTAL_JS = JS_ENGINE + ACTOR_JS
+    body = CARD_CSS + ACTOR_CSS + SEARCH_ZONE + ADMIN_ACTOR_MODAL + f"<script>{TOTAL_JS}</script>"
     return build_page("Home - Fast Finder", body, "", "dash", role)
 
 
