@@ -221,6 +221,8 @@ async def get_user_role(req):
             tg_id = session["tg_id"]
             if tg_id in ADMINS: return "admin", tg_id
             if await is_premium(tg_id): return "user", tg_id
+            # ✅ FIX: IS_PREMIUM=False हो तो सभी logged-in users को allow करो
+            if not IS_PREMIUM: return "user", tg_id
     return None, None
 
 
@@ -273,17 +275,11 @@ async def api_search(req):
     if current_cache_key in PREFETCH_CACHE:
         all_m, next_offset = PREFETCH_CACHE.pop(current_cache_key)
         logger.info(f"⚡ [PREFETCH HIT] Serving Page Pipeline directly from Cache.")
-        # ✅ FIX: prefetch cache में भी source inject (already stored हो सकता है)
 
     if not all_m:
-        all_m, next_offset, _, actual_source = await get_search_results(
+        all_m, next_offset, _, _ = await get_search_results(
             q, lim, offset=off, collection_type=col, bypass_count=True
         )
-        # ✅ FIX: जब "all" collection search होती है, actual source को docs में inject करो
-        if all_m and col == "all":
-            for doc in all_m:
-                if "source_col" not in doc:
-                    doc["source_col"] = actual_source
 
     has_more = bool(next_offset)
 
