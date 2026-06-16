@@ -4,7 +4,7 @@ from web.web_assets import build_page, get_auth, form_wrapper, MAX_WEB_RESULTS
 from database.users_chats_db import db as user_db
 from utils import temp
 
-# 🎭 नई एक्टर फाइल से डिज़ाइन और स्क्रिप्ट्स इम्पोर्ट करें
+# 🎭 नई एक्टर फाइल से डिज़ाइन और स्क्रिप्ट्स इम्पोर्ट करें
 from web.actor_routes import ACTOR_CSS, ACTOR_JS  
 
 dashboard_routes = web.RouteTableDef()
@@ -79,7 +79,7 @@ CARD_CSS = """
 .file-card:hover .fc-poster{transform:scale(1.05)}
 .thumb-error{position:absolute;inset:0;display:flex;align-items:center;justify-content:center;background:#1f1f1f;z-index:2}
 
-/* ── Poster top row: Type · Size · Source ── */
+/* ── Poster top row ── */
 .poster-top{position:absolute;top:0;left:0;right:0;display:flex;align-items:center;gap:5px;padding:8px;z-index:3}
 .type-chip{background:rgba(0,0,0,.72);backdrop-filter:blur(8px);color:#fff;border-radius:5px;padding:3px 8px;font-size:10px;font-weight:800;letter-spacing:.8px;border:1px solid rgba(255,255,255,.14);line-height:1.4}
 .size-chip{background:rgba(0,0,0,.60);backdrop-filter:blur(8px);color:#e0e0e0;border-radius:5px;padding:3px 8px;font-size:10px;font-weight:600;border:1px solid rgba(255,255,255,.08);line-height:1.4}
@@ -92,10 +92,9 @@ CARD_CSS = """
 .cloud .source-dot{background:#60a5fa;box-shadow:0 0 4px #60a5fa}
 .archive .source-dot{background:#fb923c;box-shadow:0 0 4px #fb923c}
 
-/* ── Poster bottom row: Edit | Delete (admin only) ── */
+/* ── Poster bottom row ── */
 .poster-admin{position:absolute;bottom:0;left:0;right:0;display:flex;gap:6px;padding:7px 8px;opacity:0;transform:translateY(8px);transition:opacity .2s ease,transform .22s ease;pointer-events:none;z-index:4}
 .file-card.admin-active .poster-admin{opacity:1;transform:translateY(0);pointer-events:all}
-/* text-only admin row */
 .text-admin-row{display:none;gap:5px;padding:5px 11px 0}
 .file-card.admin-active .text-admin-row{display:flex}
 .btn-edit,.btn-del{flex:1;padding:6px 0;border-radius:6px;font-size:11px;font-weight:700;cursor:pointer;transition:background .12s,transform .1s;border:none}
@@ -134,46 +133,57 @@ CARD_CSS = """
 """
 
 # ─────────────────────────────────────────────────────────────────────────────
-# 🎬 JS ENGINE — Rebuilt Smart Double Pre-fetching Engine Live
+# 🎬 JS ENGINE — Fixed Missing Bracket Closure & String Mappings Cross-over
 # ─────────────────────────────────────────────────────────────────────────────
-JS_ENGINE = """
+JS_ENGINE = r"""
 var curQ='',curOff=0,nextOff='',curCol='all',curPage=1;
 var pMode=localStorage.getItem('posterMode')||'tg';
 var LIMIT_VAL = __LIMIT_PLACEHOLDER__;
 
 var activeFid = '', activeCol = '', cropperInstance = null;
 
-/* ── Custom dropdown logic ── */
 function closeCdds(){
-    document.getElementById('cddColMenu').style.display='none';
-    document.getElementById('cddColBtn').classList.remove('open');
-    document.getElementById('cddModeMenu').style.display='none';
-    document.getElementById('cddModeBtn').classList.remove('open');
+    var m1 = document.getElementById('cddColMenu'); if(m1) m1.style.display='none';
+    var b1 = document.getElementById('cddColBtn'); if(b1) b1.classList.remove('open');
+    var m2 = document.getElementById('cddModeMenu'); if(m2) m2.style.display='none';
+    var b2 = document.getElementById('cddModeBtn'); if(b2) b2.classList.remove('open');
 }
+
 function toggleCdd(which,e){
     if(e){e.stopPropagation();}
-    var menuId=which==='col'?'cddColMenu':'cddModeMenu';
-    var btnId=which==='col'?'cddColBtn':'cddModeBtn';
-    var otherId=which==='col'?'cddModeMenu':'cddColMenu';
-    var otherBtnId=which==='col'?'cddModeBtn':'cddColBtn';
-    var menu=document.getElementById(menuId);
-    var btn=document.getElementById(btnId);
-    var isOpen=menu.style.display!=='none';
-    document.getElementById(otherId).style.display='none';
-    document.getElementById(otherBtnId).classList.remove('open');
-    if(isOpen){menu.style.display='none';btn.classList.remove('open');}
-    else{menu.style.display='block';btn.classList.add('open');}
+    var menuId = which==='col'?'cddColMenu':'cddModeMenu';
+    var btnId = which==='col'?'cddColBtn':'cddModeBtn';
+    var otherId = which==='col'?'cddModeMenu':'cddColMenu';
+    var otherBtnId = which==='col'?'cddModeBtn':'cddColBtn';
+    
+    var menu = document.getElementById(menuId);
+    var btn = document.getElementById(btnId);
+    if(!menu || !btn) return;
+    
+    var isOpen = menu.style.display!=='none';
+    
+    var oMenu = document.getElementById(otherId); if(oMenu) oMenu.style.display='none';
+    var oBtn = document.getElementById(otherBtnId); if(oBtn) oBtn.classList.remove('open');
+    
+    if(isOpen){
+        menu.style.display='none';
+        btn.classList.remove('open');
+    } else {
+        menu.style.display='block';
+        btn.classList.add('open');
+    }
 }
+
 function pickCol(val,label,el,e){
     if(e){e.stopPropagation();}
     curCol=val;
     document.getElementById('cddColLabel').textContent=label;
     document.querySelectorAll('#cddColMenu .cdd-item').forEach(function(i){i.classList.remove('selected');});
     el.classList.add('selected');
-    document.getElementById('cddColMenu').style.display='none';
-    document.getElementById('cddColBtn').classList.remove('open');
-    if(curQ)doSearch(0);
+    closeCdds();
+    if(curQ) doSearch(0);
 }
+
 function pickMode(val,label,el,e){
     if(e){e.stopPropagation();}
     pMode=val;
@@ -181,17 +191,13 @@ function pickMode(val,label,el,e){
     document.getElementById('cddModeLabel').textContent=label;
     document.querySelectorAll('#cddModeMenu .cdd-item').forEach(function(i){i.classList.remove('selected');});
     el.classList.add('selected');
-    document.getElementById('cddModeMenu').style.display='none';
-    document.getElementById('cddModeBtn').classList.remove('open');
-    if(curQ)doSearch(curOff);
+    closeCdds();
+    if(curQ) doSearch(curOff);
 }
+
 document.addEventListener('click',function(e){
     if(!e.target.closest('.cdd-wrap')){closeCdds();}
 });
-document.querySelectorAll('.cdd-menu').forEach(function(m){
-    m.addEventListener('click',function(e){e.stopPropagation();});
-});
-function changeCol(val){curCol=val;if(curQ)doSearch(0);}
 
 function handleThumbError(fileId) {
     var img = document.getElementById('img-poster-' + fileId);
@@ -209,35 +215,36 @@ function handleThumbError(fileId) {
     }
 }
 
-async function reloadThumb(fileId, col) {
-    var timestamp = new Date().getTime();
-    var img = document.getElementById('img-poster-' + fileId);
-    if (img) {
-        img.src = '/api/thumb?file_id=' + fileId + '&col=' + col + '&retry=true&t=' + timestamp;
-        img.classList.remove('loaded');
-    }
-    var errBox = document.getElementById('thumb-err-' + fileId);
-    if (errBox) { errBox.remove(); }
+function triggerRipple(btn){
+    if(!btn) return;
+    btn.classList.remove('ripple-go');
+    void btn.offsetWidth;
+    btn.classList.add('ripple-go');
+    setTimeout(function(){btn.classList.remove('ripple-go');},460);
 }
 
-function triggerRipple(btn){btn.classList.remove('ripple-go');void btn.offsetWidth;btn.classList.add('ripple-go');setTimeout(function(){btn.classList.remove('ripple-go');},460);}
-
 function toggleAdminBtns(card,e){
+    if(!card) return;
     e.stopPropagation();
     var isActive=card.classList.contains('admin-active');
     document.querySelectorAll('.file-card.admin-active').forEach(function(c){c.classList.remove('admin-active');});
     if(!isActive){card.classList.add('admin-active');}
 }
+
 document.addEventListener('click',function(){
     document.querySelectorAll('.file-card.admin-active').forEach(function(c){c.classList.remove('admin-active');});
 });
+
+function prev(){ if(curOff > 0){ curPage--; doSearch(curOff - LIMIT_VAL); } }
+function next(){ if(nextOff){ curPage++; doSearch(nextOff); } }
+
 async function doSearch(o){
     var q=document.getElementById('q').value.trim();
     if(!q){showToast('Please enter a movie name','error');return;}
-    curQ=q;curOff=o;if(o===0)curPage=1;
+    curQ=q; curOff=o; if(o===0) curPage=1;
 
     var resDiv=document.getElementById('results');
-    resDiv.className='res-grid mode-'+pMode;
+    resDiv.className='res-grid mode='+pMode;
     resDiv.innerHTML='<div class="spin-wrap"><div class="spinner"></div><span>Searching...</span></div>';
 
     try{
@@ -253,21 +260,21 @@ async function doSearch(o){
         var h='';
         d.results.forEach(function(f){
             var sc=(f.source||'primary').toLowerCase();
-            if(!['primary','cloud','archive'].includes(sc))sc='primary';
+            if(!['primary','cloud','archive'].includes(sc)) sc='primary';
 
             var adminBtns='';
             if(d.is_admin){
-                var safeName=f.name.replace(/\\\\/g,'\\\\\\\\').replace(/'/g,"\\\\'");
+                var safeName=f.name.replace(/\\/g,'\\\\').replace(/'/g,"\\'");
                 adminBtns='<div class="poster-admin">'+
-                    '<button class="btn-edit" onclick="event.stopPropagation();editFile(\\''+f.file_id+'\\',\\''+f.raw_collection+'\\',\\''+safeName+'\\')">&#9999; Edit</button>'+
-                    '<button class="btn-del" onclick="event.stopPropagation();deleteFile(\\''+f.file_id+'\\',\\''+f.raw_collection+'\\')">&#128465; Delete</button>'+
+                    '<button class="btn-edit" onclick="event.stopPropagation();editFile(\''+f.file_id+'\',\''+f.raw_collection+'\',\''+safeName+'\')">&#9999; Edit</button>'+
+                    '<button class="btn-del" onclick="event.stopPropagation();deleteFile(\''+f.file_id+'\',\''+f.raw_collection+'\')">&#128465; Delete</button>'+
                 '</div>';
             }
 
             var posterHtml='';
             if(pMode!=='none'){
-                posterHtml='<div class="poster-box" id="poster-box-'+f.file_id+'" onclick="toggleAdminBtns(this.closest(\\'.file-card\\'),event)">'+
-                    '<img src="'+f.tg_thumb+'" id="img-poster-'+f.file_id+'" class="fc-poster" onload="this.classList.add(\\'loaded\\')" onerror="handleThumbError(\\''+f.file_id+'\\')" loading="lazy">'+
+                posterHtml='<div class="poster-box" id="poster-box-'+f.file_id+'" onclick="toggleAdminBtns(this.closest(\'.file-card\'),event)">'+
+                    '<img src="'+f.tg_thumb+'" id="img-poster-'+f.file_id+'" class="fc-poster" onload="this.classList.add(\'loaded\')" onerror="handleThumbError(\''+f.file_id+'\')" loading="lazy">'+
                     '<div class="poster-top">'+
                         '<span class="type-chip">'+f.type.toUpperCase()+'</span>'+
                         '<span class="size-chip">'+f.size+'</span>'+
@@ -279,16 +286,16 @@ async function doSearch(o){
 
             var textInfo='';
             if(pMode==='none'){
-                textInfo='<div class="fc-text-info" onclick="toggleAdminBtns(this.closest(\\'.file-card\\'),event)">'+
+                textInfo='<div class="fc-text-info" onclick="toggleAdminBtns(this.closest(\'.file-card\'),event)">'+
                     '<span class="tc-type">'+f.type.toUpperCase()+'</span>'+
                     '<span class="tc-size">'+f.size+'</span>'+
                     '<span class="source-pill '+sc+'" style="margin-left:auto"><span class="source-dot"></span>'+sc.toUpperCase()+'</span>'+
                 '</div>';
                 if(d.is_admin){
-                    var safeName2=f.name.replace(/\\\\/g,'\\\\\\\\').replace(/'/g,"\\\\'");
+                    var safeName2=f.name.replace(/\\/g,'\\\\').replace(/'/g,"\\'");
                     textInfo+='<div class="text-admin-row">'+
-                        '<button class="btn-edit" onclick="event.stopPropagation();editFile(\\''+f.file_id+'\\',\\''+f.raw_collection+'\\',\\''+safeName2+'\\')">&#9999; Edit</button>'+
-                        '<button class="btn-del" onclick="event.stopPropagation();deleteFile(\\''+f.file_id+'\\',\\''+f.raw_collection+'\\')">&#128465; Delete</button>'+
+                        '<button class="btn-edit" onclick="event.stopPropagation();editFile(\''+f.file_id+'\',\''+f.raw_collection+'\',\''+safeName2+'\')">&#9999; Edit</button>'+
+                        '<button class="btn-del" onclick="event.stopPropagation();deleteFile(\''+f.file_id+'\',\''+f.raw_collection+'\')">&#128465; Delete</button>'+
                     '</div>';
                 }
             }
@@ -297,7 +304,7 @@ async function doSearch(o){
                 posterHtml+
                 textInfo+
                 '<div class="fc-body">'+
-                    '<div class="fc-name" id="name-title-'+f.file_id+'" onclick="window.open(\\''+f.watch+'\\',\\'_blank\\')">'+f.name+'</div>'+
+                    '<div class="fc-name" id="name-title-'+f.file_id+'" onclick="window.open(\''+f.watch+'\',\'_blank\')">'+f.name+'</div>'+
                 '</div>'+
             '</div>';
         });
@@ -313,10 +320,96 @@ async function doSearch(o){
         }
     }catch(e){showToast('Network error','error');}
 }
-""".replace("__LIMIT_PLACEHOLDER__", str(MAX_WEB_RESULTS))
+
+async function deleteFile(fid,col){
+    if(!confirm('Are you sure you want to delete this file?'))return;
+    try{
+        var r=await fetch('/api/delete',{method:'POST',body:JSON.stringify({file_id:fid,collection:col}),headers:{'Content-Type':'application/json'}});
+        var res=await r.json();
+        if(res.success){showToast('\u2705 File deleted successfully!');doSearch(curOff);}
+        else{showToast(res.error||'Delete failed!','error');}
+    }catch(e){showToast('Delete failed','error');}
+}
+
+function editFile(fid,col,currentName){
+    activeFid=fid;activeCol=col;
+    if(cropperInstance){cropperInstance.destroy();cropperInstance=null;}
+    document.getElementById('emName').value=currentName;
+    document.getElementById('emFile').value='';
+    document.getElementById('cropContainer').style.display='none';
+    var prevBox=document.getElementById('emPreviewBox');
+    prevBox.style.display='flex';
+    prevBox.innerHTML='<img src="/api/thumb?file_id='+fid+'&col='+activeCol+'" class="t-prev-img" onerror="this.src=\'https://placehold.co/600x338/181818/FFF?text=No+Thumbnail\';">';
+    document.getElementById('editCombinedModal').classList.add('open');
+}
+
+function closeCombinedModal(){
+    document.getElementById('editCombinedModal').classList.remove('open');
+    if(cropperInstance){cropperInstance.destroy();cropperInstance=null;}
+}
+
+function handleLocalPreview(input){
+    if(input.files&&input.files[0]){
+        var reader=new FileReader();
+        reader.onload=function(e){
+            if(cropperInstance){cropperInstance.destroy();}
+            document.getElementById('emPreviewBox').style.display='none';
+            var cropWrap=document.getElementById('cropContainer');
+            cropWrap.style.display='block';
+            cropWrap.innerHTML='<img id="cropImage" src="'+e.target.result+'" style="max-width:100%;">';
+            var img=document.getElementById('cropImage');
+            cropperInstance=new Cropper(img,{
+                aspectRatio:16/9,viewMode:1,dragMode:'move',background:false,
+                autoCropArea:1,restore:false,guides:false,center:true,highlight:false,
+                cropBoxMovable:false,cropBoxResizable:false,toggleDragModeOnDblclick:false,
+                zoomable:true,movable:true
+            });
+        };
+        reader.readAsDataURL(input.files[0]);
+    }
+}
+
+async function saveAllChanges(){
+    var newName=document.getElementById('emName').value.trim();
+    if(!newName){showToast('File name cannot be empty!','error');return;}
+    var btn=document.getElementById('emSaveBtn');
+    btn.disabled=true;btn.innerText='Processing pipeline...';
+    try{
+        if(cropperInstance){
+            showToast('\u2702\ufe0f Cropping & Uploading to Telegram...');
+            var canvas=cropperInstance.getCroppedCanvas({width:1280,height:720,imageSmoothingEnabled:true,imageSmoothingQuality:'high'});
+            var blob=await new Promise(function(resolve){canvas.toBlob(resolve,'image/jpeg',0.9);});
+            if(blob){
+                var formData=new FormData();
+                formData.append('file_id',activeFid);
+                formData.append('collection',activeCol);
+                formData.append('image',blob,'cropped_poster.jpg');
+                var upRes=await fetch('/api/upload_thumb',{method:'POST',body:formData});
+                var upData=await upRes.json();
+                if(!upData.success){showToast(upData.error||'Telegram image sync failed!','error');btn.disabled=false;btn.innerText='Save Changes';return;}
+            }
+        }
+        showToast('\ud83d\udcbe Indexing metadata to Database...');
+        var r=await fetch('/api/edit_name',{method:'POST',body:JSON.stringify({file_id:activeFid,collection:activeCol,new_name:newName}),headers:{'Content-Type':'application/json'}});
+        var res=await r.json();
+        if(res.success||cropperInstance){
+            showToast('\u2728 Metadata & Studio Poster saved successfully!');
+            closeCombinedModal();
+            reloadThumb(activeFid, activeCol);
+            var titleEl = document.getElementById('name-title-' + activeFid);
+            if(titleEl) { titleEl.textContent = newName; }
+        }else{showToast(res.error||'Metadata save failed!','error');}
+    }catch(e){showToast('Network synchronization error','error');}
+    finally{btn.disabled=false;btn.innerText='Save Changes';}
+}
+
+document.addEventListener('DOMContentLoaded',function(){
+    var q=document.getElementById('q');if(q)q.addEventListener('keydown',function(e){if(e.key==='Enter')doSearch(0);});
+});
+"""
 
 # ─────────────────────────────────────────────────────────────────────────────
-# 🏠 SEARCH ZONE HTML (पूरी तरह सुरक्षित ट्रिपल कोट्स स्ट्रिंग)
+# 🏠 SEARCH ZONE HTML (पूरी तरह सेफ ट्रिपल कोट्स स्ट्रिंग)
 # ─────────────────────────────────────────────────────────────────────────────
 SEARCH_ZONE = """
 <div class="search-zone">
@@ -328,25 +421,25 @@ SEARCH_ZONE = """
     </div>
     <div class="search-row2">
         <div class="cdd-wrap" id="cddColWrap">
-            <div class="cdd-btn" id="cddColBtn" onclick="toggleCdd('col')">
+            <div class="cdd-btn" id="cddColBtn" onclick="toggleCdd('col', event)">
                 <span id="cddColLabel">📁 All Collections</span>
             </div>
             <span class="cdd-arrow">&#9660;</span>
             <div class="cdd-menu" id="cddColMenu" style="display:none">
-                <div class="cdd-item selected" data-val="all" onclick="pickCol('all','📁 All Collections',this)">📁 All Collections<span class="cdd-radio"><span class="cdd-radio-dot"></span></span></div>
-                <div class="cdd-item" data-val="primary" onclick="pickCol('primary','🟢 Primary',this)">🟢 Primary<span class="cdd-radio"><span class="cdd-radio-dot"></span></span></div>
-                <div class="cdd-item" data-val="cloud" onclick="pickCol('cloud','🔵 Cloud',this)">🔵 Cloud<span class="cdd-radio"><span class="cdd-radio-dot"></span></span></div>
-                <div class="cdd-item" data-val="archive" onclick="pickCol('archive','🟠 Archive',this)">%s🟠 Archive<span class="cdd-radio"><span class="cdd-radio-dot"></span></span></div>
+                <div class="cdd-item selected" data-val="all" onclick="pickCol('all','📁 All Collections',this, event)">📁 All Collections<span class="cdd-radio"><span class="cdd-radio-dot"></span></span></div>
+                <div class="cdd-item" data-val="primary" onclick="pickCol('primary','🟢 Primary',this, event)">🟢 Primary<span class="cdd-radio"><span class="cdd-radio-dot"></span></span></div>
+                <div class="cdd-item" data-val="cloud" onclick="pickCol('cloud','🔵 Cloud',this, event)">🔵 Cloud<span class="cdd-radio"><span class="cdd-radio-dot"></span></span></div>
+                <div class="cdd-item" data-val="archive" onclick="pickCol('archive','🟠 Archive',this, event)">🟠 Archive<span class="cdd-radio"><span class="cdd-radio-dot"></span></span></div>
             </div>
         </div>
         <div class="cdd-wrap" id="cddModeWrap">
-            <div class="cdd-btn" id="cddModeBtn" onclick="toggleCdd('mode')">
+            <div class="cdd-btn" id="cddModeBtn" onclick="toggleCdd('mode', event)">
                 <span id="cddModeLabel">📸 Original TG Thumb</span>
             </div>
             <span class="cdd-arrow">&#9660;</span>
             <div class="cdd-menu" id="cddModeMenu" style="display:none">
-                <div class="cdd-item selected" data-val="tg" onclick="pickMode('tg','📸 Original TG Thumb',this)">📸 Original TG Thumb<span class="cdd-radio"><span class="cdd-radio-dot"></span></span></div>
-                <div class="cdd-item" data-val="none" onclick="pickMode('none','⚡ Text Only (Fastest)',this)">⚡ Text Only (Fastest)<span class="cdd-radio"><span class="cdd-radio-dot"></span></span></div>
+                <div class="cdd-item selected" data-val="tg" onclick="pickMode('tg','📸 Original TG Thumb',this, event)">📸 Original TG Thumb<span class="cdd-radio"><span class="cdd-radio-dot"></span></span></div>
+                <div class="cdd-item" data-val="none" onclick="pickMode('none','⚡ Text Only (Fastest)',this, event)">⚡ Text Only (Fastest)<span class="cdd-radio"><span class="cdd-radio-dot"></span></span></div>
             </div>
         </div>
     </div>
@@ -381,7 +474,7 @@ async def dash(req):
             return web.HTTPFound('/premium_expired')
 
     TOTAL_STYLE = CARD_CSS + ACTOR_CSS
-    TOTAL_JS = JS_ENGINE + ACTOR_JS
+    TOTAL_JS = JS_ENGINE.replace("__LIMIT_PLACEHOLDER__", str(MAX_WEB_RESULTS)) + ACTOR_JS
 
     ADMIN_ACTOR_MODAL = """
     <div id="actorModal" class="edit-modal" style="display:none;" onclick="if(event.target===this)this.style.display='none'">
