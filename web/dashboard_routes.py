@@ -1,7 +1,11 @@
+import gc
 from aiohttp import web
 from web.web_assets import build_page, get_auth, form_wrapper, MAX_WEB_RESULTS
 from database.users_chats_db import db as user_db
 from utils import temp
+
+# 🎭 नई एक्टर फाइल से डिज़ाइन और स्क्रिप्ट्स इम्पोर्ट करें
+from web.actor_routes import ACTOR_CSS, ACTOR_JS  
 
 dashboard_routes = web.RouteTableDef()
 
@@ -293,7 +297,6 @@ async function doSearch(o){
                 posterHtml+
                 textInfo+
                 '<div class="fc-body">'+
-                    // ✅ फिक्स: कार्ड टाइटल को एक यूनिक ID दी गई है ताकि लाइव AJAX री-रेंडर हो सके
                     '<div class="fc-name" id="name-title-'+f.file_id+'" onclick="window.open(\\''+f.watch+'\\',\\'_blank\\')">'+f.name+'</div>'+
                 '</div>'+
             '</div>';
@@ -400,11 +403,8 @@ async function saveAllChanges(){
             showToast('\\u2728 Metadata & Studio Poster saved successfully!');
             closeCombinedModal();
             
-            // ✅ फिक्स 1: थंबनेल को तुरंत इसी ब्राउज़र में बिना पुराना कैशे उठाए लाइव रिफ्रेश कराओ
             reloadThumb(activeFid, activeCol);
             
-            // ✅ फिक्स 2: पूरे ग्रिड को 'doSearch' से री-रेंडर करने के बजाय सिर्फ इसी कार्ड का नाम लाइव बदलें
-            // इससे पेज री-सर्च नहीं होगा और तुम्हारा कार्ड अपनी जगह से 1 मिलीमीटर भी नहीं हिलेगा!
             var titleEl = document.getElementById('name-title-' + activeFid);
             if(titleEl) { titleEl.textContent = newName; }
             
@@ -415,7 +415,7 @@ async function saveAllChanges(){
 """.replace("__LIMIT_PLACEHOLDER__", str(MAX_WEB_RESULTS))
 
 # ─────────────────────────────────────────────────────────────────────────────
-# 🏠 SEARCH ZONE HTML
+# 🏠 SEARCH ZONE HTML — 🎭 Added Actors Section Navigation Button
 # ─────────────────────────────────────────────────────────────────────────────
 SEARCH_ZONE = (
     '<div class="search-zone">'
@@ -424,6 +424,8 @@ SEARCH_ZONE = (
                 '<input class="search-input" id="q" placeholder="Titles, people, genres\u2026">'
             '</div>'
             '<button class="search-btn" id="searchBtn" onclick="doSearch(0);triggerRipple(this)">Search</button>'
+            ''
+            '<button class="search-btn" style="background:#dc2626; font-weight:700;" onclick="loadActorSection()">🎭 Actors</button>'
         '</div>'
         '<div class="search-row2">'
             '<div class="cdd-wrap" id="cddColWrap">'
@@ -433,85 +435,4 @@ SEARCH_ZONE = (
                 '<span class="cdd-arrow">&#9660;</span>'
                 '<div class="cdd-menu" id="cddColMenu" style="display:none">'
                     '<div class="cdd-item selected" data-val="all" onclick="pickCol(\'all\',\'\U0001f4c2 All Collections\',this)">\U0001f4c2 All Collections<span class="cdd-radio"><span class="cdd-radio-dot"></span></span></div>'
-                    '<div class="cdd-item" data-val="primary" onclick="pickCol(\'primary\',\'\U0001f7e2 Primary\',this)">\U0001f7e2 Primary<span class="cdd-radio"><span class="cdd-radio-dot"></span></span></div>'
-                    '<div class="cdd-item" data-val="cloud" onclick="pickCol(\'cloud\',\'\U0001f535 Cloud\',this)">\U0001f535 Cloud<span class="cdd-radio"><span class="cdd-radio-dot"></span></span></div>'
-                    '<div class="cdd-item" data-val="archive" onclick="pickCol(\'archive\',\'\U0001f7e0 Archive\',this)">\U0001f7e0 Archive<span class="cdd-radio"><span class="cdd-radio-dot"></span></span></div>'
-                '</div>'
-            '</div>'
-            '<div class="cdd-wrap" id="cddModeWrap">'
-                '<div class="cdd-btn" id="cddModeBtn" onclick="toggleCdd(\'mode\')">'
-                    '<span id="cddModeLabel">\U0001f4f8 Original TG Thumb</span>'
-                '</div>'
-                '<span class="cdd-arrow">&#9660;</span>'
-                '<div class="cdd-menu" id="cddModeMenu" style="display:none">'
-                    '<div class="cdd-item selected" data-val="tg" onclick="pickMode(\'tg\',\'\U0001f4f8 Original TG Thumb\',this)">\U0001f4f8 Original TG Thumb<span class="cdd-radio"><span class="cdd-radio-dot"></span></span></div>'
-                    '<div class="cdd-item" data-val="none" onclick="pickMode(\'none\',\'\u26a1 Text Only (Fastest)\',this)">\u26a1 Text Only (Fastest)<span class="cdd-radio"><span class="cdd-radio-dot"></span></span></div>'
-                '</div>'
-            '</div>'
-        '</div>'
-    '</div>'
-    '<div class="main" style="padding-top:4px;">'
-        '<div class="results-info" id="resInfo" style="padding:0 12px 8px;">'
-            '<span class="results-count" id="resCount"></span>'
-        '</div>'
-        '<div style="padding:0 2px">'
-            '<div id="results" class="res-grid">'
-                '<div class="empty"><div class="empty-icon">&#8981;</div>'
-                '<p>Find your favorite movies and TV shows.</p></div>'
-            '</div>'
-            '<div class="pagination" id="pageBox" style="display:none;">'
-                '<button class="pg-btn" id="pBtn" onclick="prev()" disabled>Previous</button>'
-                '<span class="pg-info" id="pgInfo">Page 1</span>'
-                '<button class="pg-btn" id="nBtn" onclick="next()">Next</button>'
-            '</div>'
-        '</div>'
-    '</div>'
-    '<div class="toast" id="toast"></div>'
-)
-
-
-@dashboard_routes.get('/dashboard')
-async def dash(req):
-    role, tg_id = await get_auth(req)
-    if not role:
-        return web.HTTPFound('/login')
-    if role == 'user':
-        mp = await user_db.get_plan(tg_id)
-        if not mp.get("premium"):
-            return web.HTTPFound('/premium_expired')
-
-    body = CARD_CSS + SEARCH_ZONE + f"<script>{JS_ENGINE}</script>"
-    return build_page("Home - Fast Finder", body, "", "dash", role)
-
-
-@dashboard_routes.get('/logout')
-async def logout(req):
-    s_user = req.cookies.get('user_session')
-    if s_user and hasattr(temp, 'USER_SESSIONS') and s_user in temp.USER_SESSIONS:
-        del temp.USER_SESSIONS[s_user]
-    res = web.HTTPFound('/login')
-    res.del_cookie('user_session')
-    return res
-
-
-@dashboard_routes.get('/premium_expired')
-async def premium_expired(req):
-    role, tg_id = await get_auth(req)
-    if not role:
-        return web.HTTPFound('/login')
-    content = (
-        '<div style="text-align:center;">'
-        '<div style="font-size:50px;margin-bottom:15px;">&#9203;</div>'
-        '<p style="color:var(--muted);margin-bottom:30px;">Your access to Fast Finder Web has expired. '
-        'Please renew your plan via our Telegram Bot.</p>'
-        '<div class="scard red" style="text-align:left;margin-bottom:25px;padding:15px;">'
-        '<div class="scard-label">How to Renew?</div>'
-        '<div class="scard-sub" style="color:var(--text)">1. Go to Telegram Bot</div>'
-        '<div class="scard-sub" style="color:var(--text)">2. Use command <b>/plan</b></div>'
-        '<div class="scard-sub" style="color:var(--text)">3. Pay & Activate instantly</div>'
-        '</div>'
-        f'<a href="https://t.me/{temp.U_NAME}" class="submit-btn" style="text-decoration:none;display:block;">Open Telegram Bot</a>'
-        '<a href="/logout" style="display:block;margin-top:20px;color:var(--muted);text-decoration:none;">Sign Out</a>'
-        '</div>'
-    )
-    return build_page("Premium Expired", form_wrapper("Premium Expired", content), "login-bg")
+                    '<div class="cdd-item" data-val="primary" onclick="pickCol(\'primary\',\'\U0001f7e2 Primary\',this)">\U0001f7e2 Primary<span class="cdd-radio"><span class="cdd-radio-dot"></span></span></div>
