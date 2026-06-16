@@ -415,7 +415,7 @@ async function saveAllChanges(){
 """.replace("__LIMIT_PLACEHOLDER__", str(MAX_WEB_RESULTS))
 
 # ─────────────────────────────────────────────────────────────────────────────
-# 🏠 SEARCH ZONE HTML — 🎭 Navigation Buttons & Drodown Fix Complete
+# 🏠 SEARCH ZONE HTML — 🎭 (बटन अब पूरी तरह साइडबार मेनू के अंदर शिफ्ट हो गया है)
 # ─────────────────────────────────────────────────────────────────────────────
 SEARCH_ZONE = (
     '<div class="search-zone">'
@@ -424,7 +424,6 @@ SEARCH_ZONE = (
                 '<input class="search-input" id="q" placeholder="Titles, people, genres\u2026">'
             '</div>'
             '<button class="search-btn" id="searchBtn" onclick="doSearch(0);triggerRipple(this)">Search</button>'
-            '<button class="search-btn" style="background:#dc2626; font-weight:700;" onclick="loadActorSection()">🎭 Actors</button>'
         '</div>'
         '<div class="search-row2">'
             '<div class="cdd-wrap" id="cddColWrap">'
@@ -522,30 +521,4 @@ async def logout(req):
     s_user = req.cookies.get('user_session')
     if s_user and hasattr(temp, 'USER_SESSIONS') and s_user in temp.USER_SESSIONS:
         del temp.USER_SESSIONS[s_user]
-    res = web.HTTPFound('/login')
-    res.del_cookie('user_session')
-    gc.collect()
-    return res
-
-
-@dashboard_routes.get('/premium_expired')
-async def premium_expired(req):
-    role, tg_id = await get_auth(req)
-    if not role:
-        return web.HTTPFound('/login')
-    content = (
-        '<div style="text-align:center;">'
-        '<div style="font-size:50px;margin-bottom:15px;">&#9203;</div>'
-        '<p style="color:var(--muted);margin-bottom:30px;">Your access to Fast Finder Web has expired. '
-        'Please renew your plan via our Telegram Bot.</p>'
-        '<div class="scard red" style="text-align:left;margin-bottom:25px;padding:15px;">'
-        '<div class="scard-label">How to Renew?</div>'
-        '<div class="scard-sub" style="color:var(--text)">1. Go to Telegram Bot</div>'
-        '<div class="scard-sub" style="color:var(--text)">2. Use command <b>/plan</b></div>'
-        '<div class="scard-sub" style="color:var(--text)">3. Pay & Activate instantly</div>'
-        '</div>'
-        f'<a href="https://t.me/{temp.U_NAME}" class="submit-btn" style="text-decoration:none;display:block;">Open Telegram Bot</a>'
-        '<a href="/logout" style="display:block;margin-top:20px;color:var(--muted);text-decoration:none;">Sign Out</a>'
-        '</div>'
-    )
-    return build_page("Premium Expired", form_wrapper("Premium Expired", content), "login-bg")
+    res = web.HTTPFound('/login
