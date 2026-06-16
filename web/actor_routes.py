@@ -83,7 +83,7 @@ async function loadActorSection() {
         } else {
             d.actors.forEach(function(a) {
                 html += `<div class="actor-card" onclick="viewActorProfile('${a.id}')">
-                    <img src="${a.pic}" onerror="this.src='https://placehold.co/150x150/1c1c24/fff?text=No+Photo'">
+                    <img src="${a.pic}" loading="lazy" onerror="this.src='https://placehold.co/150x150/1c1c24/fff?text=No+Photo'">
                     <div class="actor-card-name">${a.name}</div>
                 </div>`;
             });
@@ -151,7 +151,7 @@ async function viewActorProfile(actorId) {
         var act = d.actor;
         var headerHtml = `<div class="actor-profile-container">
             <div class="actor-hero-box">
-                <img src="${act.profile_pic}" class="actor-full-pic" onerror="this.src='https://placehold.co/400x400/1c1c24/fff?text=Avatar'">
+                <img src="${act.profile_pic}" class="actor-full-pic" loading="lazy" onerror="this.src='https://placehold.co/400x400/1c1c24/fff?text=Avatar'">
                 <div class="actor-details-content">
                     <div class="actor-name-title">${act.name}</div>
                     <div class="actor-meta-row">
@@ -203,16 +203,70 @@ async function viewActorProfile(actorId) {
 # ⚙️ BACKEND API ROUTE CORES
 # ─────────────────────────────────────────────────────────
 
+@actor_routes.get("/api/actor_thumb")
+async def api_actor_thumb(req):
+    """✅ FIX: Actors collection के लिए dedicated thumbnail endpoint"""
+    actor_id = req.query.get("actor_id")
+    if not actor_id:
+        return web.Response(status=400)
+    
+    try:
+        from utils import temp
+        from info import BIN_CHANNEL
+        from web.search_api import _get_or_fetch_thumb, thumb_cache
+        
+        actor_doc = await actors.find_one({"_id": actor_id}, {"thumb_url": 1})
+        if not actor_doc:
+            return web.Response(status=404)
+        
+        thumb_url = actor_doc.get("thumb_url", "")
+        if not thumb_url or not thumb_url.startswith("TG_ID:"):
+            return web.Response(status=404)
+        
+        tg_file_id = thumb_url.replace("TG_ID:", "")
+        cache_key = f"actors:{actor_id}"
+        
+        # Cache check
+        if cache_key in thumb_cache:
+            cached = thumb_cache[cache_key]
+            if cached != "NO_THUMB":
+                from collections import OrderedDict
+                thumb_cache.move_to_end(cache_key)
+                return web.Response(
+                    body=cached,
+                    content_type="image/jpeg",
+                    headers={"Cache-Control": "max-age=86400", "Content-Disposition": 'inline; filename="actor.jpg"'}
+                )
+            return web.Response(status=404)
+        
+        # Telegram से fetch करो
+        file_data = await temp.BOT.download_media(tg_file_id, in_memory=True)
+        if file_data:
+            img_bytes = file_data.getvalue()
+            thumb_cache[cache_key] = img_bytes
+            return web.Response(
+                body=img_bytes,
+                content_type="image/jpeg",
+                headers={"Cache-Control": "max-age=86400", "Content-Disposition": 'inline; filename="actor.jpg"'}
+            )
+        return web.Response(status=404)
+    except Exception as e:
+        logger.error(f"Actor thumb error: {e}")
+        return web.Response(status=500)
+
+
 @actor_routes.get("/api/actors_list")
 async def api_actors_list(req):
     role, _ = await get_auth(req)
     if not role: return web.json_response({"error": "Unauthorized Access Engine!"}, status=403)
     
     count = await actors.count_documents({})
+    # ✅ FIX: cursor chaining — reassign
     cursor = actors.find({}, {"name": 1, "_id": 1}).sort("name", 1)
     actor_docs = await cursor.to_list(length=300)
     
-    list_data = [{"id": a["_id"], "name": a["name"], "pic": f"/api/thumb?file_id={a['_id']}"} for a in actor_docs]
+    # ✅ FIX: actor thumbnail के लिए dedicated endpoint use करो
+    list_data = [{"id": a["_id"], "name": a["name"], "pic": f"/api/actor_thumb?actor_id={a['_id']}"} for a in actor_docs]
     return web.json_response({"count": count, "actors": list_data, "is_admin": role == "admin"})
 
 @actor_routes.post("/api/create_actor")
@@ -298,14 +352,19 @@ async def api_get_actor_node(req):
                 "watch": f"/setup_stream?file_id={fid}&mode=watch"
             })
             
-    gallery_links = [f"/api/thumb?file_id={img.replace('TG_ID:', '')}" for img in actor.get("gallery", [])]
+    # ✅ FIX: gallery thumbnails — TG_ID: strip करके actual file_id use करो
+    gallery_links = []
+    for img in actor.get("gallery", []):
+        raw_id = img.replace("TG_ID:", "")
+        gallery_links.append(f"/api/thumb?file_id={raw_id}&col=primary")
     
     return web.json_response({
         "actor": {
             "name": actor["name"],
             "bio": actor["bio"],
             "details": actor.get("details", {}),
-            "profile_pic": f"/api/thumb?file_id={actor_id}",
+            # ✅ FIX: dedicated actor_thumb endpoint use करो
+            "profile_pic": f"/api/actor_thumb?actor_id={actor_id}",
             "gallery": gallery_links
         },
         "results": videos
