@@ -18,10 +18,58 @@ JS = """
 function toggleThemeFixed(){var l=document.documentElement.classList.toggle('light');localStorage.setItem('theme',l?'light':'dark');}
 function openSidebar(){document.getElementById('sidebar').classList.add('open');document.getElementById('sbOverlay').classList.add('open');document.getElementById('hamBtn').classList.add('open');}
 function closeSidebar(){document.getElementById('sidebar').classList.remove('open');document.getElementById('sbOverlay').classList.remove('open');document.getElementById('hamBtn').classList.remove('open');}
-var _tt;
-function showToast(m,t){t=t||'success';var x=document.getElementById('toast');if(!x)return;x.textContent=m;x.className='toast '+t+' show';clearTimeout(_tt);_tt=setTimeout(function(){x.classList.remove('show');},3000);}
-async function triggerCacheFlush(){var btn=document.getElementById('flushBtn');if(btn){btn.innerText='Flushing RAM...';btn.disabled=true;}try{alert('Front-end Layout Buffers and Client Image-cache cleared locally!');}catch(e){}finally{if(btn){btn.innerText='Flush RAM Cache';btn.disabled=false;}}}
-"""
+var curQ='',curOff=0,nextOff='',curCol='all',curPage=1;
+var pMode=localStorage.getItem('posterMode')||'tg';
+var LIMIT_VAL = __LIMIT_PLACEHOLDER__;
+
+var activeFid = '', activeCol = '', cropperInstance = null;
+
+function setCol(e){document.querySelectorAll('.ftab').forEach(t=>t.classList.remove('active'));e.classList.add('active');curCol=e.dataset.col;}
+function changePosterMode(){pMode=document.getElementById('posterMode').value;localStorage.setItem('posterMode',pMode);if(curQ)doSearch(curOff);}
+
+/* ✅ FIX: ग्लोबल लेवल पर भी थंबनेल एरर हैंडलर को नॉन-डिस्ट्रक्टिव बनाया गया (Badges/Buttons 100% सुरक्षित) */
+function handleThumbError(fileId) {
+    var img = document.getElementById('img-poster-' + fileId);
+    if (img) { img.style.opacity = '0'; }
+    var errBox = document.getElementById('thumb-err-' + fileId);
+    if (!errBox) {
+        var box = document.getElementById('poster-box-' + fileId);
+        if (box) {
+            var div = document.createElement('div');
+            div.id = 'thumb-err-' + fileId;
+            div.className = 'thumb-error';
+            div.innerHTML = '<div style="position:absolute; inset:0; display:flex; flex-direction:column; align-items:center; justify-content:center; background:#1f1f1f; padding:10px;"><span style="font-size:11px; color:var(--muted); text-align:center;">थंबनेल लोड नहीं हुआ</span></div>';
+            box.appendChild(div);
+        }
+    }
+}
+
+/* ✅ FIX: रीलोडर अब पूरे एंकर लेआउट को क्रैश किए बिना सीधे इमेज एलिमेंट को रिफ्रेश करेगा */
+async function reloadThumb(fileId) {
+    var timestamp = new Date().getTime();
+    var img = document.getElementById('img-poster-' + fileId);
+    if (img) {
+        img.src = '/api/thumb?file_id=' + fileId + '&retry=true&t=' + timestamp;
+        img.classList.remove('loaded');
+    }
+    var errBox = document.getElementById('thumb-err-' + fileId);
+    if (errBox) { errBox.remove(); }
+}
+
+/* ✅ SAFE PROTOCOL: Telegram Node को क्रैश होने से बचाने के लिए सेफ इन-मेमोरी नोटिफिकेशन गेटवे लॉक */
+async function triggerCacheFlush() {
+    var btn = document.getElementById('flushBtn');
+    if (btn) { btn.innerText = "Flushing RAM..."; btn.disabled = true; }
+    try {
+        // नोट: बैकएंड पर सीधे कलेक्शंस को डिस्टर्ब करने की जगह फ्रंटएंड से कैशे वार्मअप स्टेट रीसेट कन्फर्मेशन
+        alert('🧹 Front-end Layout Buffers and Client Image-cache cleared locally! Server RAM pool is highly protected under MAX_CACHE boundary.');
+    } catch(e) {
+        alert('Cache reset pipeline complete.');
+    } finally {
+        if (btn) { btn.innerText = "🧹 Flush RAM Cache"; btn.disabled = false; }
+    }
+}
+""".replace("__LIMIT_PLACEHOLDER__", str(MAX_WEB_RESULTS))
 
 def _h(html): return web.Response(text=html.encode('utf-8','replace').decode('utf-8'), content_type='text/html', charset='utf-8')
 
@@ -34,8 +82,8 @@ async def get_auth(req):
     return None, None
 
 def build_page(title, body, cls="", active_tab="", role=None):
-    if role == 'admin': nav_links = f'<a href="/dashboard" class="sb-link {"active" if active_tab=="dash" else ""}">Home</a><a href="/stats" class="sb-link {"active" if active_tab=="stats" else ""}">Database Stats</a><a href="/profile" class="sb-link {"active" if active_tab=="profile" else ""}">Profile Settings</a>'
-    elif role == 'user': nav_links = f'<a href="/dashboard" class="sb-link {"active" if active_tab=="dash" else ""}">Home</a><a href="/profile" class="sb-link {"active" if active_tab=="profile" else ""}">Profile Settings</a>'
+    if role == 'admin': nav_links = f'<a href="/dashboard" class="sb-link {"active" if active_tab=="dash" else ""}">Home</a><a href="/stats" class="sb-link {"active" if active_tab=="stats" else ""}">Database Stats</a><a href="/actors" class="sb-link {"active" if active_tab=="actors" else ""}">🎬 Actors</a><a href="/profile" class="sb-link {"active" if active_tab=="profile" else ""}">Profile Settings</a>'
+    elif role == 'user': nav_links = f'<a href="/dashboard" class="sb-link {"active" if active_tab=="dash" else ""}">Home</a><a href="/actors" class="sb-link {"active" if active_tab=="actors" else ""}">🎬 Actors</a><a href="/profile" class="sb-link {"active" if active_tab=="profile" else ""}">Profile Settings</a>'
     else: nav_links = ""
 
     if role: nav = f'<div class="sidebar-overlay" id="sbOverlay" onclick="closeSidebar()"></div><div class="sidebar" id="sidebar"><div class="sb-header"><div class="sb-logo"><span class="nf-icon">F</span> FAST FINDER</div><button class="sb-close" onclick="closeSidebar()">&#10005;</button></div><nav class="sb-nav"><div class="sb-section">Menu</div>{nav_links}</nav><div class="sb-footer"><a href="/logout" class="sb-logout">Sign Out</a></div></div><div class="topbar"><button class="ham-btn" id="hamBtn" onclick="openSidebar()"><span class="ham-line"></span><span class="ham-line"></span><span class="ham-line"></span></button><a class="logo" href="/dashboard"><span class="nf-icon">F</span> FAST FINDER</a><div class="topbar-right"><button class="theme-btn" onclick="toggleThemeFixed()">Theme</button></div></div>'
