@@ -29,7 +29,7 @@ db = client[DATABASE_NAME]
 primary = db["Primary"]
 cloud   = db["Cloud"]
 archive = db["Archive"]
-actors  = db["Actors"]  # 👈 ✅ नया एक्टर्स कलेक्शन यहाँ जोड़ दिया गया है
+actors  = db["Actors"]  # ✅ नया एक्टर्स कलेक्शन यहाँ जोड़ दिया गया है
 
 COLLECTIONS = {
     "primary": primary,
@@ -46,6 +46,13 @@ STATS_CACHE_TTL = 60  # ६० सेकंड का सेफ कैशे ब
 # ⚡ INDEXES — Dynamic Configuration (No Index Bloat)
 # ─────────────────────────────────────────────────────────
 async def ensure_indexes():
+    # 🎭 ✅ नया: एक्टर्स डायरेक्टरी के लिए नाम पर फास्ट सर्च इंडेक्स बनाएँ
+    try:
+        await actors.create_index("name", name="actor_name_idx")
+        logger.info("✅ Actor Directory Search Index OK")
+    except Exception as e:
+        logger.warning(f"Actor Index warning: {e}")
+
     for name, col in COLLECTIONS.items():
         try:
             # ✅ कम्पाउंड टेक्स्ट इंडेक्स में से ब्लोट हटाया गया
