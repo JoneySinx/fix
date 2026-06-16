@@ -313,162 +313,62 @@ async function doSearch(o){
         }
     }catch(e){showToast('Network error','error');}
 }
-
-function next(){if(nextOff){curPage++;doSearch(nextOff);scrollTo(0,0);}}
-function prev(){if(curPage>1){curPage--;doSearch(Math.max(0,curOff-LIMIT_VAL));scrollTo(0,0);}}
-var _tt;
-function showToast(m,t){t=t||'success';var x=document.getElementById('toast');x.textContent=m;x.className='toast '+t+' show';clearTimeout(_tt);_tt=setTimeout(function(){x.classList.remove('show');},3000);}
-
-document.addEventListener('DOMContentLoaded',function(){
-    var q=document.getElementById('q');if(q)q.addEventListener('keydown',function(e){if(e.key==='Enter')doSearch(0);});
-    if(pMode==='none'){
-        var mItems=document.querySelectorAll('#cddModeMenu .cdd-item');
-        mItems.forEach(function(i){i.classList.remove('selected');if(i.dataset.val===pMode)i.classList.add('selected');});
-        document.getElementById('cddModeLabel').textContent='\u26a1 Text Only (Fastest)';
-    }
-});
-
-async function deleteFile(fid,col){
-    if(!confirm('Are you sure you want to delete this file?'))return;
-    try{
-        var r=await fetch('/api/delete',{method:'POST',body:JSON.stringify({file_id:fid,collection:col}),headers:{'Content-Type':'application/json'}});
-        var res=await r.json();
-        if(res.success){showToast('\\u2705 File deleted successfully!');doSearch(curOff);}
-        else{showToast(res.error||'Delete failed!','error');}
-    }catch(e){showToast('Delete failed','error');}
-}
-
-function editFile(fid,col,currentName){
-    activeFid=fid;activeCol=col;
-    if(cropperInstance){cropperInstance.destroy();cropperInstance=null;}
-    document.getElementById('emName').value=currentName;
-    document.getElementById('emFile').value='';
-    document.getElementById('cropContainer').style.display='none';
-    var prevBox=document.getElementById('emPreviewBox');
-    prevBox.style.display='flex';
-    prevBox.innerHTML='<img src="/api/thumb?file_id='+fid+'&col='+activeCol+'" class="t-prev-img" onerror="this.src=\\'https://placehold.co/600x338/181818/FFF?text=No+Thumbnail\\';">';
-    document.getElementById('editCombinedModal').classList.add('open');
-}
-
-function closeCombinedModal(){
-    document.getElementById('editCombinedModal').classList.remove('open');
-    if(cropperInstance){cropperInstance.destroy();cropperInstance=null;}
-}
-
-function handleLocalPreview(input){
-    if(input.files&&input.files[0]){
-        var reader=new FileReader();
-        reader.onload=function(e){
-            if(cropperInstance){cropperInstance.destroy();}
-            document.getElementById('emPreviewBox').style.display='none';
-            var cropWrap=document.getElementById('cropContainer');
-            cropWrap.style.display='block';
-            cropWrap.innerHTML='<img id="cropImage" src="'+e.target.result+'" style="max-width:100%;">';
-            var img=document.getElementById('cropImage');
-            cropperInstance=new Cropper(img,{
-                aspectRatio:16/9,viewMode:1,dragMode:'move',background:false,
-                autoCropArea:1,restore:false,guides:false,center:true,highlight:false,
-                cropBoxMovable:false,cropBoxResizable:false,toggleDragModeOnDblclick:false,
-                zoomable:true,movable:true
-            });
-        };
-        reader.readAsDataURL(input.files[0]);
-    }
-}
-
-async function saveAllChanges(){
-    var newName=document.getElementById('emName').value.trim();
-    if(!newName){showToast('File name cannot be empty!','error');return;}
-    var btn=document.getElementById('emSaveBtn');
-    btn.disabled=true;btn.innerText='Processing pipeline...';
-    try{
-        if(cropperInstance){
-            showToast('\\u2702\\ufe0f Cropping & Uploading to Telegram...');
-            var canvas=cropperInstance.getCroppedCanvas({width:1280,height:720,imageSmoothingEnabled:true,imageSmoothingQuality:'high'});
-            var blob=await new Promise(function(resolve){canvas.toBlob(resolve,'image/jpeg',0.9);});
-            if(blob){
-                var formData=new FormData();
-                formData.append('file_id',activeFid);
-                formData.append('collection',activeCol);
-                formData.append('image',blob,'cropped_poster.jpg');
-                var upRes=await fetch('/api/upload_thumb',{method:'POST',body:formData});
-                var upData=await upRes.json();
-                if(!upData.success){showToast(upData.error||'Telegram image sync failed!','error');btn.disabled=false;btn.innerText='Save Changes';return;}
-            }
-        }
-        showToast('\\ud83d\\udcbe Indexing metadata to Database...');
-        var r=await fetch('/api/edit_name',{method:'POST',body:JSON.stringify({file_id:activeFid,collection:activeCol,new_name:newName}),headers:{'Content-Type':'application/json'}});
-        var res=await r.json();
-        if(res.success||cropperInstance){
-            showToast('\\u2728 Metadata & Studio Poster saved successfully!');
-            closeCombinedModal();
-            
-            reloadThumb(activeFid, activeCol);
-            
-            var titleEl = document.getElementById('name-title-' + activeFid);
-            if(titleEl) { titleEl.textContent = newName; }
-            
-        }else{showToast(res.error||'Metadata save failed!','error');}
-    }catch(e){showToast('Network synchronization error','error');}
-    finally{btn.disabled=false;btn.innerText='Save Changes';}
-}
 """.replace("__LIMIT_PLACEHOLDER__", str(MAX_WEB_RESULTS))
 
 # ─────────────────────────────────────────────────────────────────────────────
-# 🏠 SEARCH ZONE HTML
+# 🏠 SEARCH ZONE HTML (पूरी तरह सुरक्षित ट्रिपल कोट्स स्ट्रिंग)
 # ─────────────────────────────────────────────────────────────────────────────
-SEARCH_ZONE = (
-    '<div class="search-zone">'
-        '<div class="search-row1">'
-            '<div class="search-wrap">'
-                '<input class="search-input" id="q" placeholder="Titles, people, genres\u2026">'
-            '</div>'
-            '<button class="search-btn" id="searchBtn" onclick="doSearch(0);triggerRipple(this)">Search</button>'
-        '</div>'
-        '<div class="search-row2">'
-            '<div class="cdd-wrap" id="cddColWrap">'
-                '<div class="cdd-btn" id="cddColBtn" onclick="toggleCdd(\'col\')">'
-                    '<span id="cddColLabel">\U0001f4c2 All Collections</span>'
-                '</div>'
-                '<span class="cdd-arrow">&#9660;</span>'
-                '<div class="cdd-menu" id="cddColMenu" style="display:none">'
-                    '<div class="cdd-item selected" data-val="all" onclick="pickCol(\'all\',\'\U0001f4c2 All Collections\',this)">\U0001f4c2 All Collections<span class="cdd-radio"><span class="cdd-radio-dot"></span></span></div>'
-                    '<div class="cdd-item" data-val="primary" onclick="pickCol(\'primary\',\'\U0001f7e2 Primary\',this)">\U0001f7e2 Primary<span class="cdd-radio"><span class="cdd-radio-dot"></span></span></div>'
-                    '<div class="cdd-item" data-val="cloud" onclick="pickCol(\'cloud\',\'\U0001f535 Cloud\',this)">\U0001f535 Cloud<span class="cdd-radio"><span class="cdd-radio-dot"></span></span></div>'
-                    '<div class="cdd-item" data-val="archive" onclick="pickCol(\'archive\',\'\U0001f7e0 Archive\',this)">\U0001f7e0 Archive<span class="cdd-radio"><span class="cdd-radio-dot"></span></span></div>'
-                '</div>'
-            '</div>'
-            '<div class="cdd-wrap" id="cddModeWrap">'
-                '<div class="cdd-btn" id="cddModeBtn" onclick="toggleCdd(\'mode\')">'
-                    '<span id="cddModeLabel">\U0001f4f8 Original TG Thumb</span>'
-                '</div>'
-                '<span class="cdd-arrow">&#9660;</span>'
-                '<div class="cdd-menu" id="cddModeMenu" style="display:none">'
-                    '<div class="cdd-item selected" data-val="tg" onclick="pickMode(\'tg\',\'\U0001f4f8 Original TG Thumb\',this)">\U0001f4f8 Original TG Thumb<span class="cdd-radio"><span class="cdd-radio-dot"></span></span></div>'
-                    '<div class="cdd-item" data-val="none" onclick="pickMode(\'none\',\'\u26a1 Text Only (Fastest)\',this)">\u26a1 Text Only (Fastest)<span class="cdd-radio"><span class="cdd-radio-dot"></span></span></div>'
-                '</div>'
-            '</div>'
-        '</div>'
-    '</div>'
-    '<div class="main" style="padding-top:4px;">'
-        '<div class="results-info" id="resInfo" style="padding:0 12px 8px;">'
-            '<span class="results-count" id="resCount"></span>'
-        '</div>'
-        '<div style="padding:0 2px">'
-            '<div id="results" class="res-grid">'
-                '<div class="empty"><div class="empty-icon">&#8981;</div>'
-                '<p>Find your favorite movies and TV shows.</p></div>'
-            '</div>'
-            '<div class="pagination" id="pageBox" style="display:none;">'
-                '<button class="pg-btn" id="pBtn" onclick="prev()" disabled>Previous</button>'
-                '<span class="pg-info" id="pgInfo">Page 1</span>'
-                '<button class="pg-btn" id="nBtn" onclick="next()">Next</button>'
-            '</div>'
-        '</div>'
-    '</div>'
-    '<div class="toast" id="toast"></div>'
-)
-
+SEARCH_ZONE = """
+<div class="search-zone">
+    <div class="search-row1">
+        <div class="search-wrap">
+            <input class="search-input" id="q" placeholder="Titles, people, genres...">
+        </div>
+        <button class="search-btn" id="searchBtn" onclick="doSearch(0);triggerRipple(this)">Search</button>
+    </div>
+    <div class="search-row2">
+        <div class="cdd-wrap" id="cddColWrap">
+            <div class="cdd-btn" id="cddColBtn" onclick="toggleCdd('col')">
+                <span id="cddColLabel">📁 All Collections</span>
+            </div>
+            <span class="cdd-arrow">&#9660;</span>
+            <div class="cdd-menu" id="cddColMenu" style="display:none">
+                <div class="cdd-item selected" data-val="all" onclick="pickCol('all','📁 All Collections',this)">📁 All Collections<span class="cdd-radio"><span class="cdd-radio-dot"></span></span></div>
+                <div class="cdd-item" data-val="primary" onclick="pickCol('primary','🟢 Primary',this)">🟢 Primary<span class="cdd-radio"><span class="cdd-radio-dot"></span></span></div>
+                <div class="cdd-item" data-val="cloud" onclick="pickCol('cloud','🔵 Cloud',this)">🔵 Cloud<span class="cdd-radio"><span class="cdd-radio-dot"></span></span></div>
+                <div class="cdd-item" data-val="archive" onclick="pickCol('archive','🟠 Archive',this)">%s🟠 Archive<span class="cdd-radio"><span class="cdd-radio-dot"></span></span></div>
+            </div>
+        </div>
+        <div class="cdd-wrap" id="cddModeWrap">
+            <div class="cdd-btn" id="cddModeBtn" onclick="toggleCdd('mode')">
+                <span id="cddModeLabel">📸 Original TG Thumb</span>
+            </div>
+            <span class="cdd-arrow">&#9660;</span>
+            <div class="cdd-menu" id="cddModeMenu" style="display:none">
+                <div class="cdd-item selected" data-val="tg" onclick="pickMode('tg','📸 Original TG Thumb',this)">📸 Original TG Thumb<span class="cdd-radio"><span class="cdd-radio-dot"></span></span></div>
+                <div class="cdd-item" data-val="none" onclick="pickMode('none','⚡ Text Only (Fastest)',this)">⚡ Text Only (Fastest)<span class="cdd-radio"><span class="cdd-radio-dot"></span></span></div>
+            </div>
+        </div>
+    </div>
+</div>
+<div class="main" style="padding-top:4px;">
+    <div class="results-info" id="resInfo" style="display:none; padding:0 12px 8px;">
+        <span class="results-count" id="resCount"></span>
+    </div>
+    <div style="padding:0 2px">
+        <div id="results" class="res-grid">
+            <div class="empty"><div class="empty-icon">&#8981;</div>
+            <p>Find your favorite movies and TV shows.</p></div>
+        </div>
+        <div class="pagination" id="pageBox" style="display:none;">
+            <button class="pg-btn" id="pBtn" onclick="prev()" disabled>Previous</button>
+            <span class="pg-info" id="pgInfo">Page 1</span>
+            <button class="pg-btn" id="nBtn" onclick="next()">Next</button>
+        </div>
+    </div>
+</div>
+<div class="toast" id="toast"></div>
+"""
 
 @dashboard_routes.get('/dashboard')
 async def dash(req):
