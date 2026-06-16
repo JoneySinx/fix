@@ -415,7 +415,7 @@ async function saveAllChanges(){
 """.replace("__LIMIT_PLACEHOLDER__", str(MAX_WEB_RESULTS))
 
 # ─────────────────────────────────────────────────────────────────────────────
-# 🏠 SEARCH ZONE HTML — 🎭 (बटन अब पूरी तरह साइडबार मेनू के अंदर शिफ्ट हो गया है)
+# 🏠 SEARCH ZONE HTML
 # ─────────────────────────────────────────────────────────────────────────────
 SEARCH_ZONE = (
     '<div class="search-zone">'
@@ -480,11 +480,9 @@ async def dash(req):
         if not mp.get("premium"):
             return web.HTTPFound('/premium_expired')
 
-    # 🎭 कंबाइन स्टाइल्स और जावास्क्रिप्ट इंजन पाइपलाइन
     TOTAL_STYLE = CARD_CSS + ACTOR_CSS
     TOTAL_JS = JS_ENGINE + ACTOR_JS
 
-    # ➕ एडमिन के लिए एक्टर क्रिएशन मोडल बक्सा (Gallery Upload Input के साथ)
     ADMIN_ACTOR_MODAL = """
     <div id="actorModal" class="edit-modal" style="display:none;" onclick="if(event.target===this)this.style.display='none'">
       <div class="em-card" style="max-width:480px;">
@@ -521,4 +519,7 @@ async def logout(req):
     s_user = req.cookies.get('user_session')
     if s_user and hasattr(temp, 'USER_SESSIONS') and s_user in temp.USER_SESSIONS:
         del temp.USER_SESSIONS[s_user]
-    res = web.HTTPFound('/login
+    res = web.HTTPFound('/login')
+    res.del_cookie('user_session')
+    gc.collect()
+    return res
