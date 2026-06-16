@@ -29,6 +29,7 @@ db = client[DATABASE_NAME]
 primary = db["Primary"]
 cloud   = db["Cloud"]
 archive = db["Archive"]
+actors  = db["Actors"]  # 👈 ✅ नया एक्टर्स कलेक्शन यहाँ जोड़ दिया गया है
 
 COLLECTIONS = {
     "primary": primary,
