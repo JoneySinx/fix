@@ -587,6 +587,7 @@ async function submitEditActor(id){{
   btn.disabled=false;btn.style.display='block';spin.style.display='none';
 }}'''
 
+    lb_del_display = 'block' if is_admin else 'none'
     return f'''<script>
 // ── Tabs ──
 document.querySelectorAll('.ap-tab').forEach(function(btn){{
@@ -604,7 +605,7 @@ function openLb(url,idx){{
   currentLbIdx=idx;
   document.getElementById('lbOverlay').classList.add('open');
   var delBtn=document.getElementById('lbDel');
-  if(delBtn) delBtn.style.display={'\'block\'' if is_admin else '\'none\''};
+  if(delBtn) delBtn.style.display='{lb_del_display}';
 }}
 function closeLb(){{document.getElementById('lbOverlay').classList.remove('open');currentLbIdx=null;}}
 {admin_js}
