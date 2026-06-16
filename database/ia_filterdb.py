@@ -29,6 +29,7 @@ db = client[DATABASE_NAME]
 primary = db["Primary"]
 cloud   = db["Cloud"]
 archive = db["Archive"]
+actors  = db["Actors"]  # ✅ नया एक्टर्स कलेक्शन यहाँ जोड़ दिया गया है
 
 COLLECTIONS = {
     "primary": primary,
@@ -45,6 +46,13 @@ STATS_CACHE_TTL = 60  # ६० सेकंड का सेफ कैशे ब
 # ⚡ INDEXES — Dynamic Configuration (No Index Bloat)
 # ─────────────────────────────────────────────────────────
 async def ensure_indexes():
+    # 🎭 ✅ नया: एक्टर्स डायरेक्टरी के लिए नाम पर फास्ट सर्च इंडेक्स बनाएँ
+    try:
+        await actors.create_index("name", name="actor_name_idx")
+        logger.info("✅ Actor Directory Search Index OK")
+    except Exception as e:
+        logger.warning(f"Actor Index warning: {e}")
+
     for name, col in COLLECTIONS.items():
         try:
             # ✅ कम्पाउंड टेक्स्ट इंडेक्स में से ब्लोट हटाया गया
@@ -210,8 +218,8 @@ async def _search(col, raw_query: str, regex, offset: int, limit: int, lang=None
             text_flt = {"$and": [text_flt, {"file_name": re.compile(lang, re.IGNORECASE)}]}
 
         cursor = col.find(text_flt, {"_id": 1, "file_name": 1, "file_size": 1, "file_type": 1, "file_ref": 1, "caption": 1, "thumb_url": 1, "score": {"$meta": "textScore"}})
-        cursor.sort([("score", {"$meta": "textScore"})])
-        cursor.skip(offset).limit(limit)
+        # ✅ FIX: Motor cursor chaining — reassign जरूरी है
+        cursor = cursor.sort([("score", {"$meta": "textScore"})]).skip(offset).limit(limit)
         docs = await cursor.to_list(length=limit)
         
         if docs:
@@ -231,8 +239,9 @@ async def _search(col, raw_query: str, regex, offset: int, limit: int, lang=None
     if lang:
         reg_flt = {"$and": [reg_flt, {"file_name": re.compile(lang, re.IGNORECASE)}]}
 
-    cursor = col.find(reg_flt, {"_id": 1, "file_name": 1, "file_size": 1, "file_type": 1, "file_ref": 1, "caption": 1, "thumb_url": 1}).sort('_id', -1)
-    cursor.skip(offset).limit(limit)
+    cursor = col.find(reg_flt, {"_id": 1, "file_name": 1, "file_size": 1, "file_type": 1, "file_ref": 1, "caption": 1, "thumb_url": 1})
+    # ✅ FIX: Motor cursor chaining — reassign जरूरी है
+    cursor = cursor.sort('_id', -1).skip(offset).limit(limit)
     docs = await cursor.to_list(length=limit)
     for doc in docs:
         doc["file_id"] = doc["_id"]
